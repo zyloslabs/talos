@@ -188,6 +188,11 @@ export class PlatformRepository {
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      -- Performance indexes
+      CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_saved_prompts_category ON saved_prompts(category);
+      CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs(enabled);
     `);
 
     // Seed default personality if none exists

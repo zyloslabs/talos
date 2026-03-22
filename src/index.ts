@@ -8,21 +8,25 @@
 import { createServer } from "node:http";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, appendFileSync } from "node:fs";
 import express from "express";
 import { Server as SocketIOServer } from "socket.io";
 import Database from "better-sqlite3";
 import { TalosRepository } from "./talos/repository.js";
 import { PlatformRepository } from "./platform/repository.js";
 import { createAdminRouter } from "./api/admin.js";
+import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
+import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const DATA_DIR = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
 const DB_PATH = join(DATA_DIR, "talos.db");
+const SESSIONS_DIR = join(DATA_DIR, "sessions");
 
 mkdirSync(DATA_DIR, { recursive: true });
+mkdirSync(SESSIONS_DIR, { recursive: true });
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +39,23 @@ repo.migrate();
 
 const platformRepo = new PlatformRepository(db);
 platformRepo.migrate();
+
+// ── Copilot Wrapper ───────────────────────────────────────────────────────────
+
+let copilot: CopilotWrapper | undefined;
+try {
+  copilot = new CopilotWrapperService({ authPath: join(DATA_DIR, "auth.json") });
+} catch {
+  console.warn("[talos] CopilotWrapper initialization failed — AI chat will be unavailable");
+}
+
+// ── Session Persistence Helpers ───────────────────────────────────────────────
+
+function appendSessionMessage(conversationId: string, message: { role: string; content: string; timestamp: string }) {
+  const safeName = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
+  appendFileSync(filePath, JSON.stringify(message) + "\n", "utf-8");
+}
 
 // ── Express ───────────────────────────────────────────────────────────────────
 
@@ -237,16 +258,68 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
 
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
-app.use("/api/admin", createAdminRouter({ platformRepo }));
+app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN }));
 
 // ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
 
 io.on("connection", (socket) => {
-  socket.on("chat:message", async (data: { message: string; conversationId?: string }) => {
-    // Emit acknowledgment — real Copilot SDK streaming will be wired when auth is configured
-    socket.emit("chat:stream:start", { conversationId: data.conversationId ?? `chat-${Date.now()}` });
-    socket.emit("chat:stream:delta", { delta: "Copilot SDK integration is ready. Configure authentication via Admin > Auth to enable AI chat.", conversationId: data.conversationId });
-    socket.emit("chat:stream:end", { conversationId: data.conversationId });
+  socket.on("chat:message", async (data: { message: string; conversationId?: string; agent?: string }) => {
+    const conversationId = data.conversationId ?? `chat-${Date.now()}`;
+    const timestamp = new Date().toISOString();
+
+    // Persist user message
+    appendSessionMessage(conversationId, { role: "user", content: data.message, timestamp });
+
+    socket.emit("chat:stream:start", { conversationId });
+
+    if (!copilot) {
+      const fallback = "Copilot SDK is not configured. Go to Admin > Auth to set up authentication.";
+      socket.emit("chat:stream:delta", { delta: fallback, conversationId });
+      socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
+      appendSessionMessage(conversationId, { role: "assistant", content: fallback, timestamp: new Date().toISOString() });
+      return;
+    }
+
+    try {
+      const isAuthenticated = await copilot.isAuthenticated();
+      if (!isAuthenticated) {
+        const msg = "Not authenticated. Go to Admin > Auth to connect to GitHub Copilot.";
+        socket.emit("chat:stream:delta", { delta: msg, conversationId });
+        socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
+        appendSessionMessage(conversationId, { role: "assistant", content: msg, timestamp: new Date().toISOString() });
+        return;
+      }
+
+      // Get active personality for system message
+      const personality = platformRepo.getActivePersonality();
+      const systemMessage = personality
+        ? { mode: "append" as const, content: personality.systemPrompt }
+        : undefined;
+
+      let fullResponse = "";
+      const stream = copilot.chat(data.message, {
+        conversationId,
+        systemMessage,
+        onToolCall: (tool, args) => {
+          socket.emit("chat:stream:tool", { tool, args, conversationId });
+        },
+      });
+
+      for await (const chunk of stream) {
+        fullResponse += chunk;
+        socket.emit("chat:stream:delta", { delta: chunk, conversationId });
+      }
+
+      const tokenUsage = copilot.getSessionUsage(conversationId);
+      socket.emit("chat:stream:end", { conversationId, tokenUsage });
+
+      // Persist assistant message
+      appendSessionMessage(conversationId, { role: "assistant", content: fullResponse, timestamp: new Date().toISOString() });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error occurred";
+      socket.emit("chat:stream:delta", { delta: `Error: ${errMsg}`, conversationId });
+      socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
+    }
   });
 });
 

@@ -8,6 +8,12 @@ import Database from "better-sqlite3";
 import { PlatformRepository } from "../platform/repository.js";
 import { createAdminRouter } from "./admin.js";
 
+const TEST_TOKEN = "test-admin-token-xyz";
+const authHeaders = {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${TEST_TOKEN}`,
+};
+
 function createTestApp() {
   const db = new Database(":memory:");
   db.pragma("journal_mode = WAL");
@@ -16,7 +22,7 @@ function createTestApp() {
   platformRepo.migrate();
   const app = express();
   app.use(express.json());
-  app.use("/api/admin", createAdminRouter({ platformRepo }));
+  app.use("/api/admin", createAdminRouter({ platformRepo, adminToken: TEST_TOKEN }));
   return { app, platformRepo, db };
 }
 
@@ -45,12 +51,41 @@ describe("Admin API", () => {
     ({ app } = createTestApp());
   });
 
+  // ── Auth Middleware ──
+
+  describe("auth middleware", () => {
+    it("returns 401 when no token provided", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/personality`);
+        expect(res.status).toBe(401);
+      });
+    });
+
+    it("returns 401 with invalid token", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/personality`, {
+          headers: { Authorization: "Bearer wrong-token" },
+        });
+        expect(res.status).toBe(401);
+      });
+    });
+
+    it("allows access with valid token", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/personality`, {
+          headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+        });
+        expect(res.status).toBe(200);
+      });
+    });
+  });
+
   // ── Personality ──
 
   describe("GET /api/admin/personality", () => {
     it("returns default personality", async () => {
       await withServer(app, async (base) => {
-        const res = await fetch(`${base}/api/admin/personality`);
+        const res = await fetch(`${base}/api/admin/personality`, { headers: authHeaders });
         const data = await json(res);
         expect(data.personalities).toHaveLength(1);
         expect(data.activeId).toBeTruthy();
@@ -63,7 +98,7 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/personality`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "Snarky", systemPrompt: "Be snarky." }),
         });
         expect(res.status).toBe(201);
@@ -76,7 +111,7 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/personality`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ systemPrompt: "No name" }),
         });
         expect(res.status).toBe(400);
@@ -89,33 +124,36 @@ describe("Admin API", () => {
   describe("prompts CRUD", () => {
     it("creates, reads, updates, deletes prompts", async () => {
       await withServer(app, async (base) => {
-        // Create
         const createRes = await fetch(`${base}/api/admin/prompts`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "Test", content: "Do test things" }),
         });
         expect(createRes.status).toBe(201);
         const prompt = await json(createRes);
         expect(prompt.name).toBe("Test");
 
-        // Read
-        const getRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`);
+        const getRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, { headers: authHeaders });
         expect(getRes.status).toBe(200);
 
-        // Update
         const updateRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "Updated" }),
         });
         expect(updateRes.status).toBe(200);
         const updated = await json(updateRes);
         expect(updated.name).toBe("Updated");
 
-        // Delete
-        const delRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, { method: "DELETE" });
+        const delRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, { method: "DELETE", headers: authHeaders });
         expect(delRes.status).toBe(204);
+      });
+    });
+
+    it("returns 404 for non-existent prompt", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/prompts/nonexistent`, { headers: authHeaders });
+        expect(res.status).toBe(404);
       });
     });
   });
@@ -127,14 +165,25 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const createRes = await fetch(`${base}/api/admin/scheduler/jobs`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "Nightly", cronExpression: "0 0 * * *", prompt: "Run tests" }),
         });
         expect(createRes.status).toBe(201);
 
-        const listRes = await fetch(`${base}/api/admin/scheduler/jobs`);
+        const listRes = await fetch(`${base}/api/admin/scheduler/jobs`, { headers: authHeaders });
         const jobs = await listRes.json() as unknown[];
         expect(jobs.length).toBe(1);
+      });
+    });
+
+    it("returns 400 when missing required fields", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/scheduler/jobs`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Nightly" }),
+        });
+        expect(res.status).toBe(400);
       });
     });
   });
@@ -146,12 +195,12 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const createRes = await fetch(`${base}/api/admin/tasks`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ prompt: "Generate tests for login" }),
         });
         expect(createRes.status).toBe(201);
 
-        const listRes = await fetch(`${base}/api/admin/tasks`);
+        const listRes = await fetch(`${base}/api/admin/tasks`, { headers: authHeaders });
         const tasks = await listRes.json() as unknown[];
         expect(tasks.length).toBe(1);
       });
@@ -159,10 +208,24 @@ describe("Admin API", () => {
 
     it("gets task stats", async () => {
       await withServer(app, async (base) => {
-        const res = await fetch(`${base}/api/admin/tasks/stats`);
+        const res = await fetch(`${base}/api/admin/tasks/stats`, { headers: authHeaders });
         const stats = await json(res);
         expect(stats).toHaveProperty("pending");
         expect(stats).toHaveProperty("running");
+      });
+    });
+
+    it("returns 400 for invalid status filter", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/tasks?status=bogus`, { headers: authHeaders });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("clamps limit to valid range", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/tasks?limit=-5`, { headers: authHeaders });
+        expect(res.status).toBe(200);
       });
     });
   });
@@ -174,7 +237,7 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const createRes = await fetch(`${base}/api/admin/mcp-servers`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "GitHub", type: "stdio", command: "npx", args: ["-y", "@mcp/github"] }),
         });
         expect(createRes.status).toBe(201);
@@ -182,13 +245,42 @@ describe("Admin API", () => {
 
         const updateRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ enabled: false }),
         });
         expect(updateRes.status).toBe(200);
 
-        const delRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, { method: "DELETE" });
+        const delRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, { method: "DELETE", headers: authHeaders });
         expect(delRes.status).toBe(204);
+      });
+    });
+
+    it("rejects SSRF-prone URLs on create", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/mcp-servers`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Evil", type: "http", url: "http://127.0.0.1:8080/steal" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("rejects SSRF-prone URLs on update", async () => {
+      await withServer(app, async (base) => {
+        const createRes = await fetch(`${base}/api/admin/mcp-servers`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Good", type: "stdio", command: "npx" }),
+        });
+        const server = await json(createRes);
+
+        const updateRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ url: "http://192.168.1.1/internal" }),
+        });
+        expect(updateRes.status).toBe(400);
       });
     });
   });
@@ -200,17 +292,24 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const createRes = await fetch(`${base}/api/admin/skills`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: authHeaders,
           body: JSON.stringify({ name: "Code Review", content: "# Code Review\nReview code." }),
         });
         expect(createRes.status).toBe(201);
         const skill = await json(createRes);
 
-        const getRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`);
+        const getRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, { headers: authHeaders });
         expect(getRes.status).toBe(200);
 
-        const delRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, { method: "DELETE" });
+        const delRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, { method: "DELETE", headers: authHeaders });
         expect(delRes.status).toBe(204);
+      });
+    });
+
+    it("returns 404 for non-existent skill", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/skills/nonexistent`, { headers: authHeaders });
+        expect(res.status).toBe(404);
       });
     });
   });
@@ -220,7 +319,7 @@ describe("Admin API", () => {
   describe("auth status", () => {
     it("returns unauthenticated when no copilot", async () => {
       await withServer(app, async (base) => {
-        const res = await fetch(`${base}/api/admin/auth/status`);
+        const res = await fetch(`${base}/api/admin/auth/status`, { headers: authHeaders });
         const data = await json(res);
         expect(data.authenticated).toBe(false);
       });
@@ -232,7 +331,7 @@ describe("Admin API", () => {
   describe("models", () => {
     it("returns defaults when no copilot", async () => {
       await withServer(app, async (base) => {
-        const res = await fetch(`${base}/api/admin/models`);
+        const res = await fetch(`${base}/api/admin/models`, { headers: authHeaders });
         const data = await json(res);
         expect(data.models).toEqual([]);
         expect(data.selected).toBe("gpt-4.1");

@@ -13,6 +13,7 @@
  */
 
 import { Router } from "express";
+import type { Request, Response, NextFunction } from "express";
 import type { PlatformRepository } from "../platform/repository.js";
 import type { CopilotWrapper } from "../copilot/copilot-wrapper.js";
 import type {
@@ -30,10 +31,54 @@ import type {
 export type AdminRouterDeps = {
   platformRepo: PlatformRepository;
   copilot?: CopilotWrapper;
+  adminToken?: string;
 };
 
-export function createAdminRouter({ platformRepo, copilot }: AdminRouterDeps): Router {
+const VALID_TASK_STATUSES: TaskStatus[] = ["pending", "running", "completed", "failed", "cancelled"];
+
+/**
+ * Validates a URL is safe for server-side use (anti-SSRF).
+ * Rejects private IP ranges, localhost, and non-http(s) protocols.
+ */
+function isUrlSafe(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname === "[::1]") return false;
+    // Block private/internal IP ranges
+    const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number);
+      if (a === 10) return false;                     // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
+      if (a === 192 && b === 168) return false;       // 192.168.0.0/16
+      if (a === 127) return false;                    // 127.0.0.0/8
+      if (a === 169 && b === 254) return false;       // 169.254.0.0/16 (link-local)
+      if (a === 0) return false;                      // 0.0.0.0/8
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function createAdminRouter({ platformRepo, copilot, adminToken }: AdminRouterDeps): Router {
   const router = Router();
+
+  // ── Auth Middleware ────────────────────────────────────────────────────────
+  const token = adminToken ?? process.env.TALOS_ADMIN_TOKEN;
+  if (token) {
+    router.use((req: Request, res: Response, next: NextFunction) => {
+      const authHeader = req.headers.authorization;
+      const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+      if (!bearerToken || bearerToken !== token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      next();
+    });
+  }
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
@@ -81,7 +126,14 @@ export function createAdminRouter({ platformRepo, copilot }: AdminRouterDeps): R
   });
 
   router.put("/models/provider", (req, res) => {
-    const { provider } = req.body as { provider?: unknown };
+    const { provider } = req.body as { provider?: { type?: string; baseUrl?: string; apiKey?: string } };
+    if (provider) {
+      const validTypes = ["copilot", "openai", "azure", "anthropic", "ollama"];
+      if (!provider.type || !validTypes.includes(provider.type)) {
+        res.status(400).json({ error: `Invalid provider type. Must be one of: ${validTypes.join(", ")}` });
+        return;
+      }
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     copilot?.setProvider(provider as any);
     res.json({ provider });
@@ -179,8 +231,13 @@ export function createAdminRouter({ platformRepo, copilot }: AdminRouterDeps): R
   // ── Agent Tasks ─────────────────────────────────────────────────────────────
 
   router.get("/tasks", (req, res) => {
-    const status = req.query.status as TaskStatus | undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+    const rawStatus = req.query.status as string | undefined;
+    if (rawStatus && !VALID_TASK_STATUSES.includes(rawStatus as TaskStatus)) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_TASK_STATUSES.join(", ")}` });
+      return;
+    }
+    const status = rawStatus as TaskStatus | undefined;
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string, 10) || 100, 1), 1000);
     res.json(platformRepo.listTasks(status, limit));
   });
 
@@ -223,11 +280,20 @@ export function createAdminRouter({ platformRepo, copilot }: AdminRouterDeps): R
   router.post("/mcp-servers", (req, res) => {
     const input = req.body as CreateMcpServerInput;
     if (!input.name || !input.type) { res.status(400).json({ error: "name and type are required" }); return; }
+    if (input.url && !isUrlSafe(input.url)) {
+      res.status(400).json({ error: "Invalid or unsafe URL. Only public http/https URLs are allowed." });
+      return;
+    }
     res.status(201).json(platformRepo.createMcpServer(input));
   });
 
   router.put("/mcp-servers/:id", (req, res) => {
-    const updated = platformRepo.updateMcpServer(req.params.id, req.body as UpdateMcpServerInput);
+    const input = req.body as UpdateMcpServerInput;
+    if (input.url && !isUrlSafe(input.url)) {
+      res.status(400).json({ error: "Invalid or unsafe URL. Only public http/https URLs are allowed." });
+      return;
+    }
+    const updated = platformRepo.updateMcpServer(req.params.id, input);
     if (!updated) { res.status(404).json({ error: "Not found" }); return; }
     res.json(updated);
   });
