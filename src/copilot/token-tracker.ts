@@ -8,19 +8,6 @@ export type TokenUsage = {
   totalTokens: number;
 };
 
-export type TokenUsageEvent = {
-  sessionId: string;
-  usage: TokenUsage;
-  timestamp: string;
-};
-
-export type CompactionEvent = {
-  sessionId: string;
-  previousTokens: number;
-  compactedTokens: number;
-  timestamp: string;
-};
-
 export class TokenTracker {
   private sessions = new Map<string, TokenUsage>();
 

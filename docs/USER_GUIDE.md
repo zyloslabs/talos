@@ -630,6 +630,88 @@ Manage credential roles per application:
 - **Edit/deactivate** existing roles.
 - Role types are **color-coded** by privilege level.
 
+### AI Chat
+
+**Route:** `/chat`
+
+Start AI-powered conversations with Talos using the Copilot SDK:
+- **Real-time streaming** — messages stream in token-by-token via Socket.IO.
+- **Session persistence** — conversations are saved as JSONL files in `~/.talos/sessions/` and can be restored across page reloads.
+- **Tool call visualization** — when the AI invokes tools, tool name and arguments are emitted as `chat:stream:tool` events for live display.
+- **Token usage tracking** — each response ends with a `tokenUsage` payload showing prompt, completion, and total tokens consumed.
+- **Personality injection** — the active system personality (from Admin > Personality) is automatically injected into every chat request.
+- **Prerequisites:** Authenticate via Admin > Auth before using the chat.
+
+### Admin Settings
+
+**Route:** `/admin`
+
+Central management panel with four tabs:
+
+| Tab | Purpose |
+|-----|---------|
+| **Auth** | Connect to GitHub Copilot via device-flow authentication. Status indicator shows current auth state. |
+| **Personality** | Create, edit, and activate system personalities (system prompts) that flavor all AI responses. |
+| **Models** | View available models, select the active model, and configure reasoning effort (low/medium/high/xhigh). |
+| **MCP Servers** | Register and manage MCP tool servers (stdio, http, sse, docker). URLs are validated against SSRF patterns. |
+
+**Authentication:** All admin API endpoints require a bearer token. Set `TALOS_ADMIN_TOKEN` in your environment:
+```bash
+export TALOS_ADMIN_TOKEN="your-secret-token"
+```
+The UI sends this token via the `Authorization: Bearer <token>` header.
+
+### Prompt Library
+
+**Route:** `/library`
+
+Manage reusable prompt templates:
+- **CRUD** — Create, read, update, and delete saved prompts.
+- **Search** — Full-text search across prompt names and content.
+- **Category filtering** — Filter by category (e.g., general, testing, debugging).
+- **Template variables** — Prompts support `{{variable}}` interpolation.
+- **Staged pipelines** — Optional multi-stage prompt sequences with per-stage tool scoping.
+- **Tag display** — Visual tag badges for quick categorization.
+
+### Skills Management
+
+**Route:** `/skills`
+
+Register custom agent skills:
+- **CRUD** — Create, read, update, and delete skill definitions.
+- **Enable/disable toggle** — Switch skills on or off without deleting them.
+- **Tags** — Categorize skills with tags for easy discovery.
+- **Content** — Markdown-based skill content with instructions and examples.
+
+### Scheduler
+
+**Route:** `/scheduler`
+
+Automate recurring tasks with cron-based scheduling:
+- **Cron expressions** — Standard 5-field cron syntax (e.g., `0 0 * * *` for midnight daily).
+- **Enable/disable** — Toggle jobs without deleting them.
+- **Run tracking** — View last run time, next run time, and total run count.
+- **Prompt-based** — Each job executes a configured prompt when triggered.
+
+### Task Queue
+
+**Route:** `/tasks`
+
+Monitor and manage background agent tasks:
+- **Stats dashboard** — Cards showing counts for pending, running, completed, and failed tasks.
+- **Status tabs** — Filter tasks by status (all, pending, running, completed, failed).
+- **Task hierarchy** — Supports parent-child task trees with depth tracking.
+- **Real-time polling** — Task list refreshes automatically.
+
+### Workbench
+
+**Route:** `/workbench`
+
+A markdown editor for drafting and previewing content:
+- **Split pane** — Edit markdown on the left, preview on the right.
+- **Keyboard shortcuts** — Ctrl+S to save, standard editing shortcuts.
+- **File I/O** — Load and save files from the local filesystem.
+
 ---
 
 ## MCP Tools Reference
