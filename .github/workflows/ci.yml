@@ -24,7 +24,7 @@ jobs:
       NPM_CONFIG_PRODUCTION: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           clean: true
 
@@ -63,7 +63,7 @@ jobs:
       NPM_CONFIG_PRODUCTION: "false"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           clean: true
 
