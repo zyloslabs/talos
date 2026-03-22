@@ -1,6 +1,6 @@
 /**
  * Talos configuration schema using Zod validation.
- * Follows OpenZigs config layering pattern.
+ * Follows Talos config layering pattern.
  */
 
 import * as z from "zod";
@@ -11,7 +11,7 @@ export const vectorDbConfigSchema = z.object({
   /** Vector database type */
   type: z.enum(["lancedb", "qdrant"]).default("lancedb"),
   /** Path to LanceDB storage (for lancedb type) */
-  path: z.string().default("~/.openzigs/talos/vectordb"),
+  path: z.string().default("~/.talos/vectordb"),
   /** Qdrant URL (for qdrant type) */
   qdrantUrl: z.string().optional(),
   /** Qdrant API key (for qdrant type) */
@@ -102,7 +102,7 @@ export type GeneratorConfig = z.infer<typeof generatorConfigSchema>;
 
 export const exportConfigSchema = z.object({
   /** Default output directory for exports */
-  outputDir: z.string().default("~/.openzigs/talos/exports"),
+  outputDir: z.string().default("~/.talos/exports"),
   /** Whether to sanitize credentials in exports */
   sanitizeCredentials: z.boolean().default(true),
   /** Include .env.example template */
@@ -115,7 +115,7 @@ export type ExportConfig = z.infer<typeof exportConfigSchema>;
 
 export const artifactsConfigSchema = z.object({
   /** Path to store test artifacts */
-  path: z.string().default("~/.openzigs/talos/artifacts"),
+  path: z.string().default("~/.talos/artifacts"),
   /** Maximum artifact retention days */
   retentionDays: z.number().default(30),
   /** Maximum total artifact storage (MB) */

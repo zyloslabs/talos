@@ -1,5 +1,5 @@
 name: Question
-description: Ask a question about OpenZigs
+description: Ask a question about Talos
 title: "[Question]: "
 labels: ["question"]
 body:
@@ -26,5 +26,5 @@ body:
     id: version
     attributes:
       label: Version
-      description: OpenZigs version (if applicable)
+      description: Talos version (if applicable)
       placeholder: "0.1.0"
