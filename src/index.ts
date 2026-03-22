@@ -13,6 +13,8 @@ import express from "express";
 import { Server as SocketIOServer } from "socket.io";
 import Database from "better-sqlite3";
 import { TalosRepository } from "./talos/repository.js";
+import { PlatformRepository } from "./platform/repository.js";
+import { createAdminRouter } from "./api/admin.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,9 @@ db.pragma("foreign_keys = ON");
 
 const repo = new TalosRepository(db);
 repo.migrate();
+
+const platformRepo = new PlatformRepository(db);
+platformRepo.migrate();
 
 // ── Express ───────────────────────────────────────────────────────────────────
 
@@ -228,6 +233,21 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
   const deleted = repo.deleteVaultRole(req.params.id);
   if (!deleted) { res.status(404).json({ error: "Not found" }); return; }
   res.status(204).end();
+});
+
+// ── Admin API ─────────────────────────────────────────────────────────────────
+
+app.use("/api/admin", createAdminRouter({ platformRepo }));
+
+// ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
+
+io.on("connection", (socket) => {
+  socket.on("chat:message", async (data: { message: string; conversationId?: string }) => {
+    // Emit acknowledgment — real Copilot SDK streaming will be wired when auth is configured
+    socket.emit("chat:stream:start", { conversationId: data.conversationId ?? `chat-${Date.now()}` });
+    socket.emit("chat:stream:delta", { delta: "Copilot SDK integration is ready. Configure authentication via Admin > Auth to enable AI chat.", conversationId: data.conversationId });
+    socket.emit("chat:stream:end", { conversationId: data.conversationId });
+  });
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────
