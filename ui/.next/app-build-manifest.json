@@ -1,0 +1,89 @@
+{
+  "pages": {
+    "/_not-found/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/app/_not-found/page-2e98837700aafd92.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/css/3a20a88d3d4b30bf.css",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/899-576efe7d95b13502.js",
+      "static/chunks/16-4c0d85ef603f72a0.js",
+      "static/chunks/app/layout-6cb0970aaab9f2c1.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/app/page-39ac47e32c760aba.js"
+    ],
+    "/talos/artifacts/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/899-576efe7d95b13502.js",
+      "static/chunks/806-65d21d2c022334c2.js",
+      "static/chunks/42-2ff2cfed16e250f1.js",
+      "static/chunks/619-5e86cbe6bb6fdaef.js",
+      "static/chunks/app/talos/artifacts/page-47e30a3676947e65.js"
+    ],
+    "/talos/layout": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/939-14666be41c69939c.js",
+      "static/chunks/app/talos/layout-5f82fef344e2ab3d.js"
+    ],
+    "/talos/tests/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/899-576efe7d95b13502.js",
+      "static/chunks/806-65d21d2c022334c2.js",
+      "static/chunks/16-4c0d85ef603f72a0.js",
+      "static/chunks/42-2ff2cfed16e250f1.js",
+      "static/chunks/407-a85a2df2d88d1a91.js",
+      "static/chunks/817-d28c7d68a29fbca1.js",
+      "static/chunks/1-d81128cb6fd7b0c1.js",
+      "static/chunks/app/talos/tests/page-36049196cba7b56d.js"
+    ],
+    "/talos/vault/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/899-576efe7d95b13502.js",
+      "static/chunks/806-65d21d2c022334c2.js",
+      "static/chunks/16-4c0d85ef603f72a0.js",
+      "static/chunks/42-2ff2cfed16e250f1.js",
+      "static/chunks/407-a85a2df2d88d1a91.js",
+      "static/chunks/1-d81128cb6fd7b0c1.js",
+      "static/chunks/app/talos/vault/page-2e114684296baa15.js"
+    ],
+    "/talos/page": [
+      "static/chunks/webpack-ecb3f04ad9311414.js",
+      "static/chunks/c3b51be6-5c001cfa5f916721.js",
+      "static/chunks/410-391e5a58b9df7841.js",
+      "static/chunks/main-app-6ce861069603c781.js",
+      "static/chunks/350-2bc97bfb696cc466.js",
+      "static/chunks/899-576efe7d95b13502.js",
+      "static/chunks/806-65d21d2c022334c2.js",
+      "static/chunks/app/talos/page-23e8c7cbeb0735ad.js"
+    ]
+  }
+}
