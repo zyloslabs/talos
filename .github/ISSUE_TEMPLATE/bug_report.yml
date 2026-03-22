@@ -48,7 +48,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: OpenZigs version (run `node -e "console.log(require('./package.json').version)"`)
+      description: Talos version (run `node -e "console.log(require('./package.json').version)"`)
       placeholder: "0.1.0"
 
   - type: dropdown
