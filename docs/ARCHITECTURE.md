@@ -960,6 +960,10 @@ ExportEngine.export(appId, { format, outputPath })
 
 ```
 ~/.talos/                          # TALOS data directory
+├── talos.db                       # SQLite database (WAL mode)
+├── auth.json                      # Copilot device auth token
+├── sessions/                      # Chat session history (JSONL)
+├── logs/                          # Audit logs
 ├── vectordb/                      # LanceDB storage
 │   └── talos_chunks/              # Vector collection
 ├── artifacts/                     # Test run artifacts
@@ -971,6 +975,55 @@ ExportEngine.export(appId, { format, outputPath })
 └── exports/                       # Exported test packages
     └── {app-slug}-{timestamp}/
 ```
+
+---
+
+## Platform Module
+
+**Location:** `src/platform/`, `src/copilot/`, `src/api/`
+
+The platform module provides shared services for AI chat, configuration, and automation.
+
+### Platform Repository (`src/platform/repository.ts`)
+
+SQLite-backed data access layer with auto-migrating schema. Tables:
+
+| Table | Purpose |
+|-------|---------|
+| `personality` | System personality profiles (name, systemPrompt, isActive) |
+| `saved_prompts` | Prompt library with stages, preferred tools, categories |
+| `scheduled_jobs` | Cron-scheduled automation jobs |
+| `agent_tasks` | Task queue with status tracking and parent-child DAG |
+| `mcp_servers` | MCP server configurations (stdio/http/sse/docker) |
+| `skills` | Skill definitions with tags and enable/disable |
+
+### Copilot Wrapper (`src/copilot/copilot-wrapper.ts`)
+
+Wraps `@github/copilot-sdk` for:
+- **Device-flow authentication** — writes token to `~/.talos/auth.json`
+- **Streaming chat** — AsyncGenerator<string> via internal queue
+- **Model management** — list, select, configure reasoning effort
+- **Token tracking** — per-session usage accumulator
+
+### Admin API (`src/api/admin.ts`)
+
+Express Router at `/api/admin` with full CRUD for all platform entities:
+- `GET/POST /auth/*` — device auth flow
+- `GET/PUT /models/*` — model selection and configuration
+- `GET/POST/PUT /personality/*` — personality management
+- CRUD: `/prompts`, `/scheduler/jobs`, `/tasks`, `/mcp-servers`, `/skills`
+
+### UI Pages
+
+| Route | Page | Features |
+|-------|------|----------|
+| `/chat` | Chat Interface | Socket.IO streaming, message history |
+| `/admin` | Admin Settings | Auth, Personality, Models, MCP Servers tabs |
+| `/library` | Prompt Library | CRUD, search, category filter, template variables |
+| `/skills` | Skills Management | CRUD, tag filtering, enable/disable |
+| `/scheduler` | Scheduler | Cron jobs with presets, run tracking |
+| `/tasks` | Task Queue | Status dashboard, stats cards, real-time polling |
+| `/workbench` | Workbench | Markdown editor with preview, file I/O |
 
 ---
 
@@ -986,7 +1039,7 @@ ExportEngine.export(appId, { format, outputPath })
 
 ### Quality Gates
 
-- **100 tests** (81 backend + 19 UI) across 8 test files
+- **122 tests** (backend) across 9 test files
 - **Lint**: ESLint with @typescript-eslint
 - **Type checking**: `tsc --noEmit` with strict mode
 - **Build verification**: Next.js build for UI
