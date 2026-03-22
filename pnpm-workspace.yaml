@@ -1,0 +1,4 @@
+packages:
+  - "ui"
+onlyBuiltDependencies:
+  - better-sqlite3
