@@ -1,0 +1,992 @@
+# TALOS Architecture
+
+> **Test Automation & Logic Orchestration System**
+>
+> Autonomous E2E testing engine that discovers application source code, builds semantic context via RAG, generates Playwright tests with AI, executes them across browsers, self-heals failures, and exports portable test packages.
+
+---
+
+## Table of Contents
+
+- [System Overview](#system-overview)
+- [High-Level Architecture](#high-level-architecture)
+- [Technology Stack](#technology-stack)
+- [Module Architecture](#module-architecture)
+  - [Core Layer](#core-layer)
+  - [Discovery Module](#discovery-module)
+  - [RAG Module](#rag-module)
+  - [Generator Module](#generator-module)
+  - [Runner Module](#runner-module)
+  - [Healing Module](#healing-module)
+  - [Export Module](#export-module)
+  - [UI Module](#ui-module)
+- [Data Architecture](#data-architecture)
+  - [SQLite Schema](#sqlite-schema)
+  - [Vector Store Schema](#vector-store-schema)
+- [Configuration System](#configuration-system)
+- [MCP Tool Interface](#mcp-tool-interface)
+- [Data Flow](#data-flow)
+  - [Discovery → Index Pipeline](#discovery--index-pipeline)
+  - [Test Generation Pipeline](#test-generation-pipeline)
+  - [Test Execution Pipeline](#test-execution-pipeline)
+  - [Self-Healing Loop](#self-healing-loop)
+  - [Export Pipeline](#export-pipeline)
+- [Security Architecture](#security-architecture)
+- [File System Layout](#file-system-layout)
+- [CI/CD](#cicd)
+
+---
+
+## System Overview
+
+TALOS is a monorepo containing two packages:
+
+| Package | Path | Description |
+|---------|------|-------------|
+| `talos` (root) | `/` | Core engine — discovery, RAG, generation, execution, healing, export |
+| `talos-ui` | `/ui` | Next.js 14 command center dashboard |
+
+The engine exposes its functionality through **MCP tools** (Model Context Protocol) that can be invoked by AI agents, CLI scripts, or the UI's API layer. Every subsystem is independently testable and loosely coupled through well-defined TypeScript interfaces.
+
+---
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        TALOS Command Center (UI)                    │
+│  Next.js 14 · React Query · Socket.IO · Tailwind · Radix UI        │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ REST + WebSocket
+┌──────────────────────────────┴──────────────────────────────────────┐
+│                          MCP Tool Layer                              │
+│  14 tools · Zod validation · Risk-level gating · JSON responses      │
+├─────────┬──────────┬──────────┬──────────┬──────────┬───────────────┤
+│Discovery│   RAG    │Generator │  Runner  │ Healing  │    Export     │
+│         │          │          │          │          │               │
+│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │  Package      │
+│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │  Builder      │
+│ Client  │          │          │          │          │               │
+│         │ Vector   │ Code     │ Artifact │ Fix      │  Credential   │
+│ File    │ Store    │ Validator│ Manager  │ Generator│  Sanitizer    │
+│ Chunker │          │          │          │          │               │
+│         │ RAG      │ Test     │Credential│ Healing  │  Export       │
+│         │ Pipeline │ Generator│ Injector │ Engine   │  Engine       │
+├─────────┴──────────┴──────────┴──────────┴──────────┴───────────────┤
+│                        Core Layer                                    │
+│  TalosRepository (SQLite) · TalosConfig (Zod) · Types · initTalos   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Technology Stack
+
+### Backend (Root Package)
+
+| Concern | Technology | Version | Purpose |
+|---------|-----------|---------|---------|
+| Runtime | Node.js | ≥22 | ES2022 modules, native fetch |
+| Language | TypeScript | ^5.8 | Strict mode, NodeNext resolution |
+| Module System | ESM | — | `"type": "module"` in package.json |
+| Database | better-sqlite3 | ^12.6 | WAL mode, synchronous DAL |
+| Vector DB | LanceDB | ^0.26 | Embedded vector store, ANN search |
+| Embeddings | OpenAI | ^4.96 | `text-embedding-3-small`, 1536 dims |
+| E2E Framework | Playwright | ^1.52 | Multi-browser, traces, video |
+| Schema Validation | Zod | ^3.25 | Config parsing, tool input validation |
+| ID Generation | nanoid | ^5.1 | URL-safe unique IDs |
+| Testing | Vitest | ^2.1 | Node environment, coverage via v8 |
+| Linting | ESLint | ^8.57 | @typescript-eslint plugin |
+| Formatting | Prettier | ^3.8 | Consistent code style |
+| Package Manager | pnpm | 10.28.2 | Workspace protocol, strict deps |
+
+### Frontend (UI Package)
+
+| Concern | Technology | Version | Purpose |
+|---------|-----------|---------|---------|
+| Framework | Next.js | ^14.2 | App Router, SSR/SSG, API routes |
+| UI Library | React | ^18.3 | Component model |
+| Styling | Tailwind CSS | ^3.4 | Utility-first, `tailwindcss-animate` |
+| Components | Radix UI | latest | Dialog, Select, Tabs, Switch, Tooltip |
+| Data Fetching | React Query | ^5.90 | Cache, refetch, optimistic updates |
+| Real-time | Socket.IO Client | ^4.8 | Live test-run and discovery events |
+| Icons | Lucide React | ^0.575 | SVG icon library |
+| Syntax Highlighting | react-syntax-highlighter | ^16.1 | Code display in viewers |
+| Theme | next-themes | ^0.4 | Dark/light mode toggle |
+| Testing | Vitest + Testing Library | ^3.1 / ^16.3 | Component + hook tests in jsdom |
+
+---
+
+## Module Architecture
+
+### Core Layer
+
+**Location:** `src/talos/`
+
+The core layer provides the foundational services used by every subsystem.
+
+#### `types.ts` (~600 lines)
+
+Central type definitions for the entire domain model:
+
+- **`TalosApplication`** — Target application under test (name, repositoryUrl, baseUrl, githubPatRef, status, metadata).
+- **`TalosTest`** — Generated Playwright test (code, type, version, POM dependencies, selectors, codeHash, generationConfidence, tags).
+- **`TalosTestRun`** — Execution record (status, trigger, browser, environment, durationMs, error details, retryAttempt, vaultRoleId).
+- **`TalosTestArtifact`** — Run artifact (screenshot, video, trace, log, report, diff — with filePath, mimeType, sizeBytes).
+- **`TalosVaultRole`** — Credentials for a role type (admin, standard, guest, service, user — with usernameRef, passwordRef, additionalRefs).
+- **`TalosChunk`** — Code chunk for RAG indexing (content, filePath, startLine/endLine, contentHash, chunkType: code/test/documentation/config/schema).
+- **`DiscoveryJob`** — Repository crawl job progress.
+- **`HealingAttempt`** — Self-healing audit record (analysis, proposedFix, confidence, autoApplied, verificationRunId).
+- **`TestGenerationJob`** — AI generation request tracking.
+
+Every entity has `Create*Input` and `Update*Input` companion types using `Partial<Pick<>>` for type-safe mutations.
+
+#### `config.ts`
+
+Zod-validated configuration with sensible defaults. Parsed via `parseTalosConfig(input)` or `getDefaultTalosConfig()`.
+
+| Subsystem | Key Defaults |
+|-----------|-------------|
+| `vectorDb` | LanceDB at `~/.talos/vectordb`, collection `talos_chunks` |
+| `embedding` | OpenAI `text-embedding-3-small`, 1536 dimensions, batch size 100 |
+| `runner` | Chromium, 30s timeout, 60s navigation timeout, headless, 2 retries |
+| `healing` | 85% confidence threshold, 3 max retries, 5s cooldown |
+| `generator` | 80% confidence threshold, human review required, 10 context chunks, POM enabled |
+| `export` | Output to `~/.talos/exports`, sanitize credentials, include `.env` template |
+| `artifacts` | Stored at `~/.talos/artifacts`, 30 day retention, 5 GB cap |
+| `discovery` | Includes `.ts/.tsx/.js/.jsx/.vue/.svelte/.html/.css`, 1 MB max file, 1000-char chunks with 200-char overlap |
+| `githubMcp` | 5000 req/hr, exponential backoff 1s→60s, 5-min cache TTL |
+
+#### `repository.ts` (~1000 lines)
+
+Synchronous SQLite data access layer using `better-sqlite3`.
+
+- **7 tables** with foreign keys, `CHECK` constraints, and indexes.
+- **Automatic migrations** via `migrate()` — creates tables and indexes if they don't exist.
+- **CRUD methods** for: Applications, Tests, TestRuns, Artifacts, VaultRoles.
+- **Aggregate queries**: `getApplicationStats()` returns totalTests, activeTests, totalRuns, passedRuns, failedRuns, lastRunAt.
+- **JSON serialization**: Fields like `metadata_json`, `tags_json`, `pom_dependencies_json` are stored as TEXT and parsed on read.
+- **ID generation**: `nanoid()` for all primary keys.
+- **Clock injection**: Optional `clock: () => Date` for deterministic testing.
+
+#### `tools.ts`
+
+Factory function `createTalosTools()` returns an array of **14 MCP tool definitions**, each with:
+
+- `name`, `description`, `inputSchema` (JSON Schema for MCP compatibility)
+- `zodSchema` (Zod schema for runtime validation)
+- `handler` (async function returning `{ text: string; isError?: boolean }`)
+- `category: "testing"`, `riskLevel: "low" | "medium" | "high"`, `source: "talos"`
+
+#### `index.ts`
+
+Entry point that exports all types, classes, and the `initTalos()` function:
+
+```typescript
+function initTalos(options: {
+  db: Database.Database;
+  config?: unknown;
+  clock?: () => Date;
+}): {
+  repository: TalosRepository;
+  config: TalosConfig;
+  tools: ToolDefinition[];
+}
+```
+
+Initialization flow:
+1. Parse config with Zod (applies defaults for missing fields).
+2. Create `TalosRepository` with the provided SQLite database.
+3. Run migrations (idempotent).
+4. Create MCP tools wired to the repository and config.
+
+---
+
+### Discovery Module
+
+**Location:** `src/talos/discovery/`
+
+Crawls a GitHub repository, filters relevant source files, and chunks them for RAG indexing.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `DiscoveryEngine` | Orchestrates the full discovery flow — resolves vault secrets, creates GitHub client, filters files, chunks content, stores vectors |
+| `GitHubMcpClient` | GitHub REST API client with rate limiting, exponential backoff, response caching |
+| `FileChunker` | Splits source files into semantically meaningful chunks using structural or sliding-window strategies |
+
+#### GitHubMcpClient
+
+- **Authentication**: Personal Access Token (PAT) resolved from vault reference (e.g., `vault:github-pat-myapp`).
+- **Operations**: `getTree()` (recursive file listing), `getFileContent()`, `getFileText()`, `listFiles()` (by extension).
+- **Rate limiting**: Reads `x-ratelimit-remaining` / `x-ratelimit-reset` headers. Defaults to 5000 req/hr.
+- **Backoff**: Exponential with jitter — 1s base, 60s max, retries on 5xx errors.
+- **Caching**: In-memory cache with configurable TTL (default 5 minutes). Keyed by `{owner}/{repo}/{path}@{ref}`.
+
+#### FileChunker
+
+Two chunking strategies:
+
+1. **Structural chunking** (preferred): Regex-based detection of functions, classes, interfaces, type aliases, and const declarations. Produces one chunk per symbol with file path, start/end lines, and symbol metadata.
+2. **Sliding window** (fallback): Fixed-size chunks (default 1000 chars) with overlap (default 200 chars). Used when structural parsing yields no results.
+
+Chunk type inference from file extension:
+- `.ts`, `.tsx`, `.js`, `.jsx` → `code`
+- `.test.ts`, `.spec.ts` → `test`
+- `.md`, `.txt` → `documentation`
+- `.json`, `.yaml`, `.yml` → `config`
+- `.graphql`, `.prisma` → `schema`
+
+#### Discovery Flow
+
+```
+Application (repositoryUrl + githubPatRef)
+  │
+  ├─ 1. Parse owner/repo from URL
+  ├─ 2. Resolve PAT from vault
+  ├─ 3. getTree("HEAD", recursive=true)
+  ├─ 4. Filter by extensions, patterns, max file size
+  ├─ 5. For each file:
+  │     ├─ getFileText(path)
+  │     ├─ FileChunker.chunk(path, content, appId)
+  │     └─ Emit chunks to RAG pipeline
+  ├─ 6. Update progress (filesDiscovered, filesIndexed, chunksCreated)
+  └─ 7. Mark job completed/failed
+```
+
+---
+
+### RAG Module
+
+**Location:** `src/talos/rag/`
+
+Retrieval-Augmented Generation pipeline — embeds code chunks, stores them in a vector database, and retrieves semantically similar context for test generation.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `EmbeddingService` | Generates vector embeddings from text using OpenAI (extensible to local models) |
+| `VectorStore` | LanceDB wrapper — stores, searches, and manages vector records |
+| `RagPipeline` | Orchestrates embed → store → query lifecycle |
+
+#### EmbeddingService
+
+- **Provider**: OpenAI `text-embedding-3-small` (default). Provider abstraction supports future local model backends.
+- **Dimensions**: 1536 (configurable).
+- **Batch processing**: Splits large arrays into batches of 100 (configurable). Returns per-batch token counts.
+- **Utilities**: `cosineSimilarity(a, b)` for local similarity computation.
+
+#### VectorStore
+
+- **Backend**: LanceDB (embedded, zero-infrastructure).
+- **Storage path**: `~/.talos/vectordb` (configurable, supports remote URIs).
+- **Collection**: `talos_chunks` (configurable).
+- **Schema**: `id`, `applicationId`, `content`, `filePath`, `startLine`, `endLine`, `type`, `contentHash`, `metadata` (JSON), `vector` (Float32 array).
+- **Deduplication**: `exists(applicationId, contentHash)` before insert.
+- **Search**: ANN query filtered by `applicationId` and optional `type`, with minimum score threshold. Returns results ranked by similarity.
+- **Cleanup**: `deleteByApplication(appId)` for re-indexing.
+
+#### RagPipeline
+
+Coordinates the full RAG lifecycle:
+
+| Method | Purpose |
+|--------|---------|
+| `initialize()` | Connects to vector store |
+| `indexChunks(appId, chunks)` | Dedup → embed → store. Returns `{ indexed, skipped, totalTokens }` |
+| `retrieve(appId, query, options?)` | Embed query → ANN search → return ranked `RagContext` |
+| `findSimilar(appId, content, threshold)` | Semantic dedup / similarity analysis |
+| `clearApplication(appId)` | Wipe all vectors for an app (used before re-index) |
+| `getStats(appId)` | Return chunk count |
+
+---
+
+### Generator Module
+
+**Location:** `src/talos/generator/`
+
+AI-powered Playwright test generation with RAG context, iterative validation, and auto-fixing.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `TestGenerator` | Orchestrates generation: fetch context → build prompt → call LLM → validate → retry → save |
+| `PromptBuilder` | Assembles system and user prompts with application context, RAG chunks, and existing tests |
+| `CodeValidator` | Validates generated code for syntax, banned patterns, Playwright API usage, and common issues |
+
+#### TestGenerator Flow
+
+```
+User Request ("Generate login test for admin role")
+  │
+  ├─ 1. Load application from repository
+  ├─ 2. Fetch existing tests (for style consistency)
+  ├─ 3. Query RAG: embed request → retrieve relevant chunks
+  ├─ 4. PromptBuilder.buildPrompt(context)
+  │     ├─ System prompt: Expert test engineer constraints
+  │     └─ User prompt: App info + code excerpts + request + instructions
+  ├─ 5. Call LLM (generateWithLLM callback)
+  ├─ 6. Extract code block from response
+  ├─ 7. CodeValidator.validate(code)
+  │     ├─ Pass → Save test to DB
+  │     └─ Fail → Add validation errors to prompt → Retry (max 3x)
+  ├─ 8. CodeValidator.autoFix(code) for minor issues
+  └─ 9. Create TalosTest record (status: "draft", generationConfidence)
+```
+
+#### PromptBuilder
+
+System prompt enforces:
+- Clean, maintainable TypeScript
+- Modern Playwright API (locators, `getByRole`, `getByTestId`)
+- Proper error handling and assertions
+- Page Object Model when configured
+- Idempotent, self-contained tests
+
+User prompt includes:
+- Application context (name, base URL, description)
+- Relevant code snippets from RAG (up to `maxContextChunks`)
+- Existing test examples for consistency
+- User request description with generation instructions
+
+#### CodeValidator
+
+**Banned patterns** (always errors):
+- `eval()`, `Function()` constructor
+- `require()` (must use ES imports)
+- `process.exit()`
+- `child_process` usage
+- File deletion APIs (`fs.unlink`, `rmdir`, `rm`)
+
+**Deprecated patterns** (warnings):
+- `page.$()` → use `page.locator()`
+- `page.$$()` → use `page.locator()`
+- `page.waitForTimeout()` → use `expect` conditions
+
+**Required patterns** (strict mode):
+- At least one assertion (`expect`, `toBe`, `toEqual`, `toContain`, `toMatch`)
+
+**Auto-fix** capabilities:
+- Replace deprecated APIs with modern equivalents
+- Fix common selector issues
+- Add missing imports
+- Format code
+
+---
+
+### Runner Module
+
+**Location:** `src/talos/runner/`
+
+Executes Playwright tests with cross-browser support, artifact collection, and credential injection.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `PlaywrightRunner` | Launches browsers, compiles test code, executes with retries, collects artifacts |
+| `ArtifactManager` | Manages storage, retrieval, and cleanup of test artifacts (screenshots, videos, traces, logs) |
+| `CredentialInjector` | Resolves vault roles to actual credentials, provides login helper functions |
+
+#### PlaywrightRunner Execution Flow
+
+```
+TalosTest + TalosTestRun + ExecutionOptions
+  │
+  ├─ 1. Update run status → "running"
+  ├─ 2. Select browser engine (chromium/firefox/webkit)
+  ├─ 3. Launch browser (headless, slowMo settings)
+  ├─ 4. Create browser context
+  │     ├─ Video recording (if configured)
+  │     └─ Viewport, locale, timezone
+  ├─ 5. Start tracing (screenshots, snapshots, sources)
+  ├─ 6. Compile test code into executable function
+  ├─ 7. Execute test(page, expect, context)
+  │     ├─ Success → status: "passed"
+  │     └─ Failure → capture screenshot → status: "failed"
+  ├─ 8. Stop tracing → save trace.zip
+  ├─ 9. Collect video recordings
+  ├─ 10. Save all artifacts via ArtifactManager
+  ├─ 11. Update run: durationMs, error, completedAt
+  └─ 12. Retry loop if configured (retryAttempt counter)
+```
+
+**Trace modes**: `off`, `on`, `retain-on-failure`, `on-first-retry`
+**Video modes**: `off`, `on`, `retain-on-failure`, `on-first-retry`
+
+#### ArtifactManager
+
+Storage layout:
+
+```
+~/.talos/artifacts/
+  {testRunId}/
+    screenshot/
+      failure.png
+      step-login.png
+    video/
+      recording.webm
+    trace/
+      trace.zip
+    log/
+      test.log
+    report/
+      results.html
+```
+
+- **Retention**: 30 days (configurable via `artifacts.retentionDays`).
+- **Storage cap**: 5 GB (configurable via `artifacts.maxStorageMb`).
+- **Cleanup**: `cleanup()` deletes artifacts older than retention period, freed bytes logged.
+- **MIME detection**: Automatic from file extension.
+
+#### CredentialInjector
+
+- **Vault integration**: Reads `TalosVaultRole` from repository, resolves `usernameRef` / `passwordRef` / `additionalRefs` via an async `resolveSecret` callback.
+- **Role types**: `admin`, `standard`, `guest`, `service`, `user`.
+- **Caching**: Results cached by `{appId}:{roleType}` to avoid repeated vault lookups.
+- **Login helper**: `createLoginFunction()` returns a reusable `(page) => Promise<void>` that performs:
+  1. Navigate to login URL
+  2. Fill username field
+  3. Fill password field
+  4. Click submit
+  5. Wait for success indicator
+  6. Optional: Generate TOTP from MFA secret and fill MFA field
+
+---
+
+### Healing Module
+
+**Location:** `src/talos/healing/`
+
+Autonomous self-healing loop that analyzes test failures, generates fixes, verifies them, and applies with configurable confidence thresholds.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `FailureAnalyzer` | Categorizes failures, extracts affected selectors, suggests fix strategies |
+| `FixGenerator` | Uses LLM + RAG context to generate code fixes for failed tests |
+| `HealingEngine` | Orchestrates the full heal loop: analyze → fix → verify → apply/reject |
+
+#### FailureAnalyzer
+
+Categorizes errors into:
+
+| Category | Pattern | Typical Fix |
+|----------|---------|-------------|
+| `selector-changed` | Element not found, strict mode violation | `update-selector` |
+| `element-not-found` | Locator timeout, no matching element | `update-selector`, `add-wait` |
+| `timeout` | Action/navigation exceeded timeout | `add-wait`, `add-retry` |
+| `assertion-failed` | `expect()` mismatch | `update-assertion`, `manual-review` |
+| `network-error` | `net::ERR_*`, fetch failures | `add-retry`, `manual-review` |
+| `authentication-error` | 401/403, login failures | `manual-review` |
+| `navigation-error` | `goto` failures | `manual-review`, `add-retry` |
+| `script-error` | JS exceptions in test code | `update-logic` |
+| `unknown` | Unclassifiable | `manual-review` |
+
+Also extracts:
+- Affected selectors with type (locator, assertion, action, navigation) and line numbers.
+- Related failures (previous runs of same test with same category).
+- Failure statistics per application.
+
+#### FixGenerator
+
+1. Takes original test code + `FailureAnalysis`.
+2. Builds LLM prompt: "Expert test debugger, fix this code given the failure analysis."
+3. Parses one or more fixes with `{ type, fixedCode, confidence, reasoning }`.
+4. Validates each fix through `CodeValidator`.
+5. Ranks by confidence, selects highest-confidence valid fix.
+
+#### HealingEngine Orchestration
+
+```
+Failed TalosTestRun
+  │
+  ├─ 1. Guard checks:
+  │     ├─ Healing enabled?
+  │     ├─ Not already healing this test?
+  │     ├─ Under max retries (3)?
+  │     └─ Cooldown elapsed (5s)?
+  │
+  ├─ 2. FailureAnalyzer.analyze(testRun) → FailureAnalysis
+  │
+  ├─ 3. FixGenerator.generateFixes(test, run, analysis) → fixes[]
+  │
+  ├─ 4. Select best fix (confidence ≥ 0.85)
+  │     ├─ Below threshold → Reject, require human review
+  │     └─ Above threshold → Continue to verification
+  │
+  ├─ 5. Verification run:
+  │     ├─ Execute test with fixedCode (trigger: "healing-verification")
+  │     ├─ Pass → Auto-apply fix to test code
+  │     └─ Fail → Revert, mark attempt failed
+  │
+  └─ 6. Record HealingAttempt (audit log)
+        ├─ analysis, proposedFix, confidence
+        ├─ autoApplied, humanApproved
+        └─ verificationRunId
+```
+
+**Safety mechanisms**:
+- `healingInProgress` Set prevents infinite loops (healing-verification runs don't trigger healing).
+- Verification run must pass before fix is applied.
+- Full audit trail for every attempt.
+- Configurable confidence threshold (default 85%).
+- Cooldown between attempts.
+
+---
+
+### Export Module
+
+**Location:** `src/talos/export/`
+
+Packages generated tests into portable, standalone projects that run anywhere without TALOS.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `ExportEngine` | Orchestrates export workflow — selects format, delegates to builder, writes output |
+| `PackageBuilder` | Generates all package files: `playwright.config.ts`, `package.json`, test files, README, env template |
+| `CredentialSanitizer` | Replaces hardcoded secrets with environment variable references |
+
+#### Export Formats
+
+| Format | Output | Use Case |
+|--------|--------|----------|
+| `zip` | Self-contained `.zip` archive | Distribution, CI pipeline integration |
+| `directory` | Unzipped folder on disk | Local development, manual editing |
+| `single-file` | One `.ts` file with all tests | Quick sharing, code review |
+| `json` | Metadata + test array | API integration, programmatic consumption |
+
+#### PackageBuilder Output
+
+For `playwright` template:
+
+```
+exported-tests/
+├── package.json            # Scripts: test, test:headed, test:ui, test:debug, report
+├── playwright.config.ts    # Multi-browser, reporters, retries, baseURL
+├── tsconfig.json           # TypeScript config for test files
+├── README.md               # Setup instructions, project structure, commands
+├── .env.example            # Placeholders for all credentials
+├── tests/
+│   ├── login.spec.ts       # One file per test
+│   ├── checkout.spec.ts
+│   └── ...
+├── fixtures/               # Shared test fixtures (optional)
+└── pages/                  # Page Object Model classes (optional)
+```
+
+#### CredentialSanitizer
+
+Regex-based detection and replacement of sensitive values:
+
+| Pattern | Replacement |
+|---------|------------|
+| Passwords (`password = "secret123"`) | `process.env.TEST_PASSWORD_1` |
+| API keys (`api_key = "sk-..."`) | `process.env.TEST_API_KEY_1` |
+| Tokens (`token = "abc..."`) | `process.env.TEST_TOKEN_1` |
+| JWTs (`eyJ...`) | `process.env.TEST_JWT_1` |
+| Bearer tokens | `Bearer ${process.env.TEST_BEARER_TOKEN_1}` |
+| Secrets (`secret = "..."`) | `process.env.TEST_SECRET_1` |
+| URLs (optional) | `${process.env.TEST_BASE_URL}` |
+| Emails (optional) | `${process.env.TEST_EMAIL_1}` |
+
+Output includes a `SanitizationResult` with the cleaned code, a list of replacements (with line numbers), and warnings for patterns that couldn't be automatically handled.
+
+---
+
+### UI Module
+
+**Location:** `ui/`
+
+Next.js 14 App Router dashboard serving as the TALOS command center.
+
+#### Page Structure
+
+| Route | Page | Component |
+|-------|------|-----------|
+| `/talos` | Dashboard | `<Dashboard />` — Application list, stats cards, add/scan dialogs |
+| `/talos/tests` | Test Matrix | `<TestMatrix />` — Test grid, run/view controls, real-time status |
+| `/talos/artifacts` | Artifact Viewer | `<ArtifactViewer />` — Screenshots, videos, traces, logs browser |
+| `/talos/vault` | Vault Manager | `<VaultManager />` — Credential role management per application |
+
+#### Navigation
+
+`<NavTabs />` component provides tab-based navigation across the four pages. Rendered in the Talos layout (`ui/app/talos/layout.tsx`).
+
+#### Real-time Updates
+
+Socket.IO integration via custom hooks:
+
+| Hook | Event | Data |
+|------|-------|------|
+| `useTestRunUpdates(callback)` | `talos:test-run-update` | `{ id, status, durationMs?, errorMessage? }` |
+| `useDiscoveryUpdates(callback)` | `talos:discovery-update` | `{ jobId, status, filesDiscovered?, filesIndexed?, chunksCreated? }` |
+
+#### API Client (`ui/lib/api.ts`)
+
+Typed HTTP client wrapping `fetch` calls to the backend. Configurable base URL via `NEXT_PUBLIC_TALOS_API_BASE` environment variable.
+
+Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles — each with standard CRUD operations plus specialized triggers (e.g., `triggerTestRun`, `triggerDiscovery`).
+
+#### Design System
+
+- **Component library**: Radix UI primitives (Dialog, Select, Tabs, Switch, Tooltip, Dropdown Menu) styled with Tailwind.
+- **Variants**: `class-variance-authority` for component variant composition.
+- **Class merging**: `tailwind-merge` + `clsx` via `cn()` utility.
+- **Theme**: Dark/light mode via `next-themes`.
+- **Fonts**: Inter (body) + JetBrains Mono (code).
+
+---
+
+## Data Architecture
+
+### SQLite Schema
+
+TALOS uses a normalized relational schema with 5 core tables:
+
+```
+┌──────────────────────┐       ┌──────────────────────┐
+│  talos_applications   │───┐   │   talos_vault_roles   │
+│  (id, name, status,   │   │   │  (id, application_id,  │
+│   repositoryUrl,       │   │   │   roleType, name,      │
+│   baseUrl, metadata)   │   ├──│   usernameRef,         │
+└──────────┬───────────┘   │   │   passwordRef)          │
+           │               │   └──────────────────────┘
+           │               │
+   ┌───────┴───────┐       │
+   │  talos_tests   │◄──────┘
+   │  (id, appId,   │
+   │   name, code,   │
+   │   type, status,  │
+   │   codeHash)      │
+   └───────┬───────┘
+           │
+   ┌───────┴──────────┐
+   │  talos_test_runs   │
+   │  (id, testId,       │
+   │   appId, status,     │
+   │   trigger, browser,   │
+   │   durationMs, error)  │
+   └───────┬──────────┘
+           │
+   ┌───────┴──────────────┐
+   │  talos_test_artifacts  │
+   │  (id, testRunId,       │
+   │   type, filePath,       │
+   │   mimeType, sizeBytes)  │
+   └────────────────────────┘
+```
+
+**Index strategy**: Every foreign key is indexed. Additional indexes on `status`, `type`, `name`, and `created_at` for common query patterns.
+
+**JSON columns**: `metadata_json`, `tags_json`, `pom_dependencies_json`, `selectors_json`, `additional_refs_json` — stored as TEXT, parsed on read, serialized on write.
+
+### Vector Store Schema
+
+LanceDB collection `talos_chunks`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | String | Unique chunk ID |
+| `applicationId` | String | Owning application |
+| `content` | String | Chunk text content |
+| `filePath` | String | Source file path |
+| `startLine` | Int32 | Start line in source |
+| `endLine` | Int32 | End line in source |
+| `type` | String | code, test, documentation, config, schema |
+| `contentHash` | String | SHA-256 for dedup |
+| `metadata` | String | JSON metadata |
+| `vector` | FixedSizeList[Float32, 1536] | Embedding vector |
+
+---
+
+## Configuration System
+
+Configuration flows through a single Zod schema hierarchy:
+
+```
+TalosConfig
+├── enabled: boolean (default: true)
+├── vectorDb: VectorDbConfig
+│   ├── type: "lancedb" | "qdrant"
+│   ├── path: string
+│   ├── collectionName: string
+│   └── qdrantUrl?, qdrantApiKey?
+├── embedding: EmbeddingConfig
+│   ├── provider: "openai" | "local"
+│   ├── model: string
+│   ├── dimensions: number
+│   └── batchSize: number
+├── runner: RunnerConfig
+│   ├── defaultBrowser, timeout, navigationTimeout
+│   ├── traceMode, screenshotOnFailure, video
+│   ├── retries, workers, headless, slowMo
+├── healing: HealingConfig
+│   ├── confidenceThreshold, maxRetries
+│   ├── enabled, cooldownMs, model?
+├── generator: GeneratorConfig
+│   ├── confidenceThreshold, requireReview
+│   ├── maxContextChunks, model?, usePom
+├── export: ExportConfig
+│   ├── outputDir, sanitizeCredentials
+│   └── includeEnvTemplate
+├── artifacts: ArtifactsConfig
+│   ├── path, retentionDays, maxStorageMb
+├── discovery: DiscoveryConfig
+│   ├── includeExtensions[], excludePatterns[]
+│   ├── maxFileSizeBytes, chunkSize, chunkOverlap
+└── githubMcp: GitHubMcpConfig
+    ├── rateLimitPerHour, cacheTtlSeconds
+    └── backoffBaseMs, backoffMaxMs
+```
+
+Partial configs are accepted — Zod fills missing fields with defaults. Invalid values throw typed `ZodError` with path-specific messages.
+
+---
+
+## MCP Tool Interface
+
+All 14 tools follow a uniform interface:
+
+```typescript
+interface ToolDefinition {
+  name: string;                           // e.g., "talos-generate-test"
+  description: string;                    // Human-readable purpose
+  inputSchema: {                          // JSON Schema (MCP-compatible)
+    type: "object";
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+  zodSchema: z.ZodSchema;                // Runtime validation
+  handler: (args: Record<string, unknown>) => Promise<{
+    text: string;
+    isError?: boolean;
+  }>;
+  category: "testing";
+  riskLevel: "low" | "medium" | "high";
+  source: "talos";
+}
+```
+
+### Tool Catalog
+
+| Tool | Risk | Inputs | Description |
+|------|------|--------|-------------|
+| `talos-list-applications` | LOW | `status?` | List all registered applications |
+| `talos-get-application` | LOW | `id` | Get application details + stats |
+| `talos-create-application` | MEDIUM | `name, repositoryUrl, baseUrl, ...` | Register a new target application |
+| `talos-list-tests` | LOW | `applicationId, status?` | List tests for an application |
+| `talos-run-test` | MEDIUM | `testId, browser?, vaultRoleType?` | Execute a test with Playwright |
+| `talos-generate-test` | MEDIUM | `applicationId, prompt, testType?` | Generate a test with AI |
+| `talos-discover-repository` | MEDIUM | `applicationId, force?` | Crawl and index a GitHub repo |
+| `talos-get-test-run` | LOW | `runId` | Get run details + artifacts |
+| `talos-list-test-runs` | LOW | `applicationId?, testId?, limit?` | List recent test runs |
+| `talos-heal-test` | HIGH | `testRunId, autoApply?` | Trigger self-healing for a failed run |
+| `talos-export-tests` | MEDIUM | `applicationId, testIds?, format?, platform?` | Export tests as standalone package |
+
+---
+
+## Data Flow
+
+### Discovery → Index Pipeline
+
+```
+GitHub Repository
+  │
+  ▼
+GitHubMcpClient.getTree("HEAD", recursive=true)
+  │
+  ▼
+Filter (extensions, patterns, size)
+  │
+  ▼
+GitHubMcpClient.getFileText(path)  ← per file
+  │
+  ▼
+FileChunker.chunk(path, content, appId)
+  │  ├─ Structural: function/class boundaries
+  │  └─ Sliding window: fixed-size overlapping
+  ▼
+RagPipeline.indexChunks(appId, chunks)
+  │
+  ├─ Dedup (contentHash)
+  ├─ EmbeddingService.embedBatch(texts)
+  └─ VectorStore.add(records)
+```
+
+### Test Generation Pipeline
+
+```
+User Prompt + Application ID
+  │
+  ▼
+RagPipeline.retrieve(appId, prompt)
+  │
+  ▼
+PromptBuilder.buildPrompt({
+  application, existingTests, relevantCode, userRequest
+})
+  │
+  ▼
+LLM Call (system + user prompts)
+  │
+  ▼
+Extract code block from response
+  │
+  ▼
+CodeValidator.validate(code)
+  │
+  ├─ Valid → CodeValidator.autoFix(code) → Save TalosTest
+  └─ Invalid → Append errors to prompt → Retry (max 3x)
+```
+
+### Test Execution Pipeline
+
+```
+TalosTest + RunOptions
+  │
+  ├─ CredentialInjector.getCredentials(appId, roleType)
+  │
+  ▼
+PlaywrightRunner.executeWithRetries(test, run, options)
+  │
+  ├─ Launch browser (chromium/firefox/webkit)
+  ├─ Create context (video, viewport)
+  ├─ Start trace
+  ├─ Compile & execute test code
+  ├─ On failure: screenshot, error capture
+  ├─ Stop trace, collect artifacts
+  └─ ArtifactManager.save(screenshots, videos, traces, logs)
+  │
+  ▼
+TalosTestRun updated (status, duration, error, artifacts)
+```
+
+### Self-Healing Loop
+
+```
+Failed TalosTestRun
+  │
+  ▼
+Guard: enabled? not healing? retries < max? cooldown?
+  │
+  ▼
+FailureAnalyzer.analyze(run)
+  │  ├─ Categorize (selector-changed, timeout, etc.)
+  │  ├─ Extract affected selectors
+  │  └─ Suggest fix strategies
+  │
+  ▼
+FixGenerator.generateFixes(test, run, analysis)
+  │  ├─ LLM call with test code + analysis
+  │  ├─ Parse fixes with confidence scores
+  │  └─ Validate each fix
+  │
+  ▼
+Select best fix (confidence ≥ 85%)
+  │
+  ├─ Below threshold → Reject → Require human review
+  │
+  ▼
+Verification run (trigger: "healing-verification")
+  │
+  ├─ Pass → Apply fix → Update test code
+  └─ Fail → Revert → Log attempt
+  │
+  ▼
+HealingAttempt recorded (audit trail)
+```
+
+### Export Pipeline
+
+```
+Application + ExportOptions
+  │
+  ▼
+PackageBuilder.build(appId, options)
+  │
+  ├─ Generate playwright.config.ts
+  ├─ Generate package.json with scripts
+  ├─ Generate tsconfig.json
+  ├─ Per test:
+  │   ├─ CredentialSanitizer.sanitize(code)
+  │   └─ Write tests/{name}.spec.ts
+  ├─ Generate README.md
+  ├─ Generate .env.example
+  └─ Optional: fixtures/, pages/
+  │
+  ▼
+ExportEngine.export(appId, { format, outputPath })
+  │
+  ├─ zip → Create in-memory ZIP → Write to outputDir
+  ├─ directory → Write files to disk
+  ├─ single-file → Concatenate all tests
+  └─ json → Serialize metadata + tests
+```
+
+---
+
+## Security Architecture
+
+### Credential Protection
+
+- **Vault references**: Credentials are never stored in the database. `usernameRef` and `passwordRef` are opaque references (e.g., `vault:github-pat-myapp`) resolved at runtime via an async callback.
+- **Sanitization on export**: `CredentialSanitizer` replaces hardcoded secrets with `process.env.*` references. Generates `.env.example` with placeholder keys.
+- **Cache isolation**: `CredentialInjector` caches resolved secrets in memory per `{appId}:{roleType}`. Cache can be cleared per-app or globally.
+- **TOTP generation**: MFA secrets handled internally — cleartext secret never exposed to test code.
+
+### Code Safety
+
+- **Banned patterns**: `eval()`, `Function()`, `require()`, `process.exit()`, `child_process`, file deletion APIs are rejected by `CodeValidator`.
+- **Input validation**: All MCP tool inputs validated via Zod schemas before handler execution.
+- **SQL injection prevention**: Parameterized queries throughout `TalosRepository` (better-sqlite3 prepared statements).
+- **Foreign key constraints**: `ON DELETE CASCADE` prevents orphan records.
+
+### GitHub API
+
+- **Rate limit awareness**: Tracks `x-ratelimit-remaining`, backs off exponentially.
+- **PAT scoping**: GitHub PAT resolved per-application — each app can use a different token with minimal scope.
+- **Cache TTL**: Prevents stale data persisting beyond 5 minutes.
+
+---
+
+## File System Layout
+
+```
+~/.talos/                          # TALOS data directory
+├── vectordb/                      # LanceDB storage
+│   └── talos_chunks/              # Vector collection
+├── artifacts/                     # Test run artifacts
+│   └── {testRunId}/
+│       ├── screenshot/
+│       ├── video/
+│       ├── trace/
+│       └── log/
+└── exports/                       # Exported test packages
+    └── {app-slug}-{timestamp}/
+```
+
+---
+
+## CI/CD
+
+### Workflows
+
+| Workflow | Trigger | Runner | Jobs |
+|----------|---------|--------|------|
+| `ci.yml` | Push to `main`, PRs | `ubuntu-latest` | `api` (lint, typecheck, test) + `ui` (lint, test, build) |
+| `codeql.yml` | Push to `main`, PRs, weekly | `ubuntu-latest` | JavaScript/TypeScript + Python analysis |
+| `release.yml` | Push to `main` | `ubuntu-latest` | Build root + UI packages |
+
+### Quality Gates
+
+- **100 tests** (81 backend + 19 UI) across 8 test files
+- **Lint**: ESLint with @typescript-eslint
+- **Type checking**: `tsc --noEmit` with strict mode
+- **Build verification**: Next.js build for UI
