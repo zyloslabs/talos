@@ -2,7 +2,7 @@
  * Talos MCP Tools Factory
  *
  * Creates MCP tool definitions for the Talos module.
- * Follows OpenZigs ToolDefinition pattern with Zod schemas.
+ * Follows Talos ToolDefinition pattern with Zod schemas.
  */
 
 import * as z from "zod";
