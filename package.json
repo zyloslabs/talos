@@ -27,9 +27,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^0.2.0",
     "@lancedb/lancedb": "^0.26.2",
     "@playwright/test": "^1.52.0",
     "better-sqlite3": "^12.6.2",
+    "cron-parser": "^5.5.0",
     "express": "^5.2.1",
     "nanoid": "^5.1.6",
     "openai": "^4.96.0",

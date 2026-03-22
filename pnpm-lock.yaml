@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@github/copilot-sdk':
+        specifier: ^0.2.0
+        version: 0.2.0
       '@lancedb/lancedb':
         specifier: ^0.26.2
         version: 0.26.2(apache-arrow@18.1.0)
@@ -17,6 +20,9 @@ importers:
       better-sqlite3:
         specifier: ^12.6.2
         version: 12.8.0
+      cron-parser:
+        specifier: ^5.5.0
+        version: 5.5.0
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -676,6 +682,50 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
+
+  '@github/copilot-darwin-arm64@1.0.10':
+    resolution: {integrity: sha512-MNlzwkTQ9iUgHQ+2Z25D0KgYZDEl4riEa1Z4/UCNpHXmmBiIY8xVRbXZTNMB69cnagjQ5Z8D2QM2BjI0kqeFPg==}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  '@github/copilot-darwin-x64@1.0.10':
+    resolution: {integrity: sha512-zAQBCbEue/n4xHBzE9T03iuupVXvLtu24MDMeXXtIC0d4O+/WV6j1zVJrp9Snwr0MBWYH+wUrV74peDDdd1VOQ==}
+    cpu: [x64]
+    os: [darwin]
+    hasBin: true
+
+  '@github/copilot-linux-arm64@1.0.10':
+    resolution: {integrity: sha512-7mJ3uLe7ITyRi2feM1rMLQ5d0bmUGTUwV1ZxKZwSzWCYmuMn05pg4fhIUdxZZZMkLbOl3kG/1J7BxMCTdS2w7A==}
+    cpu: [arm64]
+    os: [linux]
+    hasBin: true
+
+  '@github/copilot-linux-x64@1.0.10':
+    resolution: {integrity: sha512-66NPaxroRScNCs6TZGX3h1RSKtzew0tcHBkj4J1AHkgYLjNHMdjjBwokGtKeMxzYOCAMBbmJkUDdNGkqsKIKUA==}
+    cpu: [x64]
+    os: [linux]
+    hasBin: true
+
+  '@github/copilot-sdk@0.2.0':
+    resolution: {integrity: sha512-fCEpD9W9xqcaCAJmatyNQ1PkET9P9liK2P4Vk0raDFoMXcvpIdqewa5JQeKtWCBUsN/HCz7ExkkFP8peQuo+DA==}
+    engines: {node: '>=20.0.0'}
+
+  '@github/copilot-win32-arm64@1.0.10':
+    resolution: {integrity: sha512-WC5M+M75sxLn4lvZ1wPA1Lrs/vXFisPXJPCKbKOMKqzwMLX/IbuybTV4dZDIyGEN591YmOdRIylUF0tVwO8Zmw==}
+    cpu: [arm64]
+    os: [win32]
+    hasBin: true
+
+  '@github/copilot-win32-x64@1.0.10':
+    resolution: {integrity: sha512-tUfIwyamd0zpm9DVTtbjIWF6j3zrA5A5IkkiuRgsy0HRJPQpeAV7ZYaHEZteHrynaULpl1Gn/Dq0IB4hYc4QtQ==}
+    cpu: [x64]
+    os: [win32]
+    hasBin: true
+
+  '@github/copilot@1.0.10':
+    resolution: {integrity: sha512-RpHYMXYpyAgQLYQ3MB8ubV8zMn/zDatwaNmdxcC8ws7jqM+Ojy7Dz4KFKzyT0rCrWoUCAEBXsXoPbP0LY0FgLw==}
+    hasBin: true
 
   '@humanwhocodes/config-array@0.13.0':
     resolution: {integrity: sha512-DZLEEqFWQFiyK6h5YIeynKx7JlvCYWL0cImfSRXZ9l4Sg2efkFGTuFf6vzXjK1cq6IYkU+Eg/JizXw+TD2vRNw==}
@@ -2116,6 +2166,10 @@ packages:
     resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
     engines: {node: '>= 0.10'}
 
+  cron-parser@5.5.0:
+    resolution: {integrity: sha512-oML4lKUXxizYswqmxuOCpgFS8BNUJpIu6k/2HVHyaL8Ynnf3wdf9tkns0yRdJLSIjkJ+b0DXHMZEHGpMwjnPww==}
+    engines: {node: '>=18'}
+
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
@@ -3048,6 +3102,10 @@ packages:
     resolution: {integrity: sha512-VuXgKZrk0uiDlWjGGXmKV6MSk9Yy4l10qgVvzGn2AWBx1Ylt0iBexKOAoA6I7JO3m+M9oeovJd3yYENfkUbOeg==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  luxon@3.7.2:
+    resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
+    engines: {node: '>=12'}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -4156,6 +4214,10 @@ packages:
       jsdom:
         optional: true
 
+  vscode-jsonrpc@8.2.1:
+    resolution: {integrity: sha512-kdjOSJ2lLIn7r1rtrMbbNCHjyMPfRnowdKjBQ+mGq6NAW5QY2bEZC/khaC5OR8svbbjvLEaIXkOq45e2X9BIbQ==}
+    engines: {node: '>=14.0.0'}
+
   w3c-xmlserializer@5.0.0:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
     engines: {node: '>=18'}
@@ -4259,6 +4321,9 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
 
@@ -4639,6 +4704,39 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.11': {}
+
+  '@github/copilot-darwin-arm64@1.0.10':
+    optional: true
+
+  '@github/copilot-darwin-x64@1.0.10':
+    optional: true
+
+  '@github/copilot-linux-arm64@1.0.10':
+    optional: true
+
+  '@github/copilot-linux-x64@1.0.10':
+    optional: true
+
+  '@github/copilot-sdk@0.2.0':
+    dependencies:
+      '@github/copilot': 1.0.10
+      vscode-jsonrpc: 8.2.1
+      zod: 4.3.6
+
+  '@github/copilot-win32-arm64@1.0.10':
+    optional: true
+
+  '@github/copilot-win32-x64@1.0.10':
+    optional: true
+
+  '@github/copilot@1.0.10':
+    optionalDependencies:
+      '@github/copilot-darwin-arm64': 1.0.10
+      '@github/copilot-darwin-x64': 1.0.10
+      '@github/copilot-linux-arm64': 1.0.10
+      '@github/copilot-linux-x64': 1.0.10
+      '@github/copilot-win32-arm64': 1.0.10
+      '@github/copilot-win32-x64': 1.0.10
 
   '@humanwhocodes/config-array@0.13.0':
     dependencies:
@@ -6041,6 +6139,10 @@ snapshots:
       object-assign: 4.1.1
       vary: 1.1.2
 
+  cron-parser@5.5.0:
+    dependencies:
+      luxon: 3.7.2
+
   cross-spawn@7.0.6:
     dependencies:
       path-key: 3.1.1
@@ -7230,6 +7332,8 @@ snapshots:
   lucide-react@0.575.0(react@18.3.1):
     dependencies:
       react: 18.3.1
+
+  luxon@3.7.2: {}
 
   lz-string@1.5.0: {}
 
@@ -8497,6 +8601,8 @@ snapshots:
       - supports-color
       - terser
 
+  vscode-jsonrpc@8.2.1: {}
+
   w3c-xmlserializer@5.0.0:
     dependencies:
       xml-name-validator: 5.0.0
@@ -8603,3 +8709,5 @@ snapshots:
   yocto-queue@0.1.0: {}
 
   zod@3.25.76: {}
+
+  zod@4.3.6: {}
