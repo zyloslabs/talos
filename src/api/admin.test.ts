@@ -40,8 +40,9 @@ async function withServer(app: express.Express, fn: (baseUrl: string) => Promise
   }
 }
 
-async function json(res: Response): Promise<Record<string, unknown>> {
-  return res.json() as Promise<Record<string, unknown>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function json(res: Response): Promise<any> {
+  return res.json();
 }
 
 describe("Admin API", () => {
@@ -171,7 +172,7 @@ describe("Admin API", () => {
         expect(createRes.status).toBe(201);
 
         const listRes = await fetch(`${base}/api/admin/scheduler/jobs`, { headers: authHeaders });
-        const jobs = await listRes.json() as unknown[];
+        const jobs = await json(listRes);
         expect(jobs.length).toBe(1);
       });
     });
@@ -201,7 +202,7 @@ describe("Admin API", () => {
         expect(createRes.status).toBe(201);
 
         const listRes = await fetch(`${base}/api/admin/tasks`, { headers: authHeaders });
-        const tasks = await listRes.json() as unknown[];
+        const tasks = await json(listRes);
         expect(tasks.length).toBe(1);
       });
     });
@@ -384,7 +385,7 @@ describe("Admin API", () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/agents`, { headers: authHeaders });
         expect(res.status).toBe(200);
-        const data = await res.json();
+        const data = await json(res);
         expect(data).toEqual([]);
       });
     });
@@ -397,7 +398,7 @@ describe("Admin API", () => {
           body: JSON.stringify({ name: "Test Agent", description: "A test agent", systemPrompt: "Be helpful" }),
         });
         expect(res.status).toBe(201);
-        const data = await res.json();
+        const data = await json(res);
         expect(data.name).toBe("Test Agent");
         expect(data.description).toBe("A test agent");
         expect(data.systemPrompt).toBe("Be helpful");
@@ -424,11 +425,11 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "Fetch Me" }),
         });
-        const created = await createRes.json();
+        const created = await json(createRes);
 
         const res = await fetch(`${base}/api/admin/agents/${created.id}`, { headers: authHeaders });
         expect(res.status).toBe(200);
-        const data = await res.json();
+        const data = await json(res);
         expect(data.name).toBe("Fetch Me");
       });
     });
@@ -447,7 +448,7 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "Original" }),
         });
-        const created = await createRes.json();
+        const created = await json(createRes);
 
         const res = await fetch(`${base}/api/admin/agents/${created.id}`, {
           method: "PUT",
@@ -455,7 +456,7 @@ describe("Admin API", () => {
           body: JSON.stringify({ name: "Updated", toolsWhitelist: ["web-search"] }),
         });
         expect(res.status).toBe(200);
-        const data = await res.json();
+        const data = await json(res);
         expect(data.name).toBe("Updated");
         expect(data.toolsWhitelist).toEqual(["web-search"]);
       });
@@ -468,7 +469,7 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "Delete Me" }),
         });
-        const created = await createRes.json();
+        const created = await json(createRes);
 
         const res = await fetch(`${base}/api/admin/agents/${created.id}`, {
           method: "DELETE",
@@ -488,6 +489,24 @@ describe("Admin API", () => {
           headers: authHeaders,
         });
         expect(res.status).toBe(404);
+      });
+    });
+
+    it("returns 409 for duplicate agent name", async () => {
+      await withServer(app, async (base) => {
+        await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Duplicate", description: "first" }),
+        });
+        const res = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Duplicate", description: "second" }),
+        });
+        expect(res.status).toBe(409);
+        const data = await json(res);
+        expect(data.error).toContain("already exists");
       });
     });
   });
@@ -608,7 +627,7 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "Skill Agent" }),
         });
-        const agent = await agentRes.json();
+        const agent = await json(agentRes);
 
         // Create a skill
         const skillRes = await fetch(`${base}/api/admin/skills`, {
@@ -616,7 +635,7 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "S1", content: "c1" }),
         });
-        const skill = await skillRes.json();
+        const skill = await json(skillRes);
 
         // Set skills
         const setRes = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
@@ -629,9 +648,45 @@ describe("Admin API", () => {
         // Get skills
         const getRes = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, { headers: authHeaders });
         expect(getRes.status).toBe(200);
-        const skills = await getRes.json();
+        const skills = await json(getRes);
         expect(skills.length).toBe(1);
         expect(skills[0].name).toBe("S1");
+      });
+    });
+
+    it("returns 400 for invalid skills body", async () => {
+      await withServer(app, async (base) => {
+        const agentRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Validate Agent" }),
+        });
+        const agent = await json(agentRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ skillIds: "not-an-array" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("rejects extra fields in skills body (strict)", async () => {
+      await withServer(app, async (base) => {
+        const agentRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Strict Agent" }),
+        });
+        const agent = await json(agentRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ skillIds: [], extraField: true }),
+        });
+        expect(res.status).toBe(400);
       });
     });
   });
@@ -647,7 +702,7 @@ describe("Admin API", () => {
           body: JSON.stringify({ name: "ToolSkill", content: "c", requiredTools: ["shell-execute"] }),
         });
         expect(res.status).toBe(201);
-        const data = await res.json();
+        const data = await json(res);
         expect(data.requiredTools).toEqual(["shell-execute"]);
       });
     });
@@ -660,11 +715,11 @@ describe("Admin API", () => {
           headers: authHeaders,
           body: JSON.stringify({ name: "SharedSkill", content: "c" }),
         });
-        const skill = await skillRes.json();
+        const skill = await json(skillRes);
 
         // Get skill detail
         const res = await fetch(`${base}/api/admin/skills/${skill.id}`, { headers: authHeaders });
-        const data = await res.json();
+        const data = await json(res);
         expect(data.agents).toEqual([]);
       });
     });
