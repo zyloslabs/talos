@@ -37,6 +37,7 @@ vi.mock("@/lib/api", () => ({
   setReasoningEffort: vi.fn(),
   getAuthStatus: vi.fn().mockResolvedValue({ authenticated: false }),
   startDeviceAuth: vi.fn(),
+  testAuthConnection: vi.fn().mockResolvedValue({ connected: true, models: 3 }),
   getMcpServers: vi.fn().mockResolvedValue([]),
   createMcpServer: vi.fn(),
   deleteMcpServer: vi.fn(),
@@ -52,6 +53,7 @@ vi.mock("@/lib/api", () => ({
   reindexKnowledge: vi.fn(),
   deleteKnowledgeDocument: vi.fn(),
   getModelsHealth: vi.fn().mockResolvedValue({ healthy: true, authenticated: true, latencyMs: 50 }),
+  enhanceText: vi.fn().mockResolvedValue({ enhanced: "enhanced text" }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {

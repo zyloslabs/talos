@@ -18,6 +18,7 @@ vi.mock("@/lib/api", () => ({
   createSkill: vi.fn(),
   updateSkill: vi.fn(),
   deleteSkill: vi.fn(),
+  getSkillAgents: vi.fn().mockResolvedValue([]),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
