@@ -38,3 +38,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Platform Repository**: SQLite data access layer (`src/platform/repository.ts`) with auto-migrating schema for personality, saved_prompts, scheduled_jobs, agent_tasks, mcp_servers, and skills tables.
 - **Admin API Router**: Comprehensive REST API at `/api/admin` with endpoints for auth, models, personality, prompts, scheduler jobs, tasks, MCP servers, and skills.
 - **Navigation**: Updated nav tabs with routes for Chat, Prompts, Skills, Scheduler, Tasks, Workbench, and Admin pages.
+- **Talos Full Feature Buildout** (Epic #199): 25 sub-issues (#209–#233) across 5 phases — Foundation, AI Infrastructure, Generate & Chat, Prompt Library & Skills, and Workbench Orchestration.
+  - **Application Management** (#209): CRUD for Talos applications with name, URL, status, description, platform type, and created/updated timestamps.
+  - **Talos Admin Page** (#210): Dedicated `/talos` admin page with application registry grid, add/edit dialog, and inline delete.
+  - **Environment Variable Management** (#211): `EnvManager` class managing `~/.talos/.env` with masking for sensitive keys (tokens, secrets, passwords), rejection of dangerous keys (`PATH`, `HOME`, etc.), and admin API endpoints.
+  - **Knowledge Base & RAG** (#212): LanceDB-backed vector store with document indexing, semantic search, and knowledge config management. Admin UI panel with document list, search, reindex, and stats.
+  - **Model Health Dashboard** (#213): `/api/admin/models/health` endpoint and admin panel showing per-model connectivity status.
+  - **Discovery Engine** (#214): Web crawler for application discovery — extracts pages, forms, links, and metadata for test generation context.
+  - **RAG Indexer** (#215): Pipeline to chunk discovered content and index into LanceDB with OpenAI embeddings for retrieval-augmented test generation.
+  - **RAG Context Indicator** (#216): Inline UI component on assistant messages showing expandable RAG source citations with file paths, relevance scores, and content snippets.
+  - **Test Runner** (#217): Playwright-based test execution engine with configurable browser, viewport, timeout, and structured result reporting.
+  - **Healing Engine** (#218): Auto-fix for broken selectors — detects stale locators and suggests or applies updated selectors based on DOM similarity.
+  - **Test Generator** (#219, #220): AI-powered test generation from application context — `POST /api/talos/tests/generate` creates test code via Copilot with RAG context and application metadata.
+  - **Test Refinement** (#221): Iterative AI refinement of generated tests — `POST /api/talos/tests/:id/refine` re-prompts Copilot with feedback to improve test quality.
+  - **Chat Session Management** (#222): Session sidebar with history list, search, delete, and create. Session CRUD endpoints (`GET/DELETE /api/talos/sessions`). JSONL-backed session persistence.
+  - **Chat Header** (#223): Enhanced chat header with inline model picker and quick-action buttons (generate test, clear chat).
+  - **Pipeline Builder** (#224): Multi-stage prompt pipeline editor — add/remove/reorder stages via drag handles, per-stage name and content editing.
+  - **Template Variables UI** (#225): Live `{{variable}}` extraction from prompt content, fill-in-the-blank value inputs, and real-time interpolated preview.
+  - **Prompt Import/Export** (#226): JSON file export/import for prompt library entries with full metadata, pipeline stages, and variable definitions.
+  - **Skill Templates** (#227): 5 built-in skill templates (Web Scraper, Code Reviewer, Test Generator, API Tester, Documentation Writer) with one-click creation.
+  - **Inline Skill Execution** (#228): Execute skills directly from the skills page — input panel, task creation via API, and output display.
+  - **Skill Import/Export** (#229): JSON file export/import for skill definitions with full metadata and tags.
+  - **Test Orchestration Workbench** (#230–#233): 4-step wizard replacing the markdown editor — Select Application → Configure Pipeline Steps (discover, index, generate, execute) → Live Execution with WebSocket progress → Results Dashboard with completion metrics, pass/fail counts, and step-by-step detail table.

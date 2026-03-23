@@ -38,6 +38,6 @@ describe("SkillsPage", () => {
 
   it("shows empty state when no skills", () => {
     renderWithProviders(<SkillsPage />);
-    expect(screen.getByText("No skills configured. Create one to get started.")).toBeInTheDocument();
+    expect(screen.getByText("No skills configured. Create one or use a template to get started.")).toBeInTheDocument();
   });
 });

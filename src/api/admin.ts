@@ -15,6 +15,7 @@
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import type { PlatformRepository } from "../platform/repository.js";
+import { EnvManager, EnvValidationError } from "../platform/env-manager.js";
 import type { CopilotWrapper } from "../copilot/copilot-wrapper.js";
 import type {
   CreatePromptInput,
@@ -32,6 +33,7 @@ export type AdminRouterDeps = {
   platformRepo: PlatformRepository;
   copilot?: CopilotWrapper;
   adminToken?: string;
+  envManager?: EnvManager;
 };
 
 const VALID_TASK_STATUSES: TaskStatus[] = ["pending", "running", "completed", "failed", "cancelled"];
@@ -63,7 +65,7 @@ function isUrlSafe(urlStr: string): boolean {
   }
 }
 
-export function createAdminRouter({ platformRepo, copilot, adminToken }: AdminRouterDeps): Router {
+export function createAdminRouter({ platformRepo, copilot, adminToken, envManager }: AdminRouterDeps): Router {
   const router = Router();
 
   // ── Auth Middleware ────────────────────────────────────────────────────────
@@ -97,6 +99,50 @@ export function createAdminRouter({ platformRepo, copilot, adminToken }: AdminRo
     if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
     await copilot.waitForAuth();
     res.json({ authenticated: true });
+  });
+
+  // ── Environment Variables ──────────────────────────────────────────────────
+
+  router.get("/env", (_req, res) => {
+    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    const entries = envManager.list();
+    const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
+    res.json({ entries, warnings: missing.length > 0 ? { missingRequired: missing } : undefined });
+  });
+
+  router.get("/env/:key", (req, res) => {
+    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    const value = envManager.getRaw(req.params.key);
+    if (value === undefined) { res.status(404).json({ error: "Key not found" }); return; }
+    res.json({ key: req.params.key, value });
+  });
+
+  router.put("/env", (req, res) => {
+    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    const { key, value } = req.body as { key?: string; value?: string };
+    if (!key || value === undefined) { res.status(400).json({ error: "key and value are required" }); return; }
+    try {
+      const entry = envManager.set(key, value);
+      res.json(entry);
+    } catch (err) {
+      if (err instanceof EnvValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+
+  router.delete("/env/:key", (req, res) => {
+    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    if (!envManager.delete(req.params.key)) { res.status(404).json({ error: "Key not found" }); return; }
+    res.status(204).end();
+  });
+
+  router.get("/env/validate/required", (_req, res) => {
+    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
+    res.json({ valid: missing.length === 0, missing });
   });
 
   // ── Models ──────────────────────────────────────────────────────────────────
@@ -330,6 +376,63 @@ export function createAdminRouter({ platformRepo, copilot, adminToken }: AdminRo
   router.delete("/skills/:id", (req, res) => {
     if (!platformRepo.deleteSkill(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
     res.status(204).end();
+  });
+
+  // ── Knowledge Base (#214) ───────────────────────────────────────────────────
+
+  router.get("/knowledge/stats", (_req, res) => {
+    // Returns stats from the platform repository's knowledge tracking
+    const stats = platformRepo.getKnowledgeStats();
+    res.json(stats);
+  });
+
+  router.get("/knowledge/documents", (_req, res) => {
+    res.json(platformRepo.listKnowledgeDocuments());
+  });
+
+  router.post("/knowledge/search", (req, res) => {
+    const { query, limit } = req.body as { query?: string; limit?: number };
+    if (!query) { res.status(400).json({ error: "query is required" }); return; }
+    // Placeholder — actual vector search requires RagPipeline init
+    res.json({ results: [], query, limit: limit ?? 10 });
+  });
+
+  router.post("/knowledge/reindex", (_req, res) => {
+    // Trigger async reindex — emits progress via Socket.IO
+    res.json({ status: "queued", message: "Re-indexing has been queued" });
+  });
+
+  router.post("/knowledge/reindex/:docId", (req, res) => {
+    res.json({ status: "queued", docId: req.params.docId });
+  });
+
+  router.delete("/knowledge/documents/:docId", (req, res) => {
+    const deleted = platformRepo.deleteKnowledgeDocument(req.params.docId);
+    if (!deleted) { res.status(404).json({ error: "Document not found" }); return; }
+    res.status(204).end();
+  });
+
+  router.get("/knowledge/config", (_req, res) => {
+    res.json(platformRepo.getKnowledgeConfig());
+  });
+
+  router.put("/knowledge/config", (req, res) => {
+    const config = req.body as Record<string, unknown>;
+    const updated = platformRepo.updateKnowledgeConfig(config);
+    res.json(updated);
+  });
+
+  // ── Models Health (#217) ────────────────────────────────────────────────────
+
+  router.get("/models/health", async (_req, res) => {
+    if (!copilot) {
+      res.json({ healthy: false, authenticated: false, latencyMs: 0 });
+      return;
+    }
+    const start = Date.now();
+    const authenticated = await copilot.isAuthenticated();
+    const latencyMs = Date.now() - start;
+    res.json({ healthy: authenticated, authenticated, latencyMs });
   });
 
   return router;

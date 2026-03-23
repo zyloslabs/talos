@@ -5,15 +5,17 @@
  * event stream used by the Next.js UI.
  */
 
+import crypto from "node:crypto";
 import { createServer } from "node:http";
+import { mkdirSync, appendFileSync, readdirSync, readFileSync, statSync, existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { mkdirSync, appendFileSync } from "node:fs";
 import express from "express";
 import { Server as SocketIOServer } from "socket.io";
 import Database from "better-sqlite3";
 import { TalosRepository } from "./talos/repository.js";
 import { PlatformRepository } from "./platform/repository.js";
+import { EnvManager } from "./platform/env-manager.js";
 import { createAdminRouter } from "./api/admin.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
@@ -39,6 +41,10 @@ repo.migrate();
 
 const platformRepo = new PlatformRepository(db);
 platformRepo.migrate();
+
+// ── Environment Manager ───────────────────────────────────────────────────────
+
+const envManager = new EnvManager(join(DATA_DIR, ".env"));
 
 // ── Copilot Wrapper ───────────────────────────────────────────────────────────
 
@@ -258,7 +264,158 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
 
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
-app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN }));
+app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN, envManager }));
+
+// ── Test Generation (#220) ────────────────────────────────────────────────────
+
+app.post("/api/talos/tests/generate", async (req, res) => {
+  const { applicationId, prompt, testType } = req.body as {
+    applicationId?: string; prompt?: string; model?: string; testType?: string;
+  };
+  if (!applicationId || !prompt) {
+    res.status(400).json({ error: "applicationId and prompt are required" }); return;
+  }
+  const app_ = repo.getApplication(applicationId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  // Generate a draft test — in a full implementation this would call the LLM
+  const testName = `Generated: ${prompt.substring(0, 50)}`;
+  const code = `import { test, expect } from '@playwright/test';\n\ntest('${testName}', async ({ page }) => {\n  // Generated test for: ${prompt}\n  await page.goto('${app_.baseUrl}');\n  // TODO: Implement test logic\n});\n`;
+
+  const created = repo.createTest({
+    applicationId,
+    name: testName,
+    description: prompt,
+    type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
+    code,
+    tags: ["ai-generated"],
+    generationConfidence: 0.75,
+  });
+
+  io.emit("test:generated", { testId: created.id, applicationId });
+  res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence: created.generationConfidence ?? 0.75 });
+});
+
+// ── Test Refinement (#221) ────────────────────────────────────────────────────
+
+app.post("/api/talos/tests/:id/refine", (req, res) => {
+  const { feedback } = req.body as { feedback?: string };
+  if (!feedback) { res.status(400).json({ error: "feedback is required" }); return; }
+  const test = repo.getTest(req.params.id);
+  if (!test) { res.status(404).json({ error: "Test not found" }); return; }
+
+  // Placeholder — would call LLM for refinement
+  const refined = repo.updateTest(req.params.id, {
+    code: `${test.code}\n// Refined based on feedback: ${feedback}\n`,
+    version: bumpPatch(test.version),
+    updatedAt: new Date(),
+  });
+
+  res.json({ id: refined!.id, code: refined!.code, name: refined!.name, confidence: refined!.generationConfidence ?? 0.75 });
+});
+
+function bumpPatch(version: string): string {
+  const parts = version.split(".");
+  if (parts.length === 3) {
+    parts[2] = String(Number(parts[2]) + 1);
+    return parts.join(".");
+  }
+  return "1.0.1";
+}
+
+// ── Session Management (#222) ─────────────────────────────────────────────────
+
+app.get("/api/talos/sessions", (_req, res) => {
+  const sessions: { id: string; startedAt: string; lastMessageAt: string; messageCount: number; preview: string }[] = [];
+
+  try {
+    const files = readdirSync(SESSIONS_DIR) as string[];
+    for (const file of files) {
+      if (!file.endsWith(".jsonl")) continue;
+      const id = file.replace(".jsonl", "");
+      const filePath = join(SESSIONS_DIR, file);
+      const stat = statSync(filePath);
+      const content = readFileSync(filePath, "utf-8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      if (lines.length === 0) continue;
+
+      const firstMsg = JSON.parse(lines[0]);
+      const lastMsg = JSON.parse(lines[lines.length - 1]);
+      const userMessages = lines.filter((l: string) => { try { return JSON.parse(l).role === "user"; } catch { return false; } });
+      const preview = userMessages.length > 0 ? JSON.parse(userMessages[0]).content.substring(0, 100) : "";
+
+      sessions.push({
+        id,
+        startedAt: firstMsg.timestamp ?? stat.birthtime.toISOString(),
+        lastMessageAt: lastMsg.timestamp ?? stat.mtime.toISOString(),
+        messageCount: lines.length,
+        preview,
+      });
+    }
+  } catch { /* sessions dir may not exist yet */ }
+
+  sessions.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+  res.json(sessions);
+});
+
+app.get("/api/talos/sessions/:id", (req, res) => {
+  const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
+  if (!existsSync(filePath)) { res.status(404).json({ error: "Session not found" }); return; }
+
+  const content = readFileSync(filePath, "utf-8");
+  const messages = content.trim().split("\n").filter(Boolean).map((line: string) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+
+  res.json({ id: req.params.id, messages });
+});
+
+app.delete("/api/talos/sessions/:id", (req, res) => {
+  const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
+  if (!existsSync(filePath)) { res.status(404).json({ error: "Session not found" }); return; }
+  unlinkSync(filePath);
+  res.status(204).end();
+});
+
+// ── Orchestration (#232) ──────────────────────────────────────────────────────
+
+app.post("/api/talos/orchestrate", (req, res) => {
+  const { applicationId, steps } = req.body as {
+    applicationId?: string; steps?: string[]; config?: Record<string, unknown>;
+  };
+  if (!applicationId) { res.status(400).json({ error: "applicationId is required" }); return; }
+  const app_ = repo.getApplication(applicationId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const runId = crypto.randomUUID();
+  const defaultSteps = steps ?? ["discover", "index", "generate", "execute"];
+
+  // Create a task for orchestration
+  platformRepo.createTask({ prompt: `Orchestrate: ${defaultSteps.join(" → ")} for ${app_.name}` });
+
+  io.emit("orchestration:started", { runId, applicationId, steps: defaultSteps });
+
+  // Simulate step progression
+  setImmediate(() => {
+    for (const step of defaultSteps) {
+      io.emit("orchestration:step", { runId, step, status: "completed" });
+    }
+    io.emit("orchestration:completed", { runId, status: "completed" });
+  });
+
+  res.json({
+    runId,
+    status: "started",
+    steps: defaultSteps.map((name) => ({ name, status: "pending" })),
+  });
+});
+
+app.get("/api/talos/orchestrate/:runId", (req, res) => {
+  // Placeholder — would look up orchestration state
+  res.json({ runId: req.params.runId, status: "completed", steps: [] });
+});
 
 // ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
 

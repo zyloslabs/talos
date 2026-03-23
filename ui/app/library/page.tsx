@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { NavTabs } from "@/components/talos/nav-tabs";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import {
   getPrompts, createPrompt, updatePrompt, deletePrompt,
   type SavedPrompt,
 } from "@/lib/api";
-import { BookOpen, Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { BookOpen, Plus, Search, Pencil, Trash2, Download, Upload, GitBranch, Variable } from "lucide-react";
 
 export default function LibraryPage() {
   const qc = useQueryClient();
@@ -21,6 +21,8 @@ export default function LibraryPage() {
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [editPrompt, setEditPrompt] = useState<SavedPrompt | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [pipelineOpen, setPipelineOpen] = useState<SavedPrompt | null>(null);
+  const [variablesOpen, setVariablesOpen] = useState<SavedPrompt | null>(null);
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => deletePrompt(id),
@@ -35,6 +37,36 @@ export default function LibraryPage() {
 
   const categories = [...new Set((prompts as SavedPrompt[] | undefined)?.map((p) => p.category).filter(Boolean) ?? [])];
 
+  const handleExport = useCallback(() => {
+    if (!prompts) return;
+    const blob = new Blob([JSON.stringify(prompts, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "talos-prompts.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [prompts]);
+
+  const handleImport = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const imported = JSON.parse(text) as SavedPrompt[];
+        for (const p of imported) {
+          await createPrompt({ name: p.name, content: p.content, category: p.category, stages: p.stages, preferredTools: p.preferredTools });
+        }
+        qc.invalidateQueries({ queryKey: ["prompts"] });
+      } catch { /* ignore invalid files */ }
+    };
+    input.click();
+  }, [qc]);
+
   return (
     <div className="min-h-screen flex flex-col">
       <NavTabs />
@@ -44,15 +76,23 @@ export default function LibraryPage() {
             <BookOpen className="h-6 w-6" />
             <h1 className="text-2xl font-bold">Prompt Library</h1>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="h-4 w-4 mr-1" />New Prompt</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader><DialogTitle>Create Prompt</DialogTitle></DialogHeader>
-              <PromptForm onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setCreateOpen(false); }} />
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleImport}>
+              <Upload className="h-4 w-4 mr-1" />Import
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExport}>
+              <Download className="h-4 w-4 mr-1" />Export
+            </Button>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger asChild>
+                <Button><Plus className="h-4 w-4 mr-1" />New Prompt</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader><DialogTitle>Create Prompt</DialogTitle></DialogHeader>
+                <PromptForm onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setCreateOpen(false); }} />
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <div className="flex gap-2 mb-4">
@@ -78,6 +118,12 @@ export default function LibraryPage() {
                     {p.category && <Badge variant="secondary" className="mt-1">{p.category}</Badge>}
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setVariablesOpen(p)} title="Template variables">
+                      <Variable className="h-3 w-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setPipelineOpen(p)} title="Pipeline stages">
+                      <GitBranch className="h-3 w-3" />
+                    </Button>
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditPrompt(p)}>
@@ -97,6 +143,7 @@ export default function LibraryPage() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground line-clamp-3">{p.content}</p>
+                <TemplateVariableBadges content={p.content} />
                 {p.stages && p.stages.length > 0 && (
                   <div className="mt-2 flex gap-1">
                     <Badge variant="outline" className="text-xs">{p.stages.length} stages</Badge>
@@ -119,10 +166,160 @@ export default function LibraryPage() {
             </div>
           )}
         </div>
+
+        {/* Pipeline Builder Dialog (#224) */}
+        <Dialog open={!!pipelineOpen} onOpenChange={(open) => !open && setPipelineOpen(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader><DialogTitle>Pipeline Builder — {pipelineOpen?.name}</DialogTitle></DialogHeader>
+            {pipelineOpen && <PipelineBuilder prompt={pipelineOpen} onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setPipelineOpen(null); }} />}
+          </DialogContent>
+        </Dialog>
+
+        {/* Template Variables Dialog (#225) */}
+        <Dialog open={!!variablesOpen} onOpenChange={(open) => !open && setVariablesOpen(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Template Variables — {variablesOpen?.name}</DialogTitle></DialogHeader>
+            {variablesOpen && <TemplateVariablesPanel prompt={variablesOpen} />}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
 }
+
+// ── Template Variable Badges ──────────────────────────────────────────────────
+
+function TemplateVariableBadges({ content }: { content: string }) {
+  const vars = extractVariables(content);
+  if (vars.length === 0) return null;
+  return (
+    <div className="mt-2 flex gap-1 flex-wrap">
+      {vars.map((v) => (
+        <Badge key={v} variant="secondary" className="text-[10px] font-mono">{`{{${v}}}`}</Badge>
+      ))}
+    </div>
+  );
+}
+
+function extractVariables(content: string): string[] {
+  const matches = content.match(/\{\{(\w+)\}\}/g);
+  if (!matches) return [];
+  return [...new Set(matches.map((m) => m.slice(2, -2)))];
+}
+
+// ── Template Variables Panel (#225) ───────────────────────────────────────────
+
+function TemplateVariablesPanel({ prompt }: { prompt: SavedPrompt }) {
+  const vars = extractVariables(prompt.content);
+  const [values, setValues] = useState<Record<string, string>>({});
+
+  const rendered = vars.reduce(
+    (text, v) => text.replaceAll(`{{${v}}}`, values[v] || `{{${v}}}`),
+    prompt.content,
+  );
+
+  return (
+    <div className="space-y-4">
+      {vars.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No template variables found. Use {"{{variable}}"} syntax in your prompt content.</p>
+      ) : (
+        <>
+          <div className="space-y-2">
+            {vars.map((v) => (
+              <div key={v} className="flex items-center gap-2">
+                <label className="text-sm font-mono w-32 truncate">{`{{${v}}}`}</label>
+                <Input
+                  className="flex-1"
+                  placeholder={`Value for ${v}`}
+                  value={values[v] ?? ""}
+                  onChange={(e) => setValues((prev) => ({ ...prev, [v]: e.target.value }))}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="border-t pt-3">
+            <h4 className="text-sm font-medium mb-1">Preview</h4>
+            <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap max-h-40 overflow-y-auto">{rendered}</pre>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Pipeline Builder (#224) ───────────────────────────────────────────────────
+
+interface PipelineStage {
+  name: string;
+  prompt: string;
+}
+
+function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () => void }) {
+  const [stages, setStages] = useState<PipelineStage[]>(
+    (prompt.stages as PipelineStage[] | undefined) ?? [{ name: "Stage 1", prompt: prompt.content }],
+  );
+
+  const mutation = useMutation({
+    mutationFn: () => updatePrompt(prompt.id, { stages }),
+    onSuccess: onSave,
+  });
+
+  const addStage = () => {
+    setStages((prev) => [...prev, { name: `Stage ${prev.length + 1}`, prompt: "" }]);
+  };
+
+  const removeStage = (index: number) => {
+    setStages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateStage = (index: number, updates: Partial<PipelineStage>) => {
+    setStages((prev) => prev.map((s, i) => i === index ? { ...s, ...updates } : s));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-3">
+        {stages.map((stage, i) => (
+          <Card key={i}>
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">{i + 1}</Badge>
+                <Input
+                  className="flex-1"
+                  value={stage.name}
+                  onChange={(e) => updateStage(i, { name: e.target.value })}
+                  placeholder="Stage name"
+                />
+                {stages.length > 1 && (
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeStage(i)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+              <textarea
+                className="w-full min-h-[80px] p-2 border rounded text-xs font-mono resize-y"
+                placeholder="Stage prompt..."
+                value={stage.prompt}
+                onChange={(e) => updateStage(i, { prompt: e.target.value })}
+              />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="sm" onClick={addStage}>
+          <Plus className="h-3 w-3 mr-1" />Add Stage
+        </Button>
+        <Button size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          {mutation.isPending ? "Saving..." : "Save Pipeline"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Original Prompt Form ──────────────────────────────────────────────────────
 
 function PromptForm({ prompt, onSave }: { prompt?: SavedPrompt; onSave: () => void }) {
   const [name, setName] = useState(prompt?.name ?? "");
