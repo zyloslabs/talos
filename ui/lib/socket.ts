@@ -35,7 +35,7 @@ export interface DiscoveryUpdate {
 
 export function useSocket() {
   const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(() => getSocket().connected);
 
   useEffect(() => {
     const socket = getSocket();
@@ -46,10 +46,6 @@ export function useSocket() {
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-
-    if (socket.connected) {
-      setIsConnected(true);
-    }
 
     return () => {
       socket.off("connect", onConnect);

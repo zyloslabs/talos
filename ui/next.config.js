@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
   skipTrailingSlashRedirect: true,
   async rewrites() {
     const apiBase = process.env.TALOS_API_BASE || "http://localhost:3000";
