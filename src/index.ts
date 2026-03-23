@@ -280,7 +280,7 @@ app.post("/api/talos/tests/generate", async (req, res) => {
 
   // Generate a draft test — in a full implementation this would call the LLM
   const testName = `Generated: ${prompt.substring(0, 50)}`;
-  const code = `import { test, expect } from '@playwright/test';\n\ntest('${testName}', async ({ page }) => {\n  // Generated test for: ${prompt}\n  await page.goto('${app_.baseUrl}');\n  // TODO: Implement test logic\n});\n`;
+  const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
 
   const created = repo.createTest({
     applicationId,

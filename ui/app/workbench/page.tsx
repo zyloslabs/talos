@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSocket } from "@/lib/socket";
 import { NavTabs } from "@/components/talos/nav-tabs";
@@ -30,9 +30,16 @@ export default function WorkbenchPage() {
   const [stepConfigs, setStepConfigs] = useState<Record<string, Record<string, string>>>({});
   const [result, setResult] = useState<OrchestrateResult | null>(null);
   const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
   const { subscribe } = useSocket();
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const orchestrateMut = useMutation({
     mutationFn: () => startOrchestration({
@@ -55,6 +62,7 @@ export default function WorkbenchPage() {
       });
       setWizardStep("running");
       // Poll for completion
+      if (pollRef.current) clearInterval(pollRef.current);
       const poll = setInterval(async () => {
         try {
           const status = await getOrchestrationStatus(data.runId);
@@ -62,9 +70,14 @@ export default function WorkbenchPage() {
             setResult(status);
             setWizardStep("results");
             clearInterval(poll);
+            pollRef.current = null;
           }
-        } catch { clearInterval(poll); }
+        } catch {
+          clearInterval(poll);
+          pollRef.current = null;
+        }
       }, 2000);
+      pollRef.current = poll;
     },
   });
 
@@ -75,6 +88,10 @@ export default function WorkbenchPage() {
   };
 
   const handleReset = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
     setWizardStep("select-app");
     setSelectedApp(null);
     setSelectedSteps(STEPS.map((s) => s.id));
