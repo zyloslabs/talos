@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Comprehensive Test Suite** (PR #234): 375 tests across 26 test files achieving 80.77% statement coverage / 84.07% line coverage. Covers all Talos subsystems: repository, config, tools, discovery engine, RAG pipeline, vector store, embedding service, test generator, healing engine, failure analyzer, fix generator, code validator, credential injector/sanitizer, file chunker, artifact manager, playwright runner, export engine, package builder, GitHub MCP client, admin API, orchestration endpoints, copilot wrapper, and environment manager.
+
 ### Changed
 
 - **React 18 → 19** (#195): Upgraded to React 19 with new lint rules, ref-as-prop support. Fixed `useSocket` to use initializer function pattern instead of setState-in-effect.
