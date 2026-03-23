@@ -10,7 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev -p ${PORT:-3001}",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -38,6 +38,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.0.0",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/jest-dom": "^6.9.1",

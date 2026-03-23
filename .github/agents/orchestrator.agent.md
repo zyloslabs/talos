@@ -19,6 +19,7 @@ agents:
   - Code Planner
   - Code Issue
   - Code Review
+  - E2E Test
 ---
 
 # Orchestrator Agent
@@ -34,11 +35,12 @@ By running the entire Plan → Implement → Review pipeline in a single session
 Track progress through these phases using `#tool:todo`:
 
 1. **PLAN** — Call the Code Planner subagent to create epics and issues
-2. **IMPLEMENT** — Call the Code Issue subagent to implement all issues
-3. **REVIEW** — Call the Code Review subagent to review the resulting PR
-4. **FIX** — If review finds blocking issues, call Code Issue again to fix them
-5. **RE-REVIEW** — Call Code Review again to verify fixes (max 2 review cycles)
-6. **REPORT** — Summarize results to the user
+2. **IMPLEMENT** — Call the Code Issue subagent to implement all issues (≥80% unit test coverage)
+3. **E2E TEST** — If the PR includes UI changes, call the E2E Test subagent to write Playwright tests
+4. **REVIEW** — Call the Code Review subagent to review the resulting PR
+5. **FIX** — If review finds blocking issues, call Code Issue again to fix them
+6. **RE-REVIEW** — Call Code Review again to verify fixes (max 2 review cycles)
+7. **REPORT** — Summarize results to the user
 
 ## Phase Details
 
@@ -62,7 +64,19 @@ Call the **Code Issue** subagent with `#tool:agent/runSubagent`:
 
 **Extract from the result**: The PR number. You need this for the review phase.
 
-### Phase 3: REVIEW
+### Phase 3: E2E TEST (conditional — UI work)
+
+If the PR includes UI changes (new pages, component updates, user-facing features), call the **E2E Test** subagent:
+
+- **agentName**: `E2E Test`
+- **description**: `Writing Playwright e2e tests for PR #{N}`
+- **prompt**: *"Write Playwright end-to-end tests for PR #{PR_NUMBER} which implements epic #{EPIC_NUMBER}. Read the e2e-test skill at `.github/skills/e2e-test/SKILL.md` for the full workflow. Map every acceptance criterion from the linked issues to concrete test cases. Use Page Object Model, accessible locators only, and web-first assertions. Push tests to the existing feature branch. When done, report the test count and acceptance criteria coverage."*
+
+**Skip this phase** if the PR has no UI changes (backend-only, config, tooling, etc.).
+
+**Extract from the result**: Test count and acceptance criteria coverage.
+
+### Phase 4: REVIEW
 
 Call the **Code Review** subagent with `#tool:agent/runSubagent`:
 
@@ -72,7 +86,7 @@ Call the **Code Review** subagent with `#tool:agent/runSubagent`:
 
 **Extract from the result**: The verdict and any blocking issues.
 
-### Phase 4: FIX (conditional)
+### Phase 5: FIX (conditional)
 
 If the review verdict is **REQUEST_CHANGES** or there are blocking issues:
 
@@ -82,11 +96,11 @@ Call the **Code Issue** subagent again:
 - **description**: `Fixing review comments on PR #{N}`
 - **prompt**: *"Fix the review comments on PR #{PR_NUMBER}. Read the resolve-pr-comments skill at `.github/skills/resolve-pr-comments/SKILL.md`. Address all blocking issues: {list issues from review}. Run tests and lint after fixes. Push to the existing branch. When done, confirm the fixes are pushed."*
 
-### Phase 5: RE-REVIEW (conditional)
+### Phase 6: RE-REVIEW (conditional)
 
 If fixes were applied, call **Code Review** one more time with the same PR number. Limit to **2 total review cycles** to avoid infinite loops. If the second review still has blocking issues, report them to the user for manual resolution.
 
-### Phase 6: REPORT
+### Phase 7: REPORT
 
 Present a summary to the user:
 
@@ -100,6 +114,12 @@ Present a summary to the user:
 ### Implementation
 - Branch: `feature/...`
 - PR: #{pr_number}
+- Unit test coverage: ≥80% (enforced)
+
+### E2E Tests (if applicable)
+- Tests written: {count}
+- Acceptance criteria covered: {N}/{total}
+- Unmapped criteria: {list or "None"}
 
 ### Review
 - Verdict: {APPROVE/COMMENT/REQUEST_CHANGES}

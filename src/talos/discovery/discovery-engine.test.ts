@@ -1,0 +1,187 @@
+/**
+ * Tests for DiscoveryEngine
+ * Covers: constructor, startDiscovery, getProgress, URL parsing, file filtering
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import Database from "better-sqlite3";
+import { TalosRepository } from "../repository.js";
+import { DiscoveryEngine } from "./discovery-engine.js";
+
+function createRepo() {
+  const db = new Database(":memory:");
+  db.pragma("journal_mode = WAL");
+  db.pragma("foreign_keys = ON");
+  const repo = new TalosRepository(db);
+  repo.migrate();
+  return repo;
+}
+
+const discoveryConfig = {
+  maxFileSizeBytes: 100000,
+  chunkSize: 500,
+  chunkOverlap: 50,
+  includeExtensions: [".ts", ".tsx", ".js", ".jsx", ".py"],
+  excludePatterns: ["node_modules", "dist", ".git"],
+};
+
+describe("DiscoveryEngine", () => {
+  let repo: TalosRepository;
+
+  beforeEach(() => {
+    repo = createRepo();
+  });
+
+  it("constructs with minimal options", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it("constructs with full options", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => "secret",
+      storeChunks: async () => {},
+      clock: () => new Date("2025-01-01"),
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it("startDiscovery returns job with pending status", async () => {
+    const storeChunks = vi.fn();
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => "ghp_test",
+      storeChunks,
+      clock: () => new Date("2025-01-01"),
+    });
+
+    const app = repo.createApplication({
+      name: "TestApp",
+      repositoryUrl: "https://github.com/owner/repo",
+      baseUrl: "https://example.com",
+      githubPatRef: "vault:github-pat",
+    });
+
+    const job = await engine.startDiscovery(app);
+    expect(job.id).toBeTruthy();
+    expect(job.status).toBe("pending");
+    expect(job.applicationId).toBe(app.id);
+  });
+
+  it("getProgress returns null for unknown job", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    expect(engine.getProgress("nonexistent")).toBeNull();
+  });
+
+  it("getProgress returns progress for started job", async () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => "ghp_test",
+      storeChunks: async () => {},
+    });
+
+    const app = repo.createApplication({
+      name: "TestApp",
+      repositoryUrl: "https://github.com/owner/repo",
+      baseUrl: "https://example.com",
+      githubPatRef: "vault:github-pat",
+    });
+
+    const job = await engine.startDiscovery(app);
+    const progress = engine.getProgress(job.id);
+    expect(progress).toBeTruthy();
+    expect(progress!.jobId).toBe(job.id);
+  });
+
+  it("startDiscovery fails when no PAT configured", async () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => "ghp_test",
+    });
+
+    const app = repo.createApplication({
+      name: "TestApp",
+      repositoryUrl: "https://github.com/owner/repo",
+      baseUrl: "https://example.com",
+      // No githubPatRef
+    });
+
+    const job = await engine.startDiscovery(app);
+    // Wait for background runDiscovery to fail
+    await new Promise((r) => setTimeout(r, 50));
+    const progress = engine.getProgress(job.id);
+    expect(progress!.status).toBe("failed");
+    expect(progress!.errorMessage).toContain("PAT");
+  });
+
+  it("parseRepoUrl handles HTTPS URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    // Access private method
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const result = parse.call(engine, "https://github.com/myorg/myrepo");
+    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+  });
+
+  it("parseRepoUrl handles SSH URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const result = parse.call(engine, "git@github.com:myorg/myrepo.git");
+    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+  });
+
+  it("parseRepoUrl handles owner/repo format", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const result = parse.call(engine, "myorg/myrepo");
+    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+  });
+
+  it("parseRepoUrl throws for invalid URL", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    expect(() => parse.call(engine, "")).toThrow("Invalid repository URL");
+  });
+
+  it("filterFiles respects includeExtensions and excludePatterns", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const filter = (engine as unknown as { filterFiles: (files: { path: string; type: string; size: number }[]) => { path: string }[] }).filterFiles;
+
+    const files = [
+      { path: "src/app.ts", type: "file", size: 100 },
+      { path: "src/app.tsx", type: "file", size: 100 },
+      { path: "node_modules/lib.ts", type: "file", size: 100 },
+      { path: "README.md", type: "file", size: 100 },
+      { path: "src/dir", type: "tree", size: 0 },
+    ];
+
+    const result = filter.call(engine, files);
+    expect(result).toHaveLength(2);
+    expect(result.map((f: { path: string }) => f.path)).toEqual(["src/app.ts", "src/app.tsx"]);
+  });
+});

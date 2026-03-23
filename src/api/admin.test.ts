@@ -338,4 +338,109 @@ describe("Admin API", () => {
       });
     });
   });
+
+  // ── Knowledge Base ──
+
+  describe("knowledge endpoints", () => {
+    it("GET /knowledge/stats returns document and chunk counts", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/stats`, { headers: authHeaders });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data).toHaveProperty("documentCount");
+        expect(data).toHaveProperty("chunkCount");
+        expect(data).toHaveProperty("lastIndexedAt");
+      });
+    });
+
+    it("GET /knowledge/documents returns array", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/documents`, { headers: authHeaders });
+        expect(res.status).toBe(200);
+        const data = await res.json();
+        expect(Array.isArray(data)).toBe(true);
+      });
+    });
+
+    it("POST /knowledge/search requires query", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/search`, {
+          method: "POST", headers: authHeaders, body: JSON.stringify({}),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("POST /knowledge/search returns results for valid query", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/search`, {
+          method: "POST", headers: authHeaders, body: JSON.stringify({ query: "login flow" }),
+        });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data).toHaveProperty("results");
+      });
+    });
+
+    it("GET /knowledge/config returns default config", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/config`, { headers: authHeaders });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data).toHaveProperty("vectorDbPath");
+        expect(data).toHaveProperty("collectionName");
+        expect(data).toHaveProperty("searchMode");
+        expect(data).toHaveProperty("minScore");
+      });
+    });
+
+    it("PUT /knowledge/config updates with valid data", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/config`, {
+          method: "PUT", headers: authHeaders, body: JSON.stringify({ minScore: 0.7 }),
+        });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data.minScore).toBe(0.7);
+      });
+    });
+
+    it("PUT /knowledge/config rejects invalid searchMode", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/config`, {
+          method: "PUT", headers: authHeaders, body: JSON.stringify({ searchMode: "invalid" }),
+        });
+        expect(res.status).toBe(400);
+        const data = await json(res);
+        expect(data.error).toBe("Invalid knowledge config");
+      });
+    });
+
+    it("PUT /knowledge/config rejects minScore out of range", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/config`, {
+          method: "PUT", headers: authHeaders, body: JSON.stringify({ minScore: 5 }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("PUT /knowledge/config rejects unknown fields", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/config`, {
+          method: "PUT", headers: authHeaders, body: JSON.stringify({ unknownField: "bad" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("DELETE /knowledge/documents/:docId returns 404 for non-existent doc", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/knowledge/documents/nonexistent`, {
+          method: "DELETE", headers: authHeaders,
+        });
+        expect(res.status).toBe(404);
+      });
+    });
+  });
 });

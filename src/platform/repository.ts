@@ -193,6 +193,26 @@ export class PlatformRepository {
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
       CREATE INDEX IF NOT EXISTS idx_saved_prompts_category ON saved_prompts(category);
       CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs(enabled);
+
+      -- Knowledge Base tables (#214)
+      CREATE TABLE IF NOT EXISTS knowledge_documents (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'code',
+        chunk_count INTEGER NOT NULL DEFAULT 0,
+        indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS knowledge_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        vector_db_path TEXT NOT NULL DEFAULT '~/.talos/vectordb',
+        collection_name TEXT NOT NULL DEFAULT 'talos_chunks',
+        search_mode TEXT NOT NULL DEFAULT 'hybrid',
+        min_score REAL NOT NULL DEFAULT 0.5
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_knowledge_documents_app ON knowledge_documents(application_id);
     `);
 
     // Seed default personality if none exists
@@ -527,5 +547,54 @@ export class PlatformRepository {
   deleteSkill(id: string): boolean {
     const result = this.db.prepare("DELETE FROM skills WHERE id = ?").run(id);
     return result.changes > 0;
+  }
+
+  // ── Knowledge Base ──
+
+  getKnowledgeStats(): { documentCount: number; chunkCount: number; lastIndexedAt: string | null } {
+    const docCount = (this.db.prepare("SELECT COUNT(*) as count FROM knowledge_documents").get() as { count: number })?.count ?? 0;
+    const chunkCount = (this.db.prepare("SELECT SUM(chunk_count) as total FROM knowledge_documents").get() as { total: number | null })?.total ?? 0;
+    const lastRow = this.db.prepare("SELECT MAX(indexed_at) as last FROM knowledge_documents").get() as { last: string | null } | undefined;
+    return { documentCount: docCount, chunkCount, lastIndexedAt: lastRow?.last ?? null };
+  }
+
+  listKnowledgeDocuments(): { id: string; applicationId: string; filePath: string; type: string; chunkCount: number; indexedAt: string }[] {
+    return this.db.prepare("SELECT * FROM knowledge_documents ORDER BY indexed_at DESC").all() as { id: string; applicationId: string; filePath: string; type: string; chunkCount: number; indexedAt: string }[];
+  }
+
+  deleteKnowledgeDocument(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM knowledge_documents WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  getKnowledgeConfig(): { vectorDbPath: string; collectionName: string; searchMode: string; minScore: number } {
+    const row = this.db.prepare("SELECT * FROM knowledge_config WHERE id = 'default'").get() as
+      { vector_db_path: string; collection_name: string; search_mode: string; min_score: number } | undefined;
+    return row ? {
+      vectorDbPath: row.vector_db_path,
+      collectionName: row.collection_name,
+      searchMode: row.search_mode,
+      minScore: row.min_score,
+    } : {
+      vectorDbPath: "~/.talos/vectordb",
+      collectionName: "talos_chunks",
+      searchMode: "hybrid",
+      minScore: 0.5,
+    };
+  }
+
+  updateKnowledgeConfig(config: Record<string, unknown>): { vectorDbPath: string; collectionName: string; searchMode: string; minScore: number } {
+    const current = this.getKnowledgeConfig();
+    const updated = {
+      vectorDbPath: (config.vectorDbPath as string) ?? current.vectorDbPath,
+      collectionName: (config.collectionName as string) ?? current.collectionName,
+      searchMode: (config.searchMode as string) ?? current.searchMode,
+      minScore: (config.minScore as number) ?? current.minScore,
+    };
+    this.db.prepare(`
+      INSERT OR REPLACE INTO knowledge_config (id, vector_db_path, collection_name, search_mode, min_score)
+      VALUES ('default', ?, ?, ?, ?)
+    `).run(updated.vectorDbPath, updated.collectionName, updated.searchMode, updated.minScore);
+    return updated;
   }
 }
