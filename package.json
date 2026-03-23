@@ -22,34 +22,33 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.2.0",
-    "@lancedb/lancedb": "^0.26.2",
+    "@lancedb/lancedb": "^0.27.1",
     "@playwright/test": "^1.52.0",
     "better-sqlite3": "^12.6.2",
     "cron-parser": "^5.5.0",
     "express": "^5.2.1",
     "nanoid": "^5.1.6",
-    "openai": "^4.96.0",
     "socket.io": "^4.8.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
-    "@types/node": "^22.19.13",
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "@vitest/coverage-v8": "^2.1.9",
-    "eslint": "^8.57.1",
+    "@types/node": "^25.5.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
     "prettier": "^3.8.1",
     "tsx": "^4.19.4",
     "typescript": "^5.8.2",
-    "vitest": "^2.1.9"
+    "vite": "^8.0.0",
+    "vitest": "^4.1.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
