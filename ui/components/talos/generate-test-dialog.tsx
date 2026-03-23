@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { InlineModelPicker } from "@/components/talos/inline-model-picker";
+import { useSocket } from "@/lib/socket";
 import { generateTest, getApplications, type TalosApplication, type GeneratedTest } from "@/lib/api";
 import { Wand2, X, Loader2, Check, RotateCcw } from "lucide-react";
 
 type WizardStep = "describe" | "configure" | "generating" | "review";
+
+type ProgressStage = { stage: string; progress: number };
 
 export interface GenerateTestDialogProps {
   applicationId?: string;
@@ -24,17 +26,35 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
   const [model, setModel] = useState("");
   const [testType, setTestType] = useState("e2e");
   const [generated, setGenerated] = useState<GeneratedTest | null>(null);
+  const [progress, setProgress] = useState<ProgressStage | null>(null);
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
+  const { subscribe } = useSocket();
+
+  // Listen for real-time generation progress
+  useEffect(() => {
+    if (step !== "generating") return;
+    const unsubs = [
+      subscribe<ProgressStage>("generation:progress", (data) => {
+        setProgress(data);
+      }),
+      subscribe<{ generationId: string; error: string }>("generation:error", () => {
+        setStep("configure");
+        setProgress(null);
+      }),
+    ];
+    return () => { unsubs.forEach((fn) => fn()); };
+  }, [step, subscribe]);
 
   const genMutation = useMutation({
     mutationFn: () => generateTest({ applicationId: selectedApp, prompt, model: model || undefined, testType }),
-    onSuccess: (data) => { setGenerated(data); setStep("review"); },
-    onError: () => setStep("configure"),
+    onSuccess: (data) => { setGenerated(data); setStep("review"); setProgress(null); },
+    onError: () => { setStep("configure"); setProgress(null); },
   });
 
   const handleGenerate = () => {
     setStep("generating");
+    setProgress(null);
     genMutation.mutate();
   };
 
@@ -47,9 +67,21 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
     setStep("describe");
     setPrompt("");
     setGenerated(null);
+    setProgress(null);
   };
 
   if (!open) return null;
+
+  const stageLabel = (stage: string) => {
+    switch (stage) {
+      case "building-prompt": return "Building prompt with RAG context…";
+      case "calling-llm": return "Calling AI model…";
+      case "generating": return "Generating test code…";
+      case "validating": return "Validating generated code…";
+      case "creating-test": return "Saving test…";
+      default: return "Processing…";
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -137,8 +169,20 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
           {step === "generating" && (
             <div className="flex flex-col items-center py-12 space-y-4">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Generating test code...</p>
-              <p className="text-xs text-muted-foreground">This may take a moment</p>
+              <p className="text-sm text-muted-foreground">
+                {progress ? stageLabel(progress.stage) : "Generating test code..."}
+              </p>
+              {progress && (
+                <div className="w-full max-w-xs">
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${progress.progress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center mt-1">{progress.progress}%</p>
+                </div>
+              )}
             </div>
           )}
 

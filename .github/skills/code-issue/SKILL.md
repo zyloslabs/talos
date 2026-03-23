@@ -78,7 +78,10 @@ This skill should be executed by the **Code Issue** agent (`code-issue.agent.md`
 #### 3a. Test-Driven Development
 - Write failing unit tests that verify the expected behavior
 - Implement the minimum code to make tests pass
-- Run the full test suite and verify ≥80% coverage
+- Run the full test suite with coverage: `pnpm test:coverage`
+- **Verify ≥80% coverage** across statements, branches, functions, and lines
+- If any metric is below 80%, write additional tests until the gate passes
+- This is a **hard gate** — do not proceed to delivery with coverage below 80%
 - Use `mcp_context7_query-docs` when unsure about API usage
 
 #### 3b. Lint & Format
@@ -124,7 +127,7 @@ Before creating the PR, perform a comprehensive security review:
 
 1. Check for CI configuration (`.github/workflows/`, `Jenkinsfile`, etc.)
 2. Run CI tasks locally where possible
-3. Verify: all tests pass, linter clean, coverage ≥80%
+2. Verify: all tests pass, linter clean, **coverage ≥80% (run `pnpm test:coverage` and check the summary table)**
 
 ### Step 5.5: Update Living Documents
 
@@ -180,7 +183,7 @@ Update if this issue introduced:
 Present to the user:
 - **PR link**
 - **Issues to close** — numbered list
-- **Coverage** — statement/branch/function/line percentages
+- **Coverage** — statement/branch/function/line percentages (all must be ≥80%)
 - **Security** — clean scan or findings with status
 
 Then state:

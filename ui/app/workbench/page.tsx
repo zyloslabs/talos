@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useSocket } from "@/lib/socket";
 import { NavTabs } from "@/components/talos/nav-tabs";
 import { Button } from "@/components/ui/button";
@@ -22,15 +23,50 @@ const STEPS = [
 ] as const;
 
 type WizardStep = "select-app" | "configure" | "running" | "results";
+const WIZARD_STEPS: WizardStep[] = ["select-app", "configure", "running", "results"];
+
+function stepToIndex(step: WizardStep): number {
+  return WIZARD_STEPS.indexOf(step);
+}
 
 export default function WorkbenchPage() {
-  const [wizardStep, setWizardStep] = useState<WizardStep>("select-app");
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+      <WorkbenchContent />
+    </Suspense>
+  );
+}
+
+function WorkbenchContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  // Restore step from URL on initial load
+  const initialStep = (() => {
+    const urlStep = searchParams.get("step");
+    if (urlStep) {
+      const idx = parseInt(urlStep, 10) - 1;
+      if (idx >= 0 && idx < WIZARD_STEPS.length) return WIZARD_STEPS[idx];
+    }
+    return "select-app" as WizardStep;
+  })();
+
+  const [wizardStep, setWizardStepRaw] = useState<WizardStep>(initialStep);
   const [selectedApp, setSelectedApp] = useState<TalosApplication | null>(null);
   const [selectedSteps, setSelectedSteps] = useState<string[]>(STEPS.map((s) => s.id));
   const [stepConfigs, setStepConfigs] = useState<Record<string, Record<string, string>>>({});
   const [result, setResult] = useState<OrchestrateResult | null>(null);
   const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sync wizard step to URL param
+  const setWizardStep = useCallback((step: WizardStep) => {
+    setWizardStepRaw(step);
+    const stepNum = stepToIndex(step) + 1;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("step", String(stepNum));
+    router.replace(`/workbench?${params.toString()}`);
+  }, [searchParams, router]);
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
   const { subscribe } = useSocket();
@@ -98,6 +134,16 @@ export default function WorkbenchPage() {
     setStepConfigs({});
     setResult(null);
     setLiveStepStatus({});
+  };
+
+  // Step validation: can only advance forward when criteria are met
+  const canAdvanceTo = (target: WizardStep): boolean => {
+    switch (target) {
+      case "configure": return selectedApp !== null;
+      case "running": return selectedApp !== null && selectedSteps.length > 0;
+      case "results": return result !== null;
+      default: return true;
+    }
   };
 
   return (

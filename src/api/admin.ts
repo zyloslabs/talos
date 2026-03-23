@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { PlatformRepository } from "../platform/repository.js";
 import { EnvManager, EnvValidationError } from "../platform/env-manager.js";
 import type { CopilotWrapper } from "../copilot/copilot-wrapper.js";
+import type { RagPipeline } from "../talos/rag/rag-pipeline.js";
 import type {
   CreatePromptInput,
   UpdatePromptInput,
@@ -35,6 +36,7 @@ export type AdminRouterDeps = {
   copilot?: CopilotWrapper;
   adminToken?: string;
   envManager?: EnvManager;
+  ragPipeline?: RagPipeline;
 };
 
 const VALID_TASK_STATUSES: TaskStatus[] = ["pending", "running", "completed", "failed", "cancelled"];
@@ -73,7 +75,7 @@ function isUrlSafe(urlStr: string): boolean {
   }
 }
 
-export function createAdminRouter({ platformRepo, copilot, adminToken, envManager }: AdminRouterDeps): Router {
+export function createAdminRouter({ platformRepo, copilot, adminToken, envManager, ragPipeline }: AdminRouterDeps): Router {
   const router = Router();
 
   // ── Auth Middleware ────────────────────────────────────────────────────────
@@ -398,11 +400,33 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json(platformRepo.listKnowledgeDocuments());
   });
 
-  router.post("/knowledge/search", (req, res) => {
-    const { query, limit } = req.body as { query?: string; limit?: number };
+  router.post("/knowledge/search", async (req, res) => {
+    const { query, limit, applicationId, minScore } = req.body as {
+      query?: string; limit?: number; applicationId?: string; minScore?: number;
+    };
     if (!query) { res.status(400).json({ error: "query is required" }); return; }
-    // Placeholder — actual vector search requires RagPipeline init
-    res.json({ results: [], query, limit: limit ?? 10 });
+    if (!ragPipeline) {
+      res.json({ results: [], query, limit: limit ?? 10 });
+      return;
+    }
+    try {
+      const context = await ragPipeline.retrieve(applicationId ?? "", query, {
+        limit: limit ?? 10,
+        minScore: minScore ?? 0.5,
+      });
+      const results = context.chunks.map((c) => ({
+        content: c.content,
+        score: c.score,
+        filePath: c.filePath,
+        startLine: c.startLine,
+        endLine: c.endLine,
+        type: c.type,
+      }));
+      res.json({ results, query, limit: limit ?? 10 });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Search failed";
+      res.status(500).json({ error: msg });
+    }
   });
 
   router.post("/knowledge/reindex", (_req, res) => {

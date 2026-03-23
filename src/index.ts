@@ -20,6 +20,33 @@ import { createAdminRouter } from "./api/admin.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
 
+// ── Env File Bootstrap ────────────────────────────────────────────────────────
+// Load ~/.talos/.env into process.env before reading any config.
+// Shell env vars already set (e.g. PORT from dev-clean.sh) take precedence.
+{
+  const _dir = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
+  const _file = join(_dir, ".env");
+  if (existsSync(_file)) {
+    try {
+      for (const _line of readFileSync(_file, "utf-8").split("\n")) {
+        const _l = _line.trim();
+        if (!_l || _l.startsWith("#")) continue;
+        const _eq = _l.indexOf("=");
+        if (_eq === -1) continue;
+        const _key = _l.slice(0, _eq).trim();
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(_key) || _key in process.env) continue;
+        let _val = _l.slice(_eq + 1).trim();
+        if ((_val.startsWith('"') && _val.endsWith('"')) || (_val.startsWith("'") && _val.endsWith("'"))) {
+          _val = _val.slice(1, -1);
+        }
+        process.env[_key] = _val;
+      }
+    } catch {
+      // Non-fatal: continue without .env file values
+    }
+  }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
@@ -126,19 +153,10 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
 
   const jobId = `discovery-${req.params.id}-${Date.now()}`;
 
-  // Emit initial queued event; the real discovery engine integration
-  // can be wired in here when the DiscoveryEngine is configured.
-  setImmediate(() => {
-    io.emit("discovery:started", { jobId, applicationId: req.params.id });
-    io.emit("discovery:completed", {
-      jobId,
-      applicationId: req.params.id,
-      status: "completed",
-      filesDiscovered: 0,
-      filesIndexed: 0,
-      chunksCreated: 0,
-    });
-  });
+  // Emit initial event, then track discovery asynchronously.
+  // A real DiscoveryEngine would be wired here; for now we emit start
+  // and the engine (when configured) will emit progress + completion.
+  io.emit("discovery:started", { jobId, applicationId: req.params.id });
 
   res.json({ jobId });
 });
@@ -278,22 +296,81 @@ app.post("/api/talos/tests/generate", async (req, res) => {
   const app_ = repo.getApplication(applicationId);
   if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
 
-  // Generate a draft test — in a full implementation this would call the LLM
-  const testName = `Generated: ${prompt.substring(0, 50)}`;
-  const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
+  const generationId = crypto.randomUUID();
+  io.emit("generation:started", { generationId, applicationId });
 
-  const created = repo.createTest({
-    applicationId,
-    name: testName,
-    description: prompt,
-    type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
-    code,
-    tags: ["ai-generated"],
-    generationConfidence: 0.75,
-  });
+  try {
+    if (!copilot) {
+      // Fallback: generate a template test when Copilot is unavailable
+      io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 30 });
+      const testName = `Generated: ${prompt.substring(0, 50)}`;
+      const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
 
-  io.emit("test:generated", { testId: created.id, applicationId });
-  res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence: created.generationConfidence ?? 0.75 });
+      io.emit("generation:progress", { generationId, stage: "creating-test", progress: 80 });
+
+      const created = repo.createTest({
+        applicationId,
+        name: testName,
+        description: prompt,
+        type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
+        code,
+        tags: ["ai-generated"],
+        generationConfidence: 0.5,
+      });
+
+      io.emit("generation:complete", { generationId, testId: created.id, confidence: 0.5 });
+      res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence: 0.5 });
+      return;
+    }
+
+    // Real LLM generation
+    io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 20 });
+
+    const systemPrompt = `You are an expert test automation engineer. Generate a complete Playwright test based on the user's request.
+Write clean TypeScript using modern Playwright API (getByRole, getByTestId). Include imports, describe blocks, and assertions.
+Return ONLY the test code inside a \`\`\`typescript code block, nothing else.
+Application URL: ${app_.baseUrl}`;
+
+    const userPrompt = `Generate a ${testType ?? "e2e"} test for: ${prompt}`;
+
+    io.emit("generation:progress", { generationId, stage: "calling-llm", progress: 40 });
+
+    let fullResponse = "";
+    const stream = copilot.chat(userPrompt, {
+      systemMessage: { mode: "replace", content: systemPrompt },
+    });
+    for await (const chunk of stream) {
+      fullResponse += chunk;
+      io.emit("generation:progress", { generationId, stage: "generating", progress: 60 });
+    }
+
+    io.emit("generation:progress", { generationId, stage: "validating", progress: 80 });
+
+    // Extract code from response
+    const codeBlockMatch = fullResponse.match(/```(?:typescript|ts|javascript|js)?\n([\s\S]*?)```/);
+    const code = codeBlockMatch ? codeBlockMatch[1].trim() : fullResponse.trim();
+    const testName = `Generated: ${prompt.substring(0, 50)}`;
+    const confidence = codeBlockMatch ? 0.85 : 0.6;
+
+    io.emit("generation:progress", { generationId, stage: "creating-test", progress: 90 });
+
+    const created = repo.createTest({
+      applicationId,
+      name: testName,
+      description: prompt,
+      type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
+      code,
+      tags: ["ai-generated"],
+      generationConfidence: confidence,
+    });
+
+    io.emit("generation:complete", { generationId, testId: created.id, confidence });
+    res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    io.emit("generation:error", { generationId, error: errMsg });
+    res.status(500).json({ error: `Generation failed: ${errMsg}` });
+  }
 });
 
 // ── Test Refinement (#221) ────────────────────────────────────────────────────
@@ -381,6 +458,72 @@ app.delete("/api/talos/sessions/:id", (req, res) => {
 
 // ── Orchestration (#232) ──────────────────────────────────────────────────────
 
+type OrchestrationStepState = { name: string; status: "pending" | "running" | "completed" | "failed"; result?: unknown; error?: string };
+type OrchestrationRun = { runId: string; applicationId: string; status: "pending" | "running" | "completed" | "failed"; steps: OrchestrationStepState[]; createdAt: string };
+const orchestrationRuns = new Map<string, OrchestrationRun>();
+
+async function runOrchestrationPipeline(run: OrchestrationRun, appRecord: ReturnType<typeof repo.getApplication>) {
+  if (!appRecord) return;
+  run.status = "running";
+  io.emit("orchestration:started", { runId: run.runId, applicationId: run.applicationId, steps: run.steps.map((s) => s.name) });
+
+  for (const step of run.steps) {
+    step.status = "running";
+    io.emit("orchestration:step", { runId: run.runId, step: step.name, status: "running" });
+
+    try {
+      switch (step.name) {
+        case "discover": {
+          const jobId = `discovery-${run.applicationId}-${Date.now()}`;
+          io.emit("discovery:started", { jobId, applicationId: run.applicationId });
+          step.result = { jobId };
+          break;
+        }
+        case "index": {
+          step.result = { indexed: 0, skipped: 0 };
+          break;
+        }
+        case "generate": {
+          const tests = repo.listTestsByApp(run.applicationId);
+          step.result = { testsGenerated: 0, existingTests: tests.length };
+          break;
+        }
+        case "execute": {
+          const tests = repo.listTestsByApp(run.applicationId);
+          const results: { testId: string; status: string }[] = [];
+          for (const test of tests) {
+            const runRecord = repo.createTestRun({
+              testId: test.id,
+              applicationId: run.applicationId,
+              trigger: "ci",
+              triggeredBy: "ci",
+              browser: "chromium",
+            });
+            results.push({ testId: test.id, status: runRecord.status });
+            io.emit("talos:test-run-update", { id: runRecord.id, status: runRecord.status });
+          }
+          step.result = { runs: results };
+          break;
+        }
+        default:
+          step.result = {};
+      }
+      step.status = "completed";
+      io.emit("orchestration:step", { runId: run.runId, step: step.name, status: "completed" });
+    } catch (err) {
+      step.status = "failed";
+      step.error = err instanceof Error ? err.message : String(err);
+      io.emit("orchestration:step", { runId: run.runId, step: step.name, status: "failed", error: step.error });
+      run.status = "failed";
+      io.emit("orchestration:completed", { runId: run.runId, status: "failed" });
+      return;
+    }
+  }
+
+  run.status = "completed";
+  io.emit("orchestration:completed", { runId: run.runId, status: "completed" });
+}
+
 app.post("/api/talos/orchestrate", (req, res) => {
   const { applicationId, steps } = req.body as {
     applicationId?: string; steps?: string[]; config?: Record<string, unknown>;
@@ -392,29 +535,34 @@ app.post("/api/talos/orchestrate", (req, res) => {
   const runId = crypto.randomUUID();
   const defaultSteps = steps ?? ["discover", "index", "generate", "execute"];
 
-  // Create a task for orchestration
+  const run: OrchestrationRun = {
+    runId,
+    applicationId,
+    status: "pending",
+    steps: defaultSteps.map((name) => ({ name, status: "pending" })),
+    createdAt: new Date().toISOString(),
+  };
+  orchestrationRuns.set(runId, run);
+
   platformRepo.createTask({ prompt: `Orchestrate: ${defaultSteps.join(" → ")} for ${app_.name}` });
 
-  io.emit("orchestration:started", { runId, applicationId, steps: defaultSteps });
-
-  // Simulate step progression
-  setImmediate(() => {
-    for (const step of defaultSteps) {
-      io.emit("orchestration:step", { runId, step, status: "completed" });
-    }
-    io.emit("orchestration:completed", { runId, status: "completed" });
+  // Run pipeline asynchronously — not blocking the response
+  runOrchestrationPipeline(run, app_).catch((err) => {
+    run.status = "failed";
+    io.emit("orchestration:completed", { runId, status: "failed", error: err instanceof Error ? err.message : String(err) });
   });
 
   res.json({
     runId,
-    status: "started",
-    steps: defaultSteps.map((name) => ({ name, status: "pending" })),
+    status: "pending",
+    steps: run.steps,
   });
 });
 
 app.get("/api/talos/orchestrate/:runId", (req, res) => {
-  // Placeholder — would look up orchestration state
-  res.json({ runId: req.params.runId, status: "completed", steps: [] });
+  const run = orchestrationRuns.get(req.params.runId);
+  if (!run) { res.status(404).json({ error: "Orchestration run not found" }); return; }
+  res.json({ runId: run.runId, status: run.status, steps: run.steps });
 });
 
 // ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
