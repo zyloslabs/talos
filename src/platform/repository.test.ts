@@ -285,6 +285,11 @@ describe("PlatformRepository", () => {
       const updated = repo.updateAgent(agent.id, { enabled: true });
       expect(updated!.enabled).toBe(true);
     });
+
+    it("rejects duplicate agent names", () => {
+      repo.createAgent({ name: "UniqueBot" });
+      expect(() => repo.createAgent({ name: "UniqueBot" })).toThrow("already exists");
+    });
   });
 
   // ── Agent Skills ──

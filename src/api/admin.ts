@@ -446,13 +446,15 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   // ── AI Enhance (#245) ──────────────────────────────────────────────────────
 
   const EnhanceInputSchema = z.object({
-    text: z.string().min(1).max(50_000),
+    text: z.string().min(1).max(10_000),
     model: z.string().optional(),
     context: z.string().max(10_000).optional(),
   });
 
   router.post("/ai/enhance", async (req: Request, res: Response) => {
     if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
+    const authenticated = await copilot.isAuthenticated();
+    if (!authenticated) { res.status(401).json({ error: "Not authenticated" }); return; }
     const parsed = EnhanceInputSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
@@ -530,7 +532,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   });
 
   const AgentCreateSchema = z.object({
-    name: z.string().min(1).max(200),
+    name: z.string().min(1).max(100),
     description: z.string().max(2000).optional(),
     systemPrompt: z.string().max(50_000).optional(),
     toolsWhitelist: z.array(z.string()).optional(),
@@ -544,7 +546,15 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
       res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
       return;
     }
-    res.status(201).json(platformRepo.createAgent(parsed.data));
+    try {
+      res.status(201).json(platformRepo.createAgent(parsed.data));
+    } catch (err: unknown) {
+      if (err instanceof Error && (err as Error & { code?: string }).code === "DUPLICATE_NAME") {
+        res.status(409).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
   });
 
   router.put("/agents/:id", (req, res) => {
@@ -567,10 +577,17 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json(platformRepo.getAgentSkills(req.params.id));
   });
 
+  const AgentSkillsSchema = z.object({
+    skillIds: z.array(z.string()),
+  }).strict();
+
   router.put("/agents/:id/skills", (req, res) => {
-    const { skillIds } = req.body as { skillIds?: string[] };
-    if (!Array.isArray(skillIds)) { res.status(400).json({ error: "skillIds array is required" }); return; }
-    platformRepo.setAgentSkills(req.params.id, skillIds);
+    const parsed = AgentSkillsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    platformRepo.setAgentSkills(req.params.id, parsed.data.skillIds);
     res.json(platformRepo.getAgentSkills(req.params.id));
   });
 

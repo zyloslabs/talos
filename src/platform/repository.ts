@@ -208,7 +208,7 @@ export class PlatformRepository {
 
       CREATE TABLE IF NOT EXISTS agents (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL UNIQUE,
         description TEXT NOT NULL DEFAULT '',
         system_prompt TEXT NOT NULL DEFAULT '',
         tools_whitelist_json TEXT NOT NULL DEFAULT '[]',
@@ -667,20 +667,29 @@ export class PlatformRepository {
   createAgent(input: CreateAgentInput): Agent {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO agents (id, name, description, system_prompt, tools_whitelist_json, parent_agent_id, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.name,
-      input.description ?? "",
-      input.systemPrompt ?? "",
-      JSON.stringify(input.toolsWhitelist ?? []),
-      input.parentAgentId ?? null,
-      input.enabled !== false ? 1 : 0,
-      now,
-      now,
-    );
+    try {
+      this.db.prepare(`
+        INSERT INTO agents (id, name, description, system_prompt, tools_whitelist_json, parent_agent_id, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        id,
+        input.name,
+        input.description ?? "",
+        input.systemPrompt ?? "",
+        JSON.stringify(input.toolsWhitelist ?? []),
+        input.parentAgentId ?? null,
+        input.enabled !== false ? 1 : 0,
+        now,
+        now,
+      );
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
+        const dupErr = new Error(`Agent with name '${input.name}' already exists`);
+        (dupErr as Error & { code: string }).code = "DUPLICATE_NAME";
+        throw dupErr;
+      }
+      throw err;
+    }
     return toAgent(this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent);
   }
 

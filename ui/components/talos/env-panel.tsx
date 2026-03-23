@@ -40,13 +40,7 @@ const KNOWN_VARS: KnownVar[] = [
     required: false,
     category: "Authentication",
   },
-  {
-    key: "OPENAI_API_KEY",
-    label: "OpenAI API Key",
-    description: "For embeddings (optional — Copilot SDK handles generation)",
-    required: false,
-    category: "AI / Embeddings",
-  },
+
   {
     key: "TALOS_ADMIN_TOKEN",
     label: "Admin Token",

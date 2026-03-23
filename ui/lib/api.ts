@@ -313,6 +313,8 @@ export const updateSkill = (id: string, data: Partial<SkillDef>) =>
   fetchApi<SkillDef>(`/api/admin/skills/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const deleteSkill = (id: string) =>
   fetchApi<void>(`/api/admin/skills/${id}`, { method: "DELETE" });
+export const getSkillAgents = (skillId: string) =>
+  fetchApi<SkillDef & { agents: Agent[] }>(`/api/admin/skills/${skillId}`).then((r) => r.agents);
 
 // Environment Variables
 export interface EnvEntry { key: string; value: string; masked: boolean; _raw?: string }

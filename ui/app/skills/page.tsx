@@ -11,8 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   getSkills, createSkill, updateSkill, deleteSkill,
-  getAgents,
-  type SkillDef, type Agent,
+  getSkillAgents,
+  type SkillDef,
 } from "@/lib/api";
 import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import { Zap, Plus, Trash2, Pencil, Download, Upload, Play, Loader2, Copy, Wrench, Users } from "lucide-react";
@@ -254,8 +254,11 @@ function SkillForm({ skill, onSave }: { skill?: SkillDef; onSave: () => void }) 
   const [content, setContent] = useState(skill?.content ?? "");
   const [requiredTools, setRequiredTools] = useState(skill?.requiredTools?.join(", ") ?? "");
 
-  const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: getAgents });
-  const skillAgents = skill ? (agents as Agent[] | undefined)?.filter(() => false) : undefined;
+  const { data: skillAgents } = useQuery({
+    queryKey: ["skill-agents", skill?.id],
+    queryFn: () => getSkillAgents(skill!.id),
+    enabled: !!skill,
+  });
   // Agent assignment is read-only here — managed from the Agents page
 
   const mutation = useMutation({
