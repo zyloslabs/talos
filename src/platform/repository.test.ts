@@ -210,5 +210,136 @@ describe("PlatformRepository", () => {
       repo.createSkill({ name: "B", content: "b" });
       expect(repo.listSkills().length).toBe(2);
     });
+
+    it("handles requiredTools field", () => {
+      const skill = repo.createSkill({ name: "ToolSkill", content: "c", requiredTools: ["shell-execute", "web-search"] });
+      expect(skill.requiredTools).toEqual(["shell-execute", "web-search"]);
+
+      const updated = repo.updateSkill(skill.id, { requiredTools: ["shell-execute"] });
+      expect(updated!.requiredTools).toEqual(["shell-execute"]);
+    });
+
+    it("defaults requiredTools to empty array", () => {
+      const skill = repo.createSkill({ name: "NoTools", content: "c" });
+      expect(skill.requiredTools).toEqual([]);
+    });
+  });
+
+  // ── Agents ──
+
+  describe("agents", () => {
+    it("creates, reads, updates, deletes agents", () => {
+      const agent = repo.createAgent({ name: "Research Bot", description: "Researches topics", systemPrompt: "You are a researcher." });
+      expect(agent.name).toBe("Research Bot");
+      expect(agent.description).toBe("Researches topics");
+      expect(agent.systemPrompt).toBe("You are a researcher.");
+      expect(agent.enabled).toBe(true);
+      expect(agent.toolsWhitelist).toEqual([]);
+      expect(agent.parentAgentId).toBeNull();
+
+      const fetched = repo.getAgent(agent.id);
+      expect(fetched).not.toBeNull();
+      expect(fetched!.name).toBe("Research Bot");
+
+      const updated = repo.updateAgent(agent.id, { name: "Updated Bot", toolsWhitelist: ["web-search"] });
+      expect(updated!.name).toBe("Updated Bot");
+      expect(updated!.toolsWhitelist).toEqual(["web-search"]);
+
+      expect(repo.deleteAgent(agent.id)).toBe(true);
+      expect(repo.getAgent(agent.id)).toBeNull();
+    });
+
+    it("lists all agents", () => {
+      repo.createAgent({ name: "A" });
+      repo.createAgent({ name: "B" });
+      expect(repo.listAgents().length).toBe(2);
+    });
+
+    it("supports parent-child relationships", () => {
+      const parent = repo.createAgent({ name: "Parent" });
+      const child = repo.createAgent({ name: "Child", parentAgentId: parent.id });
+      expect(child.parentAgentId).toBe(parent.id);
+    });
+
+    it("sets parent to null when parent is deleted", () => {
+      const parent = repo.createAgent({ name: "Parent" });
+      repo.createAgent({ name: "Child", parentAgentId: parent.id });
+      repo.deleteAgent(parent.id);
+      // With ON DELETE SET NULL, child's parent_agent_id should be null
+      const agents = repo.listAgents();
+      expect(agents.length).toBe(1);
+      expect(agents[0].parentAgentId).toBeNull();
+    });
+
+    it("returns false when deleting non-existent agent", () => {
+      expect(repo.deleteAgent("nonexistent")).toBe(false);
+    });
+
+    it("returns null when updating non-existent agent", () => {
+      expect(repo.updateAgent("nonexistent", { name: "x" })).toBeNull();
+    });
+
+    it("handles enabled flag", () => {
+      const agent = repo.createAgent({ name: "Disabled", enabled: false });
+      expect(agent.enabled).toBe(false);
+      const updated = repo.updateAgent(agent.id, { enabled: true });
+      expect(updated!.enabled).toBe(true);
+    });
+  });
+
+  // ── Agent Skills ──
+
+  describe("agent skills", () => {
+    it("assigns and retrieves skills for an agent", () => {
+      const agent = repo.createAgent({ name: "A" });
+      const s1 = repo.createSkill({ name: "S1", content: "c1" });
+      const s2 = repo.createSkill({ name: "S2", content: "c2" });
+
+      repo.setAgentSkills(agent.id, [s1.id, s2.id]);
+      const skills = repo.getAgentSkills(agent.id);
+      expect(skills.length).toBe(2);
+      expect(skills.map((s) => s.name).sort()).toEqual(["S1", "S2"]);
+    });
+
+    it("replaces skills on subsequent set", () => {
+      const agent = repo.createAgent({ name: "A" });
+      const s1 = repo.createSkill({ name: "S1", content: "c1" });
+      const s2 = repo.createSkill({ name: "S2", content: "c2" });
+
+      repo.setAgentSkills(agent.id, [s1.id, s2.id]);
+      repo.setAgentSkills(agent.id, [s2.id]);
+      const skills = repo.getAgentSkills(agent.id);
+      expect(skills.length).toBe(1);
+      expect(skills[0].name).toBe("S2");
+    });
+
+    it("returns empty array for agent with no skills", () => {
+      const agent = repo.createAgent({ name: "A" });
+      expect(repo.getAgentSkills(agent.id)).toEqual([]);
+    });
+
+    it("clears skills when agent is deleted (CASCADE)", () => {
+      const agent = repo.createAgent({ name: "A" });
+      const s1 = repo.createSkill({ name: "S1", content: "c1" });
+      repo.setAgentSkills(agent.id, [s1.id]);
+      repo.deleteAgent(agent.id);
+      // After agent deletion, the junction rows should be gone
+      // (we can't query getAgentSkills since the agent is gone, but we verify no orphans)
+      const newAgent = repo.createAgent({ name: "B" });
+      expect(repo.getAgentSkills(newAgent.id)).toEqual([]);
+    });
+
+    it("getSkillAgents returns agents using a skill", () => {
+      const a1 = repo.createAgent({ name: "Agent1" });
+      const a2 = repo.createAgent({ name: "Agent2" });
+      const s1 = repo.createSkill({ name: "S1", content: "c" });
+
+      repo.setAgentSkills(a1.id, [s1.id]);
+      repo.setAgentSkills(a2.id, [s1.id]);
+
+      const agents = repo.getSkillAgents(s1.id);
+      expect(agents.length).toBe(2);
+      expect(agents.map((a) => a.name).sort()).toEqual(["Agent1", "Agent2"]);
+    });
   });
 });

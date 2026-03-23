@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, KeyRound, TestTube2, FileImage, Moon, Sun, MessageSquare, Settings, BookOpen, Zap, Calendar, ListTodo, FileEdit } from "lucide-react";
+import { LayoutDashboard, KeyRound, TestTube2, FileImage, Moon, Sun, MessageSquare, Settings, BookOpen, Zap, Calendar, ListTodo, FileEdit, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 
@@ -15,6 +15,7 @@ const navItems = [
   { href: "/talos/artifacts", label: "Artifacts", icon: FileImage },
   { href: "/library", label: "Prompts", icon: BookOpen },
   { href: "/skills", label: "Skills", icon: Zap },
+  { href: "/agents", label: "Agents", icon: Bot },
   { href: "/scheduler", label: "Scheduler", icon: Calendar },
   { href: "/tasks", label: "Tasks", icon: ListTodo },
   { href: "/workbench", label: "Workbench", icon: FileEdit },

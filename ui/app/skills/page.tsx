@@ -11,9 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   getSkills, createSkill, updateSkill, deleteSkill,
-  type SkillDef,
+  getAgents,
+  type SkillDef, type Agent,
 } from "@/lib/api";
-import { Zap, Plus, Trash2, Pencil, Download, Upload, Play, Loader2, Copy } from "lucide-react";
+import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
+import { Zap, Plus, Trash2, Pencil, Download, Upload, Play, Loader2, Copy, Wrench, Users } from "lucide-react";
 
 const SKILL_TEMPLATES: { name: string; description: string; tags: string[]; content: string }[] = [
   { name: "Web Scraper", description: "Scrape and parse a web page for structured data", tags: ["web", "scraping"], content: "Navigate to the given URL, extract the main content, and return it as structured JSON with title, headings, paragraphs, and links." },
@@ -78,9 +80,9 @@ export default function SkillsPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
-      <main className="flex-1 container py-6">
+      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <Zap className="h-6 w-6" />
@@ -127,6 +129,13 @@ export default function SkillsPage() {
                       <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
                     ))}
                     {s.tags.length > 4 && <Badge variant="outline" className="text-xs">+{s.tags.length - 4}</Badge>}
+                  </div>
+                )}
+                {(s.requiredTools?.length > 0) && (
+                  <div className="flex gap-2 mb-2">
+                    <Badge variant="secondary" className="text-xs gap-1">
+                      <Wrench className="h-3 w-3" />{s.requiredTools.length} tools
+                    </Badge>
                   </div>
                 )}
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -243,6 +252,11 @@ function SkillForm({ skill, onSave }: { skill?: SkillDef; onSave: () => void }) 
   const [description, setDescription] = useState(skill?.description ?? "");
   const [tags, setTags] = useState(skill?.tags?.join(", ") ?? "");
   const [content, setContent] = useState(skill?.content ?? "");
+  const [requiredTools, setRequiredTools] = useState(skill?.requiredTools?.join(", ") ?? "");
+
+  const { data: agents } = useQuery({ queryKey: ["agents"], queryFn: getAgents });
+  const skillAgents = skill ? (agents as Agent[] | undefined)?.filter(() => false) : undefined;
+  // Agent assignment is read-only here — managed from the Agents page
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -251,6 +265,7 @@ function SkillForm({ skill, onSave }: { skill?: SkillDef; onSave: () => void }) 
         description,
         tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
         content: content || undefined,
+        requiredTools: requiredTools ? requiredTools.split(",").map((t) => t.trim()).filter(Boolean) : [],
       };
       if (skill) return updateSkill(skill.id, payload);
       return createSkill(payload);
@@ -263,12 +278,37 @@ function SkillForm({ skill, onSave }: { skill?: SkillDef; onSave: () => void }) 
       <Input placeholder="Skill name" value={name} onChange={(e) => setName(e.target.value)} />
       <Input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
       <Input placeholder="Tags (comma-separated)" value={tags} onChange={(e) => setTags(e.target.value)} />
-      <textarea
-        className="w-full min-h-[100px] p-3 border rounded text-sm font-mono"
-        placeholder="Skill content / instructions..."
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-      />
+      <div>
+        <label className="text-sm font-medium mb-1 block">Skill Content</label>
+        <textarea
+          className="w-full min-h-[100px] p-3 border rounded text-sm font-mono"
+          placeholder="Skill content / instructions..."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+        <AiEnhanceBar text={content} onEnhanced={setContent} context="skill definition" />
+      </div>
+      <div>
+        <label className="text-sm font-medium mb-1 block">Required Tools</label>
+        <Input
+          placeholder="Tool IDs (comma-separated)"
+          value={requiredTools}
+          onChange={(e) => setRequiredTools(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground mt-1">Tools this skill needs to function</p>
+      </div>
+      {skill && skillAgents && skillAgents.length > 0 && (
+        <div>
+          <label className="text-sm font-medium mb-1 block">
+            <Users className="h-3 w-3 inline mr-1" />Used by Agents
+          </label>
+          <div className="flex gap-1 flex-wrap">
+            {skillAgents.map((a) => (
+              <Badge key={a.id} variant="secondary" className="text-xs">{a.name}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex justify-end">
         <Button onClick={() => mutation.mutate()} disabled={!name || !description || mutation.isPending}>
           {mutation.isPending ? "Saving..." : skill ? "Update" : "Create"}

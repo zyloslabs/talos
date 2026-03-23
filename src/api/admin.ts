@@ -96,7 +96,8 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/auth/status", async (_req, res) => {
     const authenticated = copilot ? await copilot.isAuthenticated() : false;
-    res.json({ authenticated });
+    const authMode = copilot?.hasGithubToken() ? "token" : "device";
+    res.json({ authenticated, authMode });
   });
 
   router.post("/auth/device", async (_req, res) => {
@@ -109,6 +110,17 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
     await copilot.waitForAuth();
     res.json({ authenticated: true });
+  });
+
+  router.get("/auth/test", async (_req, res) => {
+    if (!copilot) { res.status(503).json({ connected: false, error: "Copilot not configured" }); return; }
+    try {
+      const models = await copilot.listModels();
+      res.json({ connected: true, models: models.length });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Connection test failed";
+      res.json({ connected: false, error: msg });
+    }
   });
 
   // ── Environment Variables ──────────────────────────────────────────────────
@@ -154,6 +166,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
     res.json({ valid: missing.length === 0, missing });
   });
+
 
   // ── Models ──────────────────────────────────────────────────────────────────
 
@@ -368,7 +381,8 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   router.get("/skills/:id", (req, res) => {
     const skill = platformRepo.getSkill(req.params.id);
     if (!skill) { res.status(404).json({ error: "Not found" }); return; }
-    res.json(skill);
+    const agents = platformRepo.getSkillAgents(req.params.id);
+    res.json({ ...skill, agents });
   });
 
   router.post("/skills", (req, res) => {
@@ -429,6 +443,38 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     }
   });
 
+  // ── AI Enhance (#245) ──────────────────────────────────────────────────────
+
+  const EnhanceInputSchema = z.object({
+    text: z.string().min(1).max(50_000),
+    model: z.string().optional(),
+    context: z.string().max(10_000).optional(),
+  });
+
+  router.post("/ai/enhance", async (req: Request, res: Response) => {
+    if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
+    const parsed = EnhanceInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    const { text, model, context } = parsed.data;
+    const prompt = context
+      ? `Enhance the following text for clarity, quality, and completeness. Preserve the original intent. Context: ${context}\n\nReturn only the enhanced text.\n\n---\n${text}`
+      : `Enhance the following text for clarity, quality, and completeness. Preserve the original intent. Return only the enhanced text.\n\n---\n${text}`;
+
+    try {
+      let enhanced = "";
+      for await (const chunk of copilot.chat(prompt, { model })) {
+        enhanced += chunk;
+      }
+      res.json({ enhanced: enhanced.trim() });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Enhancement failed";
+      res.status(500).json({ error: msg });
+    }
+  });
+
   router.post("/knowledge/reindex", (_req, res) => {
     // Trigger async reindex — emits progress via Socket.IO
     res.json({ status: "queued", message: "Re-indexing has been queued" });
@@ -469,6 +515,63 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     const authenticated = await copilot.isAuthenticated();
     const latencyMs = Date.now() - start;
     res.json({ healthy: authenticated, authenticated, latencyMs });
+  });
+
+  // ── Agents (#247-#248) ─────────────────────────────────────────────────────
+
+  router.get("/agents", (_req, res) => {
+    res.json(platformRepo.listAgents());
+  });
+
+  router.get("/agents/:id", (req, res) => {
+    const agent = platformRepo.getAgent(req.params.id);
+    if (!agent) { res.status(404).json({ error: "Not found" }); return; }
+    res.json(agent);
+  });
+
+  const AgentCreateSchema = z.object({
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).optional(),
+    systemPrompt: z.string().max(50_000).optional(),
+    toolsWhitelist: z.array(z.string()).optional(),
+    parentAgentId: z.string().nullable().optional(),
+    enabled: z.boolean().optional(),
+  });
+
+  router.post("/agents", (req, res) => {
+    const parsed = AgentCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    res.status(201).json(platformRepo.createAgent(parsed.data));
+  });
+
+  router.put("/agents/:id", (req, res) => {
+    const parsed = AgentCreateSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    const updated = platformRepo.updateAgent(req.params.id, parsed.data);
+    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    res.json(updated);
+  });
+
+  router.delete("/agents/:id", (req, res) => {
+    if (!platformRepo.deleteAgent(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    res.status(204).end();
+  });
+
+  router.get("/agents/:id/skills", (req, res) => {
+    res.json(platformRepo.getAgentSkills(req.params.id));
+  });
+
+  router.put("/agents/:id/skills", (req, res) => {
+    const { skillIds } = req.body as { skillIds?: string[] };
+    if (!Array.isArray(skillIds)) { res.status(400).json({ error: "skillIds array is required" }); return; }
+    platformRepo.setAgentSkills(req.params.id, skillIds);
+    res.json(platformRepo.getAgentSkills(req.params.id));
   });
 
   return router;

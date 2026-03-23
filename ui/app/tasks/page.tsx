@@ -35,9 +35,9 @@ export default function TasksPage() {
   const { data: stats } = useQuery({ queryKey: ["task-stats"], queryFn: () => getTaskStats(), refetchInterval: 5000 });
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
-      <main className="flex-1 container py-6">
+      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <ListTodo className="h-6 w-6" />

@@ -27,6 +27,20 @@ const KNOWN_VARS: KnownVar[] = [
     category: "Authentication",
   },
   {
+    key: "GITHUB_TOKEN",
+    label: "GitHub Token",
+    description: "GitHub token for Copilot SDK API key auth (alternative to device auth)",
+    required: false,
+    category: "Authentication",
+  },
+  {
+    key: "COPILOT_GITHUB_TOKEN",
+    label: "Copilot GitHub Token",
+    description: "Alternative token for Copilot SDK auth (fallback if GITHUB_TOKEN not set)",
+    required: false,
+    category: "Authentication",
+  },
+  {
     key: "OPENAI_API_KEY",
     label: "OpenAI API Key",
     description: "For embeddings (optional — Copilot SDK handles generation)",

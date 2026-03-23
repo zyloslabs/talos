@@ -13,10 +13,11 @@ import { KnowledgePanel } from "@/components/talos/knowledge-panel";
 import {
   getPersonalities, createPersonality, updatePersonality, activatePersonality,
   getModels, setSelectedModel, setReasoningEffort,
-  getAuthStatus, startDeviceAuth,
+  getAuthStatus, startDeviceAuth, testAuthConnection,
   getMcpServers, createMcpServer, deleteMcpServer,
   type Personality, type ModelInfo, type McpServer,
 } from "@/lib/api";
+import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import {
   Settings, Shield, Brain, Server, User, KeyRound, Database, ChevronRight,
 } from "lucide-react";
@@ -83,9 +84,9 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
-      <main className="flex-1 container py-6">
+      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
         <div className="flex items-center gap-2 mb-6">
           <Settings className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Admin Settings</h1>
@@ -123,6 +124,7 @@ export default function AdminPage() {
 function AuthPanel() {
   const { data: authStatus } = useQuery({ queryKey: ["auth-status"], queryFn: getAuthStatus });
   const authMutation = useMutation({ mutationFn: startDeviceAuth });
+  const testMutation = useMutation({ mutationFn: testAuthConnection });
 
   return (
     <div className="space-y-4">
@@ -130,9 +132,41 @@ function AuthPanel() {
         <Badge variant={authStatus?.authenticated ? "default" : "secondary"}>
           {authStatus?.authenticated ? "Authenticated" : "Not Authenticated"}
         </Badge>
+        {authStatus?.authMode === "token" && (
+          <Badge variant="outline">API Key</Badge>
+        )}
       </div>
-      {!authStatus?.authenticated && (
+
+      {/* Token-based auth info */}
+      {authStatus?.authMode === "token" && (
+        <div className="p-4 bg-muted/50 rounded-lg space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Authenticated via <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> or <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">COPILOT_GITHUB_TOKEN</code> environment variable.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => testMutation.mutate()}
+            disabled={testMutation.isPending}
+          >
+            {testMutation.isPending ? "Testing..." : "Test Connection"}
+          </Button>
+          {testMutation.data && (
+            <div className={`text-sm ${testMutation.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+              {testMutation.data.connected
+                ? `Connected — ${testMutation.data.models} model(s) available`
+                : `Failed: ${testMutation.data.error}`}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Device auth fallback */}
+      {authStatus?.authMode !== "token" && !authStatus?.authenticated && (
         <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            Set <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in Environment Variables for API key auth, or use device auth below.
+          </p>
           <Button onClick={() => authMutation.mutate()} disabled={authMutation.isPending}>
             {authMutation.isPending ? "Starting..." : "Start Device Auth"}
           </Button>
@@ -185,6 +219,7 @@ function PersonalityPanel() {
           {editId === p.id ? (
             <div className="space-y-2">
               <textarea className="w-full min-h-[100px] p-2 border rounded text-sm font-mono bg-background" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} />
+              <AiEnhanceBar text={editPrompt} onEnhanced={setEditPrompt} context="system personality prompt" />
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => updateMut.mutate()}>Save</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
