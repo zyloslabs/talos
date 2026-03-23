@@ -14,6 +14,7 @@
 
 import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import type { PlatformRepository } from "../platform/repository.js";
 import { EnvManager, EnvValidationError } from "../platform/env-manager.js";
 import type { CopilotWrapper } from "../copilot/copilot-wrapper.js";
@@ -37,6 +38,13 @@ export type AdminRouterDeps = {
 };
 
 const VALID_TASK_STATUSES: TaskStatus[] = ["pending", "running", "completed", "failed", "cancelled"];
+
+const KnowledgeConfigUpdateSchema = z.object({
+  vectorDbPath: z.string().min(1).optional(),
+  collectionName: z.string().min(1).optional(),
+  searchMode: z.enum(["hybrid", "vector", "keyword"]).optional(),
+  minScore: z.number().min(0).max(1).optional(),
+}).strict();
 
 /**
  * Validates a URL is safe for server-side use (anti-SSRF).
@@ -417,8 +425,12 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   });
 
   router.put("/knowledge/config", (req, res) => {
-    const config = req.body as Record<string, unknown>;
-    const updated = platformRepo.updateKnowledgeConfig(config);
+    const parsed = KnowledgeConfigUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid knowledge config", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    const updated = platformRepo.updateKnowledgeConfig(parsed.data as Record<string, unknown>);
     res.json(updated);
   });
 
