@@ -310,3 +310,60 @@ export const updateSkill = (id: string, data: Partial<SkillDef>) =>
   fetchApi<SkillDef>(`/api/admin/skills/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const deleteSkill = (id: string) =>
   fetchApi<void>(`/api/admin/skills/${id}`, { method: "DELETE" });
+
+// Environment Variables
+export interface EnvEntry { key: string; value: string; masked: boolean; _raw?: string }
+export interface EnvListResponse { entries: EnvEntry[]; warnings?: { missingRequired: string[] } }
+export const getEnvEntries = () => fetchApi<EnvListResponse>("/api/admin/env");
+export const getEnvRaw = (key: string) => fetchApi<{ key: string; value: string }>(`/api/admin/env/${encodeURIComponent(key)}`);
+export const setEnvEntry = (key: string, value: string) =>
+  fetchApi<EnvEntry>("/api/admin/env", { method: "PUT", body: JSON.stringify({ key, value }) });
+export const deleteEnvEntry = (key: string) =>
+  fetchApi<void>(`/api/admin/env/${encodeURIComponent(key)}`, { method: "DELETE" });
+export const validateEnv = () =>
+  fetchApi<{ valid: boolean; missing: string[] }>("/api/admin/env/validate/required");
+
+// Knowledge Base
+export interface KnowledgeStats { documentCount: number; chunkCount: number; lastIndexedAt: string | null }
+export interface KnowledgeDocument { id: string; applicationId: string; filePath: string; type: string; chunkCount: number; indexedAt: string }
+export interface KnowledgeConfig { vectorDbPath: string; collectionName: string; searchMode: string; minScore: number }
+export const getKnowledgeStats = () => fetchApi<KnowledgeStats>("/api/admin/knowledge/stats");
+export const getKnowledgeDocuments = () => fetchApi<KnowledgeDocument[]>("/api/admin/knowledge/documents");
+export const searchKnowledge = (query: string, limit?: number) =>
+  fetchApi<{ results: { content: string; score: number; filePath: string }[] }>("/api/admin/knowledge/search", { method: "POST", body: JSON.stringify({ query, limit }) });
+export const reindexKnowledge = () =>
+  fetchApi<{ status: string }>("/api/admin/knowledge/reindex", { method: "POST" });
+export const reindexDocument = (docId: string) =>
+  fetchApi<{ status: string }>(`/api/admin/knowledge/reindex/${docId}`, { method: "POST" });
+export const deleteKnowledgeDocument = (docId: string) =>
+  fetchApi<void>(`/api/admin/knowledge/documents/${docId}`, { method: "DELETE" });
+export const getKnowledgeConfig = () => fetchApi<KnowledgeConfig>("/api/admin/knowledge/config");
+export const updateKnowledgeConfig = (config: Partial<KnowledgeConfig>) =>
+  fetchApi<KnowledgeConfig>("/api/admin/knowledge/config", { method: "PUT", body: JSON.stringify(config) });
+
+// Models (enhanced)
+export const getModelsHealth = () => fetchApi<{ healthy: boolean; authenticated: boolean; latencyMs: number }>("/api/admin/models/health");
+
+// Test Generation
+export interface GenerateTestInput { applicationId: string; prompt: string; model?: string; testType?: string }
+export interface GeneratedTest { id: string; code: string; name: string; confidence: number }
+export const generateTest = (input: GenerateTestInput) =>
+  fetchApi<GeneratedTest>("/api/talos/tests/generate", { method: "POST", body: JSON.stringify(input) });
+export const refineTest = (testId: string, feedback: string) =>
+  fetchApi<GeneratedTest>(`/api/talos/tests/${testId}/refine`, { method: "POST", body: JSON.stringify({ feedback }) });
+
+// Sessions
+export interface ChatSession { id: string; startedAt: string; lastMessageAt: string; messageCount: number; preview: string }
+export const getChatSessions = () => fetchApi<ChatSession[]>("/api/talos/sessions");
+export const getChatSession = (id: string) =>
+  fetchApi<{ id: string; messages: { role: string; content: string; timestamp: string }[] }>(`/api/talos/sessions/${id}`);
+export const deleteChatSession = (id: string) =>
+  fetchApi<void>(`/api/talos/sessions/${id}`, { method: "DELETE" });
+
+// Orchestration
+export interface OrchestrateInput { applicationId: string; steps: string[]; config?: Record<string, unknown> }
+export interface OrchestrateResult { runId: string; status: string; steps: { name: string; status: string; result?: unknown }[] }
+export const startOrchestration = (input: OrchestrateInput) =>
+  fetchApi<OrchestrateResult>("/api/talos/orchestrate", { method: "POST", body: JSON.stringify(input) });
+export const getOrchestrationStatus = (runId: string) =>
+  fetchApi<OrchestrateResult>(`/api/talos/orchestrate/${runId}`);

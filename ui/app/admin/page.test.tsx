@@ -1,7 +1,21 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdminPage from "./page";
+
+beforeAll(() => {
+  // jsdom doesn't implement IntersectionObserver
+  global.IntersectionObserver = class {
+    readonly root = null;
+    readonly rootMargin = "";
+    readonly thresholds: ReadonlyArray<number> = [];
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords(): IntersectionObserverEntry[] { return []; }
+  };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
@@ -26,6 +40,18 @@ vi.mock("@/lib/api", () => ({
   getMcpServers: vi.fn().mockResolvedValue([]),
   createMcpServer: vi.fn(),
   deleteMcpServer: vi.fn(),
+  getEnvEntries: vi.fn().mockResolvedValue({ entries: [], warnings: {} }),
+  setEnvEntry: vi.fn(),
+  deleteEnvEntry: vi.fn(),
+  getEnvRaw: vi.fn(),
+  validateEnv: vi.fn().mockResolvedValue({ valid: true, missing: [] }),
+  getKnowledgeStats: vi.fn().mockResolvedValue({ documentCount: 0, chunkCount: 0, lastIndexedAt: null }),
+  getKnowledgeDocuments: vi.fn().mockResolvedValue([]),
+  getKnowledgeConfig: vi.fn().mockResolvedValue({ vectorDbPath: "", collectionName: "", searchMode: "hybrid", minScore: 0.5 }),
+  searchKnowledge: vi.fn(),
+  reindexKnowledge: vi.fn(),
+  deleteKnowledgeDocument: vi.fn(),
+  getModelsHealth: vi.fn().mockResolvedValue({ healthy: true, authenticated: true, latencyMs: 50 }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -39,16 +65,18 @@ describe("AdminPage", () => {
     expect(screen.getByText("Admin Settings")).toBeInTheDocument();
   });
 
-  it("renders all tab triggers", () => {
+  it("renders all section headings", () => {
     renderWithProviders(<AdminPage />);
-    expect(screen.getByText("Auth")).toBeInTheDocument();
-    expect(screen.getByText("Personality")).toBeInTheDocument();
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getByText("MCP Servers")).toBeInTheDocument();
+    expect(screen.getAllByText("Authentication").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Personality").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Models").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("MCP Servers").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Environment").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Knowledge Base").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders auth panel by default", () => {
+  it("renders auth section content", () => {
     renderWithProviders(<AdminPage />);
-    expect(screen.getByText("GitHub Copilot Authentication")).toBeInTheDocument();
+    expect(screen.getByText("Connect Talos to GitHub Copilot")).toBeInTheDocument();
   });
 });
