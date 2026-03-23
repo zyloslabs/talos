@@ -10,7 +10,7 @@ export interface InlineModelPickerProps {
 }
 
 export function InlineModelPicker({ value, onChange, className }: InlineModelPickerProps) {
-  const { data } = useQuery({ queryKey: ["models"], queryFn: getModels });
+  const { data } = useQuery({ queryKey: ["models"], queryFn: getModels, staleTime: 60_000 });
   const models = (data as ModelInfo | undefined)?.models ?? [];
   const selected = value ?? data?.selected ?? "";
 

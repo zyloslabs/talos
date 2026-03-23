@@ -1,7 +1,7 @@
 /**
  * PlatformRepository — SQLite data access for Talos platform features.
  *
- * Tables: personality, saved_prompts, scheduled_jobs, agent_tasks, mcp_servers, skills
+ * Tables: personality, saved_prompts, scheduled_jobs, agent_tasks, mcp_servers, skills, agents, agent_skills
  */
 
 import type Database from "better-sqlite3";
@@ -29,6 +29,10 @@ import type {
   StoredSkill,
   CreateSkillInput,
   UpdateSkillInput,
+  Agent,
+  StoredAgent,
+  CreateAgentInput,
+  UpdateAgentInput,
 } from "./types.js";
 
 // ── Row Converters ────────────────────────────────────────────────────────────
@@ -103,6 +107,19 @@ const toSkill = (row: StoredSkill): Skill => ({
   content: row.content,
   enabled: row.enabled === 1,
   tags: JSON.parse(row.tags_json) as string[],
+  requiredTools: JSON.parse(row.required_tools_json ?? "[]") as string[],
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const toAgent = (row: StoredAgent): Agent => ({
+  id: row.id,
+  name: row.name,
+  description: row.description,
+  systemPrompt: row.system_prompt,
+  toolsWhitelist: JSON.parse(row.tools_whitelist_json) as string[],
+  parentAgentId: row.parent_agent_id,
+  enabled: row.enabled === 1,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -189,11 +206,31 @@ export class PlatformRepository {
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        system_prompt TEXT NOT NULL DEFAULT '',
+        tools_whitelist_json TEXT NOT NULL DEFAULT '[]',
+        parent_agent_id TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (parent_agent_id) REFERENCES agents(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS agent_skills (
+        agent_id TEXT NOT NULL,
+        skill_id TEXT NOT NULL,
+        PRIMARY KEY (agent_id, skill_id),
+        FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+        FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+      );
+
       -- Performance indexes
       CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
       CREATE INDEX IF NOT EXISTS idx_saved_prompts_category ON saved_prompts(category);
       CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_enabled ON scheduled_jobs(enabled);
-
       -- Knowledge Base tables (#214)
       CREATE TABLE IF NOT EXISTS knowledge_documents (
         id TEXT PRIMARY KEY,
@@ -213,7 +250,15 @@ export class PlatformRepository {
       );
 
       CREATE INDEX IF NOT EXISTS idx_knowledge_documents_app ON knowledge_documents(application_id);
+      CREATE INDEX IF NOT EXISTS idx_agents_enabled ON agents(enabled);
+      CREATE INDEX IF NOT EXISTS idx_agents_parent ON agents(parent_agent_id);
     `);
+
+    // Add required_tools_json column to skills if missing (v2 migration)
+    const skillCols = this.db.pragma("table_info(skills)") as { name: string }[];
+    if (!skillCols.some((c) => c.name === "required_tools_json")) {
+      this.db.exec("ALTER TABLE skills ADD COLUMN required_tools_json TEXT NOT NULL DEFAULT '[]'");
+    }
 
     // Seed default personality if none exists
     const count = this.db.prepare("SELECT COUNT(*) as c FROM personality").get() as { c: number };
@@ -520,9 +565,9 @@ export class PlatformRepository {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO skills (id, name, description, content, enabled, tags_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, input.name, input.description ?? "", input.content, input.enabled !== false ? 1 : 0, JSON.stringify(input.tags ?? []), now, now);
+      INSERT INTO skills (id, name, description, content, enabled, tags_json, required_tools_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, input.name, input.description ?? "", input.content, input.enabled !== false ? 1 : 0, JSON.stringify(input.tags ?? []), JSON.stringify(input.requiredTools ?? []), now, now);
     return toSkill(this.db.prepare("SELECT * FROM skills WHERE id = ?").get(id) as StoredSkill);
   }
 
@@ -531,13 +576,14 @@ export class PlatformRepository {
     if (!existing) return null;
     const now = new Date().toISOString();
     this.db.prepare(`
-      UPDATE skills SET name = ?, description = ?, content = ?, enabled = ?, tags_json = ?, updated_at = ? WHERE id = ?
+      UPDATE skills SET name = ?, description = ?, content = ?, enabled = ?, tags_json = ?, required_tools_json = ?, updated_at = ? WHERE id = ?
     `).run(
       input.name ?? existing.name,
       input.description ?? existing.description,
       input.content ?? existing.content,
       input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
       input.tags ? JSON.stringify(input.tags) : existing.tags_json,
+      input.requiredTools ? JSON.stringify(input.requiredTools) : existing.required_tools_json,
       now,
       id,
     );
@@ -596,5 +642,93 @@ export class PlatformRepository {
       VALUES ('default', ?, ?, ?, ?)
     `).run(updated.vectorDbPath, updated.collectionName, updated.searchMode, updated.minScore);
     return updated;
+  }
+
+  getSkillAgents(skillId: string): Agent[] {
+    return (this.db.prepare(`
+      SELECT a.* FROM agents a
+      JOIN agent_skills ags ON ags.agent_id = a.id
+      WHERE ags.skill_id = ?
+      ORDER BY a.name
+    `).all(skillId) as StoredAgent[]).map(toAgent);
+  }
+
+  // ── Agents ──
+
+  listAgents(): Agent[] {
+    return (this.db.prepare("SELECT * FROM agents ORDER BY name").all() as StoredAgent[]).map(toAgent);
+  }
+
+  getAgent(id: string): Agent | null {
+    const row = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent | undefined;
+    return row ? toAgent(row) : null;
+  }
+
+  createAgent(input: CreateAgentInput): Agent {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      INSERT INTO agents (id, name, description, system_prompt, tools_whitelist_json, parent_agent_id, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      input.name,
+      input.description ?? "",
+      input.systemPrompt ?? "",
+      JSON.stringify(input.toolsWhitelist ?? []),
+      input.parentAgentId ?? null,
+      input.enabled !== false ? 1 : 0,
+      now,
+      now,
+    );
+    return toAgent(this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent);
+  }
+
+  updateAgent(id: string, input: UpdateAgentInput): Agent | null {
+    const existing = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent | undefined;
+    if (!existing) return null;
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE agents SET
+        name = ?, description = ?, system_prompt = ?, tools_whitelist_json = ?,
+        parent_agent_id = ?, enabled = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      input.name ?? existing.name,
+      input.description ?? existing.description,
+      input.systemPrompt ?? existing.system_prompt,
+      input.toolsWhitelist ? JSON.stringify(input.toolsWhitelist) : existing.tools_whitelist_json,
+      input.parentAgentId !== undefined ? (input.parentAgentId ?? null) : existing.parent_agent_id,
+      input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+      now,
+      id,
+    );
+    return toAgent(this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent);
+  }
+
+  deleteAgent(id: string): boolean {
+    const result = this.db.prepare("DELETE FROM agents WHERE id = ?").run(id);
+    return result.changes > 0;
+  }
+
+  getAgentSkills(agentId: string): Skill[] {
+    return (this.db.prepare(`
+      SELECT s.* FROM skills s
+      JOIN agent_skills ags ON ags.skill_id = s.id
+      WHERE ags.agent_id = ?
+      ORDER BY s.name
+    `).all(agentId) as StoredSkill[]).map(toSkill);
+  }
+
+  setAgentSkills(agentId: string, skillIds: string[]): void {
+    const deleteAll = this.db.prepare("DELETE FROM agent_skills WHERE agent_id = ?");
+    const insertOne = this.db.prepare("INSERT INTO agent_skills (agent_id, skill_id) VALUES (?, ?)");
+    const tx = this.db.transaction(() => {
+      deleteAll.run(agentId);
+      for (const skillId of skillIds) {
+        insertOne.run(agentId, skillId);
+      }
+    });
+    tx();
   }
 }
