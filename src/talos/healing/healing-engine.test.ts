@@ -220,4 +220,84 @@ describe("HealingEngine", () => {
     expect(stats.successRate).toBe(0);
     expect(stats.commonFixes).toEqual([]);
   });
+
+  it("heal returns error when max retries is reached", async () => {
+    const { engine } = createEngine(repo);
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    // Pre-populate 3 healing attempts within the last hour (at maxRetries threshold)
+    const now = new Date();
+    const healingAttempts = [
+      { id: "h1", testRunId: "r1", timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString(), status: "failed", originalError: "err" },
+      { id: "h2", testRunId: "r2", timestamp: new Date(now.getTime() - 10 * 60 * 1000).toISOString(), status: "failed", originalError: "err" },
+      { id: "h3", testRunId: "r3", timestamp: new Date(now.getTime() - 15 * 60 * 1000).toISOString(), status: "failed", originalError: "err" },
+    ];
+    const test = repo.createTest({
+      applicationId: app.id,
+      name: "t1",
+      code: "test('x', async () => {});",
+      type: "e2e",
+      metadata: { healingAttempts },
+    });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    const result = await engine.heal(run);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Max healing attempts");
+  });
+
+  it("heal returns error when cooldown period has not elapsed", async () => {
+    const mockRunner = {
+      executeTest: vi.fn().mockImplementation(async (_test: unknown, run: { id: string }) => {
+        repo.updateTestRun(run.id, { status: "passed", durationMs: 100 });
+      }),
+    } as unknown as PlaywrightRunner;
+    const engine = new HealingEngine({
+      config: { enabled: true, confidenceThreshold: 0.85, maxRetries: 3, cooldownMs: 30 * 60 * 1000 },
+      repository: repo,
+      playwrightRunner: mockRunner,
+      generateWithLLM: vi.fn(),
+    } as HealingEngineOptionsType);
+
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const now = new Date();
+    // One healing attempt 5 minutes ago — within the 30-minute cooldown
+    const healingAttempts = [
+      { id: "h1", testRunId: "r1", timestamp: new Date(now.getTime() - 5 * 60 * 1000).toISOString(), status: "failed", originalError: "err" },
+    ];
+    const test = repo.createTest({
+      applicationId: app.id,
+      name: "t1",
+      code: "test('x', async () => {});",
+      type: "e2e",
+      metadata: { healingAttempts },
+    });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    const result = await engine.heal(run);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Cooldown period not elapsed");
+  });
+
+  it("getHealingStats aggregates attempts across tests with fix types", () => {
+    const { engine } = createEngine(repo);
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const healingAttempts = [
+      {
+        id: "h1", testRunId: "r1", timestamp: new Date().toISOString(), status: "succeeded", originalError: "err",
+        appliedFix: { suggestedFix: { type: "update-selector" } },
+      },
+      {
+        id: "h2", testRunId: "r2", timestamp: new Date().toISOString(), status: "failed", originalError: "err",
+      },
+    ];
+    repo.createTest({ applicationId: app.id, name: "t1", code: "test('x', () => {});", type: "e2e", metadata: { healingAttempts } });
+
+    const stats = engine.getHealingStats(app.id);
+    expect(stats.totalAttempts).toBe(2);
+    expect(stats.successfulHeals).toBe(1);
+    expect(stats.failedHeals).toBe(1);
+    expect(stats.successRate).toBeCloseTo(0.5);
+    expect(stats.commonFixes).toHaveLength(1);
+    expect(stats.commonFixes[0].type).toBe("update-selector");
+  });
 });

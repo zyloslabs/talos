@@ -5,7 +5,6 @@ import { useSocket } from "@/lib/socket";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { NavTabs } from "@/components/talos/nav-tabs";
 import { SessionSidebar } from "@/components/talos/session-sidebar";
 import { ChatHeader } from "@/components/talos/chat-header";
 import { RagContextIndicator } from "@/components/talos/rag-context-indicator";
@@ -99,7 +98,6 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <NavTabs />
       <div className="flex-1 flex">
         {sidebarOpen && (
           <SessionSidebar
