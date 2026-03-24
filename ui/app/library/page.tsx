@@ -12,6 +12,7 @@ import {
   getPrompts, createPrompt, updatePrompt, deletePrompt,
   type SavedPrompt,
 } from "@/lib/api";
+import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import { BookOpen, Plus, Search, Pencil, Trash2, Download, Upload, GitBranch, Variable } from "lucide-react";
 
 export default function LibraryPage() {
@@ -68,9 +69,9 @@ export default function LibraryPage() {
   }, [qc]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
-      <main className="flex-1 container py-6">
+      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <BookOpen className="h-6 w-6" />
@@ -344,6 +345,7 @@ function PromptForm({ prompt, onSave }: { prompt?: SavedPrompt; onSave: () => vo
         value={content}
         onChange={(e) => setContent(e.target.value)}
       />
+      <AiEnhanceBar text={content} onEnhanced={setContent} context="prompt template" />
       <div className="flex justify-end">
         <Button onClick={() => mutation.mutate()} disabled={!name || !content || mutation.isPending}>
           {mutation.isPending ? "Saving..." : prompt ? "Update" : "Create"}

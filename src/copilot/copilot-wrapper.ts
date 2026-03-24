@@ -92,6 +92,7 @@ export interface CopilotWrapper {
   clearAllSessions(): Promise<void>;
   getSessionUsage(sessionId: string): TokenUsage | null;
   clearSessionUsage(sessionId: string): TokenUsage | null;
+  hasGithubToken(): boolean;
 }
 
 export type CopilotWrapperOptions = {
@@ -103,6 +104,7 @@ export type CopilotWrapperOptions = {
   defaultReasoningEffort?: ReasoningEffort;
   provider?: ProviderConfig;
   sendAndWaitTimeoutMs?: number;
+  githubToken?: string;
 };
 
 const defaultAuthPath = () => path.join(os.homedir(), ".talos", "auth.json");
@@ -183,12 +185,23 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   private providerConfig?: ProviderConfig;
   private sendAndWaitTimeoutMs: number;
   private sessionCache = new Map<string, CopilotSessionLike>();
+  private githubToken?: string;
   readonly tokenTracker = new TokenTracker();
 
   constructor(options: CopilotWrapperOptions = {}) {
     super();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    this.client = options.client ?? (new CopilotClient() as any);
+    const resolvedToken = options.githubToken
+      ?? process.env.GITHUB_TOKEN
+      ?? process.env.COPILOT_GITHUB_TOKEN;
+
+    if (resolvedToken) {
+      this.githubToken = resolvedToken;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = options.client ?? (new CopilotClient({ githubToken: resolvedToken, useLoggedInUser: false }) as any);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = options.client ?? (new CopilotClient() as any);
+    }
     this.authPath = options.authPath ?? defaultAuthPath();
     this.clientId = options.clientId ?? process.env.GITHUB_CLIENT_ID ?? "";
     this.model = options.model ?? "gpt-4.1";
@@ -229,6 +242,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   }
 
   async isAuthenticated(): Promise<boolean> {
+    if (this.githubToken) return true;
     const state = await readAuthState(this.authPath);
     if (!state) return false;
     if (state.expiresAt && Date.now() >= state.expiresAt) return false;
@@ -326,6 +340,10 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   clearSessionUsage(sessionId: string): TokenUsage | null {
     return this.tokenTracker.clear(sessionId);
+  }
+
+  hasGithubToken(): boolean {
+    return !!this.githubToken;
   }
 
   hasSession(conversationId: string): boolean {

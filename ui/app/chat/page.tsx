@@ -98,7 +98,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
       <div className="flex-1 flex">
         {sidebarOpen && (
