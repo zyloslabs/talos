@@ -22,8 +22,8 @@ const KNOWN_VARS: KnownVar[] = [
   {
     key: "GITHUB_CLIENT_ID",
     label: "GitHub Client ID",
-    description: "Required for GitHub Copilot device auth flow",
-    required: true,
+    description: "Required for GitHub Copilot device auth flow (not needed if GITHUB_TOKEN / COPILOT_GITHUB_TOKEN is set)",
+    required: false,
     category: "Authentication",
   },
   {

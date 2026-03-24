@@ -137,7 +137,10 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   router.get("/env", (_req, res) => {
     if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
     const entries = envManager.list();
-    const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
+    // GITHUB_CLIENT_ID is only needed for device auth. If a direct token is already set, skip the warning.
+    const hasToken = !!(envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
+      ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN);
+    const missing = hasToken ? [] : envManager.validateRequired(["GITHUB_CLIENT_ID"]);
 
     // Append process.env values for known vars that are not stored in the env file,
     // so the UI can show (and potentially override) system-level configuration.
@@ -195,7 +198,9 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/env/validate/required", (_req, res) => {
     if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
-    const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
+    const hasToken = !!(envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
+      ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN);
+    const missing = hasToken ? [] : envManager.validateRequired(["GITHUB_CLIENT_ID"]);
     res.json({ valid: missing.length === 0, missing });
   });
 
