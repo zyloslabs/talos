@@ -34,6 +34,13 @@ const KNOWN_VARS: KnownVar[] = [
     category: "Authentication",
   },
   {
+    key: "GITHUB_PERSONAL_ACCESS_TOKEN",
+    label: "GitHub Personal Access Token",
+    description: "PAT for GitHub API access (discovery engine, MCP server). Requires repo + read:org scopes.",
+    required: false,
+    category: "Authentication",
+  },
+  {
     key: "COPILOT_GITHUB_TOKEN",
     label: "Copilot GitHub Token",
     description: "Alternative token for Copilot SDK auth (fallback if GITHUB_TOKEN not set)",
@@ -41,6 +48,13 @@ const KNOWN_VARS: KnownVar[] = [
     category: "Authentication",
   },
 
+  {
+    key: "BRAVE_API_KEY",
+    label: "Brave Search API Key",
+    description: "Enables the web-search tool (https://api.search.brave.com). Shared with openzigs.",
+    required: false,
+    category: "Integrations",
+  },
   {
     key: "TALOS_ADMIN_TOKEN",
     label: "Admin Token",
