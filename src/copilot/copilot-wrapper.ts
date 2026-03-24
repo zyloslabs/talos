@@ -75,12 +75,14 @@ type CopilotClientLike = {
   startDeviceAuth?: (input: { clientId: string; scopes: string[] }) => Promise<DeviceAuthInfo>;
   waitForAuth?: (input: { timeoutMs: number }) => Promise<unknown>;
   listModels?: () => Promise<CopilotModel[]>;
+  getAuthStatus?: () => Promise<{ isAuthenticated: boolean; authType?: string }>;
 };
 
 export interface CopilotWrapper {
   authenticate(): Promise<DeviceAuthInfo>;
   waitForAuth(): Promise<void>;
   isAuthenticated(): Promise<boolean>;
+  getAuthType(): Promise<string | undefined>;
   chat(message: string, options?: ChatOptions): AsyncGenerator<string>;
   listModels(): Promise<CopilotModel[]>;
   modelSupportsReasoning(modelId: string): boolean;
@@ -261,11 +263,30 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (this.githubToken) return true;
+    return (await this._getAuthStatus()).isAuthenticated;
+  }
+
+  async getAuthType(): Promise<string | undefined> {
+    return (await this._getAuthStatus()).authType;
+  }
+
+  private async _getAuthStatus(): Promise<{ isAuthenticated: boolean; authType?: string }> {
+    await this.ensureStarted().catch(() => {});
+    if (!this.startFailed && this.client.getAuthStatus) {
+      try {
+        const status = await this.client.getAuthStatus();
+        return { isAuthenticated: status.isAuthenticated, authType: status.authType };
+      } catch {
+        // SDK unresponsive — fall through to local checks
+      }
+    }
+    // Fallback for token mode or when SDK is unavailable
+    if (this.githubToken) return { isAuthenticated: true, authType: "env" };
     const state = await readAuthState(this.authPath);
-    if (!state) return false;
-    if (state.expiresAt && Date.now() >= state.expiresAt) return false;
-    return true;
+    if (!state || (state.expiresAt && Date.now() >= state.expiresAt)) {
+      return { isAuthenticated: false };
+    }
+    return { isAuthenticated: true, authType: "device" };
   }
 
   async *chat(message: string, options?: ChatOptions): AsyncGenerator<string> {

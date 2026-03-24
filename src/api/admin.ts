@@ -96,7 +96,11 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/auth/status", async (_req, res) => {
     const authenticated = copilot ? await copilot.isAuthenticated() : false;
-    const authMode = copilot?.hasGithubToken() ? "token" : "device";
+    const sdkAuthType = copilot ? await copilot.getAuthType() : undefined;
+    // Derive display mode: prefer SDK report, fall back to env-var heuristic
+    const authMode = sdkAuthType === "env" || sdkAuthType === "token" || copilot?.hasGithubToken()
+      ? "token"
+      : "device";
     res.json({ authenticated, authMode });
   });
 
