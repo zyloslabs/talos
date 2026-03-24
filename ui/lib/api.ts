@@ -172,10 +172,12 @@ export const getStats = () => fetchApi<TalosStats>("/api/talos/stats");
 // ── Admin / Platform APIs ─────────────────────────────────────────────────────
 
 // Auth
-export interface AuthStatus { authenticated: boolean }
+export interface AuthStatus { authenticated: boolean; authMode?: "token" | "device" }
+export interface AuthTestResult { connected: boolean; models?: number; error?: string }
 export const getAuthStatus = () => fetchApi<AuthStatus>("/api/admin/auth/status");
 export const startDeviceAuth = () => fetchApi<{ verificationUri: string; userCode: string }>("/api/admin/auth/device", { method: "POST" });
 export const waitForDeviceAuth = () => fetchApi<{ authenticated: boolean }>("/api/admin/auth/wait", { method: "POST" });
+export const testAuthConnection = () => fetchApi<AuthTestResult>("/api/admin/auth/test");
 
 // Models
 export interface ModelInfo {
@@ -300,6 +302,7 @@ export interface SkillDef {
   content: string;
   enabled: boolean;
   tags: string[];
+  requiredTools: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -310,6 +313,8 @@ export const updateSkill = (id: string, data: Partial<SkillDef>) =>
   fetchApi<SkillDef>(`/api/admin/skills/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const deleteSkill = (id: string) =>
   fetchApi<void>(`/api/admin/skills/${id}`, { method: "DELETE" });
+export const getSkillAgents = (skillId: string) =>
+  fetchApi<SkillDef & { agents: Agent[] }>(`/api/admin/skills/${skillId}`).then((r) => r.agents);
 
 // Environment Variables
 export interface EnvEntry { key: string; value: string; masked: boolean; _raw?: string }
@@ -367,3 +372,34 @@ export const startOrchestration = (input: OrchestrateInput) =>
   fetchApi<OrchestrateResult>("/api/talos/orchestrate", { method: "POST", body: JSON.stringify(input) });
 export const getOrchestrationStatus = (runId: string) =>
   fetchApi<OrchestrateResult>(`/api/talos/orchestrate/${runId}`);
+
+// AI Enhance
+export interface EnhanceInput { text: string; model?: string; context?: string }
+export interface EnhanceResult { enhanced: string }
+export const enhanceText = (input: EnhanceInput) =>
+  fetchApi<EnhanceResult>("/api/admin/ai/enhance", { method: "POST", body: JSON.stringify(input) });
+
+// Agents
+export interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  toolsWhitelist: string[];
+  parentAgentId: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+export const getAgents = () => fetchApi<Agent[]>("/api/admin/agents");
+export const getAgent = (id: string) => fetchApi<Agent>(`/api/admin/agents/${id}`);
+export const createAgent = (data: Partial<Agent>) =>
+  fetchApi<Agent>("/api/admin/agents", { method: "POST", body: JSON.stringify(data) });
+export const updateAgent = (id: string, data: Partial<Agent>) =>
+  fetchApi<Agent>(`/api/admin/agents/${id}`, { method: "PUT", body: JSON.stringify(data) });
+export const deleteAgent = (id: string) =>
+  fetchApi<void>(`/api/admin/agents/${id}`, { method: "DELETE" });
+export const getAgentSkills = (agentId: string) =>
+  fetchApi<string[]>(`/api/admin/agents/${agentId}/skills`);
+export const setAgentSkills = (agentId: string, skillIds: string[]) =>
+  fetchApi<string[]>(`/api/admin/agents/${agentId}/skills`, { method: "PUT", body: JSON.stringify({ skillIds }) });

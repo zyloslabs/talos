@@ -31,9 +31,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${jetBrains.variable} min-h-screen antialiased`}
+        className={`${inter.variable} ${jetBrains.variable} grid h-dvh overflow-hidden antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <main className="overflow-auto flex-1">{children}</main>
+        </Providers>
       </body>
     </html>
   );

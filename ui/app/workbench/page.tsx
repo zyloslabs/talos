@@ -147,10 +147,10 @@ function WorkbenchContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col h-full">
       <NavTabs />
-      <main className="flex-1 container py-6">
-        <div className="flex items-center justify-between mb-6">
+      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6 flex flex-col">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Wand2 className="h-6 w-6" />
             <h1 className="text-2xl font-bold">Test Workbench</h1>

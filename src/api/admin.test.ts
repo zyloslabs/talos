@@ -40,8 +40,9 @@ async function withServer(app: express.Express, fn: (baseUrl: string) => Promise
   }
 }
 
-async function json(res: Response): Promise<Record<string, unknown>> {
-  return res.json() as Promise<Record<string, unknown>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function json(res: Response): Promise<any> {
+  return res.json();
 }
 
 describe("Admin API", () => {
@@ -171,7 +172,7 @@ describe("Admin API", () => {
         expect(createRes.status).toBe(201);
 
         const listRes = await fetch(`${base}/api/admin/scheduler/jobs`, { headers: authHeaders });
-        const jobs = await listRes.json() as unknown[];
+        const jobs = await json(listRes);
         expect(jobs.length).toBe(1);
       });
     });
@@ -201,7 +202,7 @@ describe("Admin API", () => {
         expect(createRes.status).toBe(201);
 
         const listRes = await fetch(`${base}/api/admin/tasks`, { headers: authHeaders });
-        const tasks = await listRes.json() as unknown[];
+        const tasks = await json(listRes);
         expect(tasks.length).toBe(1);
       });
     });
@@ -339,6 +340,177 @@ describe("Admin API", () => {
     });
   });
 
+  // ── Auth Test ──
+
+  describe("auth test", () => {
+    it("returns 503 when copilot not configured", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/auth/test`, { headers: authHeaders });
+        expect(res.status).toBe(503);
+      });
+    });
+  });
+
+  // ── AI Enhance ──
+
+  describe("ai enhance", () => {
+    it("returns 503 when copilot not configured", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/ai/enhance`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ text: "Hello world" }),
+        });
+        expect(res.status).toBe(503);
+      });
+    });
+
+    it("returns 503 for empty text when copilot not configured", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/ai/enhance`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ text: "" }),
+        });
+        // Copilot check runs before validation, so 503 is expected
+        expect(res.status).toBe(503);
+      });
+    });
+  });
+
+  // ── Agents ──
+
+  describe("agents", () => {
+    it("lists agents (initially empty)", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/agents`, { headers: authHeaders });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data).toEqual([]);
+      });
+    });
+
+    it("creates an agent", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Test Agent", description: "A test agent", systemPrompt: "Be helpful" }),
+        });
+        expect(res.status).toBe(201);
+        const data = await json(res);
+        expect(data.name).toBe("Test Agent");
+        expect(data.description).toBe("A test agent");
+        expect(data.systemPrompt).toBe("Be helpful");
+        expect(data.enabled).toBe(true);
+        expect(data.toolsWhitelist).toEqual([]);
+      });
+    });
+
+    it("returns 400 for agent without name", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ description: "No name" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("gets a single agent", async () => {
+      await withServer(app, async (base) => {
+        const createRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Fetch Me" }),
+        });
+        const created = await json(createRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${created.id}`, { headers: authHeaders });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data.name).toBe("Fetch Me");
+      });
+    });
+
+    it("returns 404 for nonexistent agent", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/agents/nonexistent`, { headers: authHeaders });
+        expect(res.status).toBe(404);
+      });
+    });
+
+    it("updates an agent", async () => {
+      await withServer(app, async (base) => {
+        const createRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Original" }),
+        });
+        const created = await json(createRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${created.id}`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Updated", toolsWhitelist: ["web-search"] }),
+        });
+        expect(res.status).toBe(200);
+        const data = await json(res);
+        expect(data.name).toBe("Updated");
+        expect(data.toolsWhitelist).toEqual(["web-search"]);
+      });
+    });
+
+    it("deletes an agent", async () => {
+      await withServer(app, async (base) => {
+        const createRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Delete Me" }),
+        });
+        const created = await json(createRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${created.id}`, {
+          method: "DELETE",
+          headers: authHeaders,
+        });
+        expect(res.status).toBe(204);
+
+        const getRes = await fetch(`${base}/api/admin/agents/${created.id}`, { headers: authHeaders });
+        expect(getRes.status).toBe(404);
+      });
+    });
+
+    it("returns 404 when deleting nonexistent agent", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/agents/nonexistent`, {
+          method: "DELETE",
+          headers: authHeaders,
+        });
+        expect(res.status).toBe(404);
+      });
+    });
+
+    it("returns 409 for duplicate agent name", async () => {
+      await withServer(app, async (base) => {
+        await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Duplicate", description: "first" }),
+        });
+        const res = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Duplicate", description: "second" }),
+        });
+        expect(res.status).toBe(409);
+        const data = await json(res);
+        expect(data.error).toContain("already exists");
+      });
+    });
+  });
+
   // ── Knowledge Base ──
 
   describe("knowledge endpoints", () => {
@@ -440,6 +612,115 @@ describe("Admin API", () => {
           method: "DELETE", headers: authHeaders,
         });
         expect(res.status).toBe(404);
+      });
+    });
+  });
+
+  // ── Agent Skills API ──
+
+  describe("agent skills API", () => {
+    it("gets and sets agent skills", async () => {
+      await withServer(app, async (base) => {
+        // Create an agent
+        const agentRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Skill Agent" }),
+        });
+        const agent = await json(agentRes);
+
+        // Create a skill
+        const skillRes = await fetch(`${base}/api/admin/skills`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "S1", content: "c1" }),
+        });
+        const skill = await json(skillRes);
+
+        // Set skills
+        const setRes = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ skillIds: [skill.id] }),
+        });
+        expect(setRes.status).toBe(200);
+
+        // Get skills
+        const getRes = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, { headers: authHeaders });
+        expect(getRes.status).toBe(200);
+        const skills = await json(getRes);
+        expect(skills.length).toBe(1);
+        expect(skills[0].name).toBe("S1");
+      });
+    });
+
+    it("returns 400 for invalid skills body", async () => {
+      await withServer(app, async (base) => {
+        const agentRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Validate Agent" }),
+        });
+        const agent = await json(agentRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ skillIds: "not-an-array" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it("rejects extra fields in skills body (strict)", async () => {
+      await withServer(app, async (base) => {
+        const agentRes = await fetch(`${base}/api/admin/agents`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "Strict Agent" }),
+        });
+        const agent = await json(agentRes);
+
+        const res = await fetch(`${base}/api/admin/agents/${agent.id}/skills`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ skillIds: [], extraField: true }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+  });
+
+  // ── Skills with requiredTools ──
+
+  describe("skills with requiredTools", () => {
+    it("creates skill with requiredTools", async () => {
+      await withServer(app, async (base) => {
+        const res = await fetch(`${base}/api/admin/skills`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "ToolSkill", content: "c", requiredTools: ["shell-execute"] }),
+        });
+        expect(res.status).toBe(201);
+        const data = await json(res);
+        expect(data.requiredTools).toEqual(["shell-execute"]);
+      });
+    });
+
+    it("skill detail includes agents list", async () => {
+      await withServer(app, async (base) => {
+        // Create a skill
+        const skillRes = await fetch(`${base}/api/admin/skills`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ name: "SharedSkill", content: "c" }),
+        });
+        const skill = await json(skillRes);
+
+        // Get skill detail
+        const res = await fetch(`${base}/api/admin/skills/${skill.id}`, { headers: authHeaders });
+        const data = await json(res);
+        expect(data.agents).toEqual([]);
       });
     });
   });

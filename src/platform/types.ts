@@ -136,6 +136,7 @@ export type Skill = {
   content: string;
   enabled: boolean;
   tags: string[];
+  requiredTools: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -146,9 +147,47 @@ export type CreateSkillInput = {
   content: string;
   enabled?: boolean;
   tags?: string[];
+  requiredTools?: string[];
 };
 
 export type UpdateSkillInput = Partial<CreateSkillInput>;
+
+// ── Agents ────────────────────────────────────────────────────────────────────
+
+export type Agent = {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  toolsWhitelist: string[];
+  parentAgentId: string | null;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateAgentInput = {
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  toolsWhitelist?: string[];
+  parentAgentId?: string | null;
+  enabled?: boolean;
+};
+
+export type UpdateAgentInput = Partial<CreateAgentInput>;
+
+export type StoredAgent = {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  tools_whitelist_json: string;
+  parent_agent_id: string | null;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+};
 
 // ── Model Config ──────────────────────────────────────────────────────────────
 
@@ -250,6 +289,7 @@ export type StoredSkill = {
   content: string;
   enabled: number;
   tags_json: string;
+  required_tools_json: string;
   created_at: string;
   updated_at: string;
 };

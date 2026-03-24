@@ -9,9 +9,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 ### Added
 
 - **Comprehensive Test Suite** (PR #234): 375 tests across 26 test files achieving 80.77% statement coverage / 84.07% line coverage. Covers all Talos subsystems: repository, config, tools, discovery engine, RAG pipeline, vector store, embedding service, test generator, healing engine, failure analyzer, fix generator, code validator, credential injector/sanitizer, file chunker, artifact manager, playwright runner, export engine, package builder, GitHub MCP client, admin API, orchestration endpoints, copilot wrapper, and environment manager.
+- **Token-Based Auth** (#240): CopilotWrapper now accepts `githubToken` option for API key authentication, with support for `GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN` environment variables.
+- **Auth Connectivity Test** (#241): `GET /api/admin/auth/test` endpoint to verify GitHub Copilot SDK connection by calling `listModels()`.
+- **Auth Panel Redesign** (#242): Admin auth panel updated for API key mode with "Test Connection" button, environment variable status, and auth mode reporting.
+- **AI Enhance Bar** (#244, #245, #246): Reusable `AiEnhanceBar` component with inline model picker and "AI Enhance" button. Integrated across Skills, Library, Workbench, and Admin personality editors. Backend `POST /api/admin/ai/enhance` endpoint with Zod validation.
+- **Inline Model Picker** (#244): Reusable `InlineModelPicker` select component fetching available models from the API.
+- **Agent Orchestration** (Epic #237): Full agent management system with SQLite-backed CRUD, skill assignments, parent-child relationships, and tool whitelists.
+  - Agent schema (#247): `agents` and `agent_skills` tables with migration, `toAgent` converter, and all repository CRUD methods.
+  - Agent API (#248): REST endpoints for agent CRUD (`GET/POST/PUT/DELETE /api/admin/agents`), skill management (`GET/PUT /agents/:id/skills`).
+  - Agent List Page (#249): Grid view with search/filter, skeleton loading states, enable/disable toggle, and edit/delete actions.
+  - Agent Form (#250): Create/edit form with persona editor (AiEnhanceBar), tool whitelist, parent agent picker, and skill assignment toggles.
+- **Skills Redesign** (#251): Added `requiredTools` field to skills with ALTER TABLE migration, updated skill CRUD, tool count badges in list view, and agent assignment display.
+- **Navigation**: Added "Agents" link with Bot icon to nav tabs.
 
 ### Changed
 
+- **Layout Grid** (#252): Root layout updated from `min-h-screen` to `grid h-dvh overflow-hidden` for proper viewport containment. Talos layout uses flex-based footer with version display.
+- **Spacing Audit** (#253): All pages updated with consistent `px-4 md:px-6 py-4 md:py-6` padding, `overflow-auto` scroll containers, and `h-full` wrappers for grid layout compatibility.
+- **SDK References** (#243): Updated Model Configuration description from "OpenAI" to "GitHub Copilot SDK".
+- **Environment Variables** (#242): Added `GITHUB_TOKEN` and `COPILOT_GITHUB_TOKEN` to known env vars in the Environment panel.
 - **React 18 → 19** (#195): Upgraded to React 19 with new lint rules, ref-as-prop support. Fixed `useSocket` to use initializer function pattern instead of setState-in-effect.
 - **Next.js 14 → 16** (#192): Upgraded to Next.js 16.2.1 with Turbopack default. Removed deprecated `reactStrictMode` option (now default). Replaced `next lint` with direct ESLint invocation (removed in Next 16).
 - **Tailwind CSS 3 → 4** (#196): Migrated to Tailwind v4 CSS-first configuration. Replaced `tailwind.config.ts` with `@theme inline` block in `globals.css`. Switched PostCSS plugin to `@tailwindcss/postcss`. Removed `autoprefixer` (built-in) and `tailwindcss-animate` (animations defined in CSS).
