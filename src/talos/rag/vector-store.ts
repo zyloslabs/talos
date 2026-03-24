@@ -20,6 +20,14 @@ export type VectorRecord = {
   contentHash: string;
   metadata: Record<string, unknown>;
   vector: number[];
+  /** Source document ID */
+  docId?: string;
+  /** Document version */
+  sourceVersion?: string;
+  /** Confidence score (0-1) */
+  confidence?: number;
+  /** Tags for filtering */
+  tags?: string[];
 };
 
 export type VectorSearchResult = {
@@ -31,10 +39,29 @@ export type VectorSearchResult = {
   type: TalosChunkType;
   score: number;
   metadata: Record<string, unknown>;
+  docId?: string;
+  sourceVersion?: string;
+  confidence?: number;
+  tags?: string[];
 };
 
 export type VectorStoreOptions = {
   config: VectorDbConfig;
+};
+
+export type HybridSearchOptions = {
+  /** Filter by chunk types */
+  types?: string[];
+  /** Filter by tags */
+  tags?: string[];
+  /** Filter by document type (stored in metadata.docType) */
+  docType?: string;
+  /** Filter by persona tag */
+  persona?: string;
+  /** Minimum confidence score */
+  minConfidence?: number;
+  /** Maximum results */
+  limit?: number;
 };
 
 // ── Vector Store ──────────────────────────────────────────────────────────────
@@ -135,6 +162,60 @@ export class VectorStore {
     return false;
   }
 
+  /**
+   * Hybrid search combining vector similarity with keyword matching and metadata filtering.
+   */
+  async hybridSearch(
+    applicationId: string,
+    queryVector: number[],
+    queryText: string,
+    options: HybridSearchOptions = {}
+  ): Promise<VectorSearchResult[]> {
+    await this.ensureInitialized();
+
+    // Step 1: Vector search with generous limit for re-ranking
+    const vectorLimit = (options.limit ?? 10) * 3;
+    const vectorResults = await this.search(queryVector, applicationId, {
+      limit: vectorLimit,
+      minScore: 0.3,
+    });
+
+    // Step 2: Keyword boosting
+    const keywords = queryText.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const scored = vectorResults.map((r) => {
+      const contentLower = r.content.toLowerCase();
+      let keywordHits = 0;
+      for (const kw of keywords) {
+        if (contentLower.includes(kw)) keywordHits++;
+      }
+      const keywordBoost = keywords.length > 0 ? (keywordHits / keywords.length) * 0.2 : 0;
+      return { ...r, score: r.score + keywordBoost };
+    });
+
+    // Step 3: Metadata filtering
+    const filtered = scored.filter((r) => {
+      if (options.types && options.types.length > 0 && !options.types.includes(r.type)) return false;
+      if (options.minConfidence !== undefined && (r.confidence === undefined || r.confidence < options.minConfidence)) return false;
+      if (options.tags && options.tags.length > 0) {
+        const itemTags = r.tags ?? [];
+        if (!options.tags.some((t) => itemTags.includes(t))) return false;
+      }
+      if (options.docType) {
+        const docType = r.metadata?.docType as string | undefined;
+        if (docType !== options.docType) return false;
+      }
+      if (options.persona) {
+        const itemTags = r.tags ?? [];
+        if (!itemTags.includes(options.persona)) return false;
+      }
+      return true;
+    });
+
+    // Step 4: Sort by score descending and limit
+    filtered.sort((a, b) => b.score - a.score);
+    return filtered.slice(0, options.limit ?? 10);
+  }
+
   // ── LanceDB Implementation ──────────────────────────────────────────────────
 
   private async initLanceDB(): Promise<void> {
@@ -170,6 +251,10 @@ export class VectorStore {
       content_hash: r.contentHash,
       metadata: JSON.stringify(r.metadata),
       vector: r.vector,
+      doc_id: r.docId ?? "",
+      source_version: r.sourceVersion ?? "",
+      confidence: r.confidence ?? -1,
+      tags: JSON.stringify(r.tags ?? []),
     }));
 
     if (!this.table) {
@@ -218,6 +303,10 @@ export class VectorStore {
       type: TalosChunkType;
       metadata: string;
       _distance: number;
+      doc_id?: string;
+      source_version?: string;
+      confidence?: number;
+      tags?: string;
     }>;
 
     return results
@@ -230,6 +319,10 @@ export class VectorStore {
         type: r.type,
         score: 1 - r._distance, // Convert distance to similarity
         metadata: JSON.parse(r.metadata) as Record<string, unknown>,
+        docId: r.doc_id && r.doc_id !== "" ? r.doc_id : undefined,
+        sourceVersion: r.source_version && r.source_version !== "" ? r.source_version : undefined,
+        confidence: r.confidence !== undefined && r.confidence >= 0 ? r.confidence : undefined,
+        tags: r.tags ? (JSON.parse(r.tags) as string[]) : undefined,
       }))
       .filter((r) => !options.minScore || r.score >= options.minScore);
   }

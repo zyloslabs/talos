@@ -19,6 +19,7 @@
   - [Runner Module](#runner-module)
   - [Healing Module](#healing-module)
   - [Export Module](#export-module)
+  - [Knowledge Module](#knowledge-module)
   - [UI Module](#ui-module)
 - [Data Architecture](#data-architecture)
   - [SQLite Schema](#sqlite-schema)
@@ -61,18 +62,18 @@ The engine exposes its functionality through **MCP tools** (Model Context Protoc
 ┌──────────────────────────────┴──────────────────────────────────────┐
 │                          MCP Tool Layer                              │
 │  14 tools · Zod validation · Risk-level gating · JSON responses      │
-├─────────┬──────────┬──────────┬──────────┬──────────┬───────────────┤
-│Discovery│   RAG    │Generator │  Runner  │ Healing  │    Export     │
-│         │          │          │          │          │               │
-│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │  Package      │
-│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │  Builder      │
-│ Client  │          │          │          │          │               │
-│         │ Vector   │ Code     │ Artifact │ Fix      │  Credential   │
-│ File    │ Store    │ Validator│ Manager  │ Generator│  Sanitizer    │
-│ Chunker │          │          │          │          │               │
-│         │ RAG      │ Test     │Credential│ Healing  │  Export       │
-│         │ Pipeline │ Generator│ Injector │ Engine   │  Engine       │
-├─────────┴──────────┴──────────┴──────────┴──────────┴───────────────┤
+├─────────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┤
+│Discovery│   RAG    │Generator │  Runner  │ Healing  │  Export  │Knowledge│
+│         │          │          │          │          │          │         │
+│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │ Package  │Document │
+│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │ Builder  │Ingester │
+│ Client  │          │          │          │          │          │         │
+│         │ Vector   │ Code     │ Artifact │ Fix      │Credential│ Auto    │
+│ File    │ Store    │ Validator│ Manager  │ Generator│Sanitizer │ Tagger  │
+│ Chunker │          │          │          │          │          │         │
+│         │ RAG      │ Test     │Credential│ Healing  │ Export   │         │
+│         │ Pipeline │ Generator│ Injector │ Engine   │ Engine   │         │
+├─────────┴──────────┴──────────┴──────────┴──────────┴──────────┴─────────┤
 │                        Core Layer                                    │
 │  TalosRepository (SQLite) · TalosConfig (Zod) · Types · initTalos   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -536,6 +537,54 @@ Failed TalosTestRun
 - Full audit trail for every attempt.
 - Configurable confidence threshold (default 85%).
 - Cooldown between attempts.
+
+---
+
+### Knowledge Module
+
+**Location:** `src/talos/knowledge/`
+
+Document ingestion and auto-tagging for the RAG knowledge base. Enables ingestion of requirements documents (PRDs, user stories, API specs) so the test generator can reason over domain knowledge.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `DocumentIngester` | Ingests Markdown and OpenAPI (JSON/YAML) documents — semantic chunking, stable IDs, integration with `RagPipeline` |
+| `AutoTagger` | NLP-heuristic auto-tagging using controlled vocabulary for personas, NFRs, environments, and functional areas |
+
+#### Document Formats
+
+| Format | Chunking Strategy |
+|--------|------------------|
+| `markdown` | Split by heading sections (## / ###) with 10-15% paragraph overlap |
+| `openapi_json` | One chunk per operation (path + HTTP method) |
+| `openapi_yaml` | One chunk per operation (basic YAML parser) |
+
+#### Controlled Vocabulary (`AutoTagger`)
+
+| Category | Values |
+|----------|--------|
+| Doc Types | `prd`, `user_story`, `api_spec`, `functional_spec` |
+| Personas | `admin`, `standard`, `guest`, `service`, `user` |
+| NFR Tags | `performance`, `security`, `accessibility`, `reliability`, `usability` |
+| Environments | `local`, `staging`, `production`, `ci` |
+
+#### Chunk ID Format
+
+Stable, deterministic IDs: `req:<appId>:<fileName>:<chunkIndex>:<version>`
+
+#### Extended Chunk Types
+
+`TalosChunkType` now includes: `code`, `test`, `documentation`, `config`, `schema`, **`requirement`**, **`api_spec`**, **`user_story`**
+
+#### Hybrid Search (`VectorStore.hybridSearch`)
+
+Combines vector similarity with keyword boosting and metadata filtering:
+- Vector search (3× limit for re-ranking)
+- Keyword hit boosting (+0.2 weight)
+- Filter by: `types`, `tags`, `docType`, `persona`, `minConfidence`
+- Exposed via `RagPipeline.retrieveWithFilters()`
 
 ---
 

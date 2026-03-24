@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge Base Enhancement** (Epic #276): New `src/talos/knowledge/` module for requirements document ingestion and knowledge-base auto-tagging.
+  - Extended `TalosChunk` type with new chunk types (`requirement`, `api_spec`, `user_story`) and optional metadata fields (`docId`, `sourceVersion`, `confidence`, `tags`, `links`) (#281).
+  - `DocumentIngester` class: ingests Markdown and OpenAPI (JSON/YAML) documents into the RAG knowledge base with semantic section chunking, 10-15% overlap, and stable chunk IDs (#282).
+  - `AutoTagger` class: NLP-heuristic auto-tagging with controlled vocabulary for personas, NFR keywords, environments, and functional areas (#283).
+  - Hybrid search (`VectorStore.hybridSearch`): combines vector similarity with keyword boosting and metadata filtering (types, tags, docType, persona, minConfidence). Exposed via `RagPipeline.retrieveWithFilters()` (#284).
+
 ### Fixed
 
 - **Copilot SDK `onPermissionRequest`** (#256): `createSession` now passes `approveAll` (imported from `@github/copilot-sdk`) as `onPermissionRequest`, resolving the root cause of chat sessions failing with permission errors.
