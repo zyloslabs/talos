@@ -30,6 +30,7 @@ vi.mock("@/lib/api", () => ({
   getChatSessions: vi.fn().mockResolvedValue([]),
   deleteChatSession: vi.fn(),
   getModels: vi.fn().mockResolvedValue({ models: [], selected: "gpt-4.1", reasoningEffort: "medium" }),
+  getAuthStatus: vi.fn().mockResolvedValue({ authenticated: true, authMode: "token" }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
