@@ -97,6 +97,7 @@ export interface CopilotWrapper {
   getSessionUsage(sessionId: string): TokenUsage | null;
   clearSessionUsage(sessionId: string): TokenUsage | null;
   hasGithubToken(): boolean;
+  reinit(token?: string): Promise<void>;
 }
 
 export type CopilotWrapperOptions = {
@@ -430,6 +431,22 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   hasGithubToken(): boolean {
     return !!this.githubToken;
+  }
+
+  async reinit(token?: string): Promise<void> {
+    await this.clearAllSessions();
+    this.githubToken = token;
+    if (token) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = new CopilotClient({ githubToken: token, useLoggedInUser: false }) as any;
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = new CopilotClient() as any;
+    }
+    this.started = false;
+    this.startFailed = false;
+    this.startPromise = undefined;
+    this.modelCapabilitiesCache.clear();
   }
 
   /** @internal Not part of the CopilotWrapper public interface — promote when called through the interface type. */

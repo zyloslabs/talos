@@ -85,6 +85,8 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
 
   const isSet = entry !== undefined;
   const isMasked = entry?.masked ?? false;
+  // Values that come from the OS process environment cannot be deleted through the env panel.
+  const isSystemEnv = entry?.source === "process";
 
   const saveMut = useMutation({
     mutationFn: (value: string) => setEnvEntry(varDef.key, value),
@@ -130,6 +132,9 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
               <Badge variant="destructive" className="text-xs">required</Badge>
             )}
             {isSet && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
+            {isSystemEnv && (
+              <Badge variant="outline" className="text-xs text-muted-foreground">System env</Badge>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{varDef.description}</p>
         </div>
@@ -144,7 +149,7 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
               <Pencil className="h-3 w-3 mr-1" />
               {isSet ? "Edit" : "Set"}
             </Button>
-            {isSet && (
+            {isSet && !isSystemEnv && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -161,6 +166,11 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
 
       {!editing && isSet && (
         <p className="text-xs font-mono text-muted-foreground truncate pl-1">{displayValue()}</p>
+      )}
+      {!editing && isSet && isSystemEnv && (
+        <p className="text-xs text-muted-foreground italic pl-1">
+          Set in system environment — enter a value above to override with a file-stored value.
+        </p>
       )}
       {!editing && !isSet && (
         <p className="text-xs text-muted-foreground italic pl-1">Not configured</p>
