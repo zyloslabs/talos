@@ -100,6 +100,7 @@ describe("CopilotWrapperService", () => {
           { id: "gpt-4.1" },
           { id: "claude-sonnet-4" },
         ]),
+        getAuthStatus: vi.fn(async (): Promise<{ isAuthenticated: boolean; authType?: string }> => ({ isAuthenticated: true, authType: "device" })),
       },
     };
   }
@@ -465,14 +466,17 @@ describe("CopilotWrapperService", () => {
     expect(toolCallEvents[0]).toMatchObject({ tool: "my-tool", args: { arg: "val" } });
   });
 
-  it("isAuthenticated returns true when githubToken is set", async () => {
+  it("isAuthenticated returns true when SDK reports authenticated", async () => {
     const { client } = createMockClient();
+    // Mock reports authenticated via SDK
+    client.getAuthStatus = vi.fn(async () => ({ isAuthenticated: true, authType: "env" }));
     const wrapper = new CopilotWrapperService({ client, githubToken: "ghp_abc" });
     expect(await wrapper.isAuthenticated()).toBe(true);
   });
 
-  it("isAuthenticated returns false when no auth state exists", async () => {
+  it("isAuthenticated returns false when no auth state exists and SDK reports not authenticated", async () => {
     const { client } = createMockClient();
+    client.getAuthStatus = vi.fn(async () => ({ isAuthenticated: false, authType: undefined as string | undefined }));
     const wrapper = new CopilotWrapperService({ client, authPath: "/tmp/no-such-talos-auth.json" });
     expect(await wrapper.isAuthenticated()).toBe(false);
   });
