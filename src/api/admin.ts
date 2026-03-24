@@ -16,7 +16,7 @@ import { Router } from "express";
 import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import type { PlatformRepository } from "../platform/repository.js";
-import { EnvManager, EnvValidationError } from "../platform/env-manager.js";
+import { EnvManager, EnvValidationError, maskEnvValue } from "../platform/env-manager.js";
 import type { CopilotWrapper } from "../copilot/copilot-wrapper.js";
 import type { RagPipeline } from "../talos/rag/rag-pipeline.js";
 import type {
@@ -129,10 +129,26 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   // ── Environment Variables ──────────────────────────────────────────────────
 
+  // Keys the UI knows about — supplement with process.env values not yet stored in the env file.
+  const KNOWN_ENV_KEYS = ["GITHUB_CLIENT_ID", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "TALOS_ADMIN_TOKEN", "PORT", "TALOS_DATA_DIR", "TALOS_ALLOWED_DIRS"];
+  // Token keys whose changes require re-initialising the Copilot wrapper.
+  const COPILOT_TOKEN_KEYS = new Set(["GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN"]);
+
   router.get("/env", (_req, res) => {
     if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
     const entries = envManager.list();
     const missing = envManager.validateRequired(["GITHUB_CLIENT_ID"]);
+
+    // Append process.env values for known vars that are not stored in the env file,
+    // so the UI can show (and potentially override) system-level configuration.
+    const fileKeys = new Set(entries.map((e) => e.key));
+    for (const key of KNOWN_ENV_KEYS) {
+      if (!fileKeys.has(key) && process.env[key]) {
+        const { value, masked } = maskEnvValue(key, process.env[key]!);
+        entries.push({ key, value, masked, source: "process" });
+      }
+    }
+
     res.json({ entries, warnings: missing.length > 0 ? { missingRequired: missing } : undefined });
   });
 
@@ -143,12 +159,18 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json({ key: req.params.key, value });
   });
 
-  router.put("/env", (req, res) => {
+  router.put("/env", async (req, res) => {
     if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
     const { key, value } = req.body as { key?: string; value?: string };
     if (!key || value === undefined) { res.status(400).json({ error: "key and value are required" }); return; }
     try {
       const entry = envManager.set(key, value);
+      // Re-initialise the Copilot wrapper so the new token takes effect immediately.
+      if (COPILOT_TOKEN_KEYS.has(key) && copilot) {
+        const token = envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
+          ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN;
+        await copilot.reinit(token);
+      }
       res.json(entry);
     } catch (err) {
       if (err instanceof EnvValidationError) {
@@ -159,9 +181,15 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     }
   });
 
-  router.delete("/env/:key", (req, res) => {
+  router.delete("/env/:key", async (req, res) => {
     if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
     if (!envManager.delete(req.params.key)) { res.status(404).json({ error: "Key not found" }); return; }
+    // Re-initialise the Copilot wrapper if a token was removed.
+    if (COPILOT_TOKEN_KEYS.has(req.params.key) && copilot) {
+      const token = envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
+        ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN;
+      await copilot.reinit(token);
+    }
     res.status(204).end();
   });
 
