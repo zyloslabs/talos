@@ -44,6 +44,9 @@ export { ExportEngine } from "./export/index.js";
 export { PackageBuilder } from "./export/index.js";
 export { CredentialSanitizer } from "./export/index.js";
 
+export { DocumentIngester } from "./knowledge/index.js";
+export { AutoTagger } from "./knowledge/index.js";
+
 // ── Initialization ────────────────────────────────────────────────────────────
 
 import type Database from "better-sqlite3";

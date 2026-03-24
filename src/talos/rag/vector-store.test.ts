@@ -234,4 +234,124 @@ describe("VectorStore", () => {
     const exists = await store.exists("app-1", "h");
     expect(exists).toBe(false);
   });
+
+  // ── hybridSearch tests (#284) ───────────────────────────────────────────────
+
+  describe("hybridSearch", () => {
+    function makeStore(searchResults: unknown[]) {
+      const mockToArray = vi.fn().mockResolvedValue(searchResults);
+      const mockWhere = vi.fn().mockReturnValue({ toArray: mockToArray });
+      const mockLimit = vi.fn().mockReturnValue({ where: mockWhere, toArray: mockToArray });
+      const mockSearch = vi.fn().mockReturnValue({ limit: mockLimit });
+      const store = new VectorStore({ config: baseConfig });
+      Object.assign(store, {
+        initialized: true,
+        db: {},
+        table: { search: mockSearch },
+        config: baseConfig,
+      });
+      return store;
+    }
+
+    it("returns results sorted by score with keyword boost", async () => {
+      const store = makeStore([
+        {
+          id: "1", content: "login authentication flow", file_path: "/auth.ts",
+          start_line: 1, end_line: 10, type: "requirement", metadata: "{}",
+          _distance: 0.2, doc_id: "", source_version: "", confidence: 0.9, tags: "[]",
+        },
+        {
+          id: "2", content: "unrelated content here", file_path: "/other.ts",
+          start_line: 1, end_line: 5, type: "code", metadata: "{}",
+          _distance: 0.3, doc_id: "", source_version: "", confidence: -1, tags: "[]",
+        },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "login authentication", { limit: 10 });
+      expect(results.length).toBeGreaterThanOrEqual(1);
+      expect(results[0].id).toBe("1"); // keyword boost should cause auth result to stay on top
+    });
+
+    it("filters by types", async () => {
+      const store = makeStore([
+        { id: "1", content: "req text", file_path: "/r.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+        { id: "2", content: "code text", file_path: "/c.ts", start_line: 1, end_line: 5, type: "code", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { types: ["requirement"] });
+      expect(results.every((r) => r.type === "requirement")).toBe(true);
+    });
+
+    it("filters by tags", async () => {
+      const store = makeStore([
+        { id: "1", content: "tagged", file_path: "/a.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: '["security","auth"]' },
+        { id: "2", content: "no tag", file_path: "/b.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { tags: ["security"] });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("1");
+    });
+
+    it("filters by minConfidence", async () => {
+      const store = makeStore([
+        { id: "1", content: "high conf", file_path: "/a.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: 0.95, tags: "[]" },
+        { id: "2", content: "low conf", file_path: "/b.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: 0.3, tags: "[]" },
+        { id: "3", content: "no conf", file_path: "/c.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { minConfidence: 0.5 });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("1");
+    });
+
+    it("filters by docType in metadata", async () => {
+      const store = makeStore([
+        { id: "1", content: "prd stuff", file_path: "/a.md", start_line: 1, end_line: 5, type: "requirement", metadata: '{"docType":"prd"}', _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+        { id: "2", content: "spec stuff", file_path: "/b.md", start_line: 1, end_line: 5, type: "api_spec", metadata: '{"docType":"api_spec"}', _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { docType: "prd" });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("1");
+    });
+
+    it("filters by persona tag", async () => {
+      const store = makeStore([
+        { id: "1", content: "admin flow", file_path: "/a.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: '["admin"]' },
+        { id: "2", content: "user flow", file_path: "/b.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: '["user"]' },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { persona: "admin" });
+      expect(results).toHaveLength(1);
+      expect(results[0].id).toBe("1");
+    });
+
+    it("respects limit option", async () => {
+      const store = makeStore([
+        { id: "1", content: "a", file_path: "/a.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+        { id: "2", content: "b", file_path: "/b.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.2, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+        { id: "3", content: "c", file_path: "/c.md", start_line: 1, end_line: 5, type: "requirement", metadata: "{}", _distance: 0.3, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { limit: 2 });
+      expect(results).toHaveLength(2);
+    });
+
+    it("returns empty for no matching filters", async () => {
+      const store = makeStore([
+        { id: "1", content: "code text", file_path: "/c.ts", start_line: 1, end_line: 5, type: "code", metadata: "{}", _distance: 0.1, doc_id: "", source_version: "", confidence: -1, tags: "[]" },
+      ]);
+
+      const results = await store.hybridSearch("app-1", [0.1], "query", { types: ["requirement"] });
+      expect(results).toHaveLength(0);
+    });
+
+    it("returns empty when no table (no data)", async () => {
+      const store = new VectorStore({ config: baseConfig });
+      Object.assign(store, { initialized: true, db: {}, table: null, config: baseConfig });
+      const results = await store.hybridSearch("app-1", [0.1], "query");
+      expect(results).toHaveLength(0);
+    });
+  });
 });

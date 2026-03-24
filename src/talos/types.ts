@@ -208,7 +208,13 @@ export type UpdateVaultRoleInput = Partial<
 
 // ── RAG Types ─────────────────────────────────────────────────────────────────
 
-export type TalosChunkType = "code" | "test" | "documentation" | "config" | "schema";
+export type TalosChunkType = "code" | "test" | "documentation" | "config" | "schema" | "requirement" | "api_spec" | "user_story";
+
+/** Link to a related artifact (test, requirement, etc.) */
+export type ArtifactLink = {
+  artifactType: string;
+  artifactId: string;
+};
 
 export type TalosChunk = {
   id: string;
@@ -221,8 +227,38 @@ export type TalosChunk = {
   /** Hash for deduplication */
   contentHash: string;
   metadata: Record<string, unknown>;
+  /** Source document identifier */
+  docId?: string;
+  /** Version of the source document */
+  sourceVersion?: string;
+  /** Confidence score (0-1) for auto-generated chunks */
+  confidence?: number;
+  /** Categorisation tags */
+  tags?: string[];
+  /** Links to related artifacts */
+  links?: ArtifactLink[];
   createdAt: Date;
 };
+
+export type CreateChunkInput = {
+  applicationId: string;
+  type: TalosChunkType;
+  content: string;
+  filePath: string;
+  startLine?: number;
+  endLine?: number;
+  contentHash: string;
+  metadata?: Record<string, unknown>;
+  docId?: string;
+  sourceVersion?: string;
+  confidence?: number;
+  tags?: string[];
+  links?: ArtifactLink[];
+};
+
+export type UpdateChunkInput = Partial<
+  Pick<TalosChunk, "content" | "contentHash" | "metadata" | "docId" | "sourceVersion" | "confidence" | "tags" | "links">
+>;
 
 // ── Discovery Types ───────────────────────────────────────────────────────────
 
