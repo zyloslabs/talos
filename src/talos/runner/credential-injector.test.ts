@@ -161,4 +161,35 @@ describe("CredentialInjector", () => {
     expect(mockPage.click).toHaveBeenCalledWith("button");
     expect(mockPage.waitForSelector).toHaveBeenCalledWith(".dashboard", { timeout: 30000 });
   });
+
+  it("createLoginFunction handles MFA when fully configured", async () => {
+    const creds = {
+      username: "admin",
+      password: "secret",
+      additional: { mfa: "MYOTPSECRET" },
+      roleType: "admin" as const,
+      roleName: "Admin",
+    };
+
+    const mockPage = {
+      goto: vi.fn(),
+      fill: vi.fn(),
+      click: vi.fn(),
+      waitForSelector: vi.fn(),
+    };
+
+    const loginFn = injector.createLoginFunction(creds, {
+      loginUrl: "/login",
+      usernameSelector: "#user",
+      passwordSelector: "#pass",
+      submitSelector: "button",
+      successIndicator: ".dashboard",
+      mfaSelector: "#mfa-code",
+      mfaSecretKey: "mfa",
+    });
+
+    await loginFn(mockPage as never);
+    expect(mockPage.fill).toHaveBeenCalledWith("#mfa-code", ""); // generateTOTP returns placeholder ""
+    expect(mockPage.click).toHaveBeenCalledTimes(2); // submit + after MFA
+  });
 });

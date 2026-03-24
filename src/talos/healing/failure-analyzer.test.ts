@@ -177,4 +177,51 @@ describe("FailureAnalyzer", () => {
       expect(Object.values(stats.byCategory).every((v) => v === 0)).toBe(true);
     });
   });
+
+  describe("analyzeTrace", () => {
+    it("returns empty structure (stub)", async () => {
+      const fakeArtifact = {
+        id: "artifact-1",
+        testRunId: "run-1",
+        type: "trace" as const,
+        filePath: "/tmp/trace.zip",
+        sizeBytes: 1024,
+        mimeType: "application/zip",
+        stepName: null,
+        metadata: {},
+        createdAt: new Date(),
+      };
+      const result = await analyzer.analyzeTrace(fakeArtifact);
+      expect(result.screenshots).toEqual([]);
+      expect(result.actions).toEqual([]);
+      expect(result.networkRequests).toEqual([]);
+    });
+  });
+
+  describe("findRelatedFailures coverage", () => {
+    it("returns realted failures when previous runs have matching category error", async () => {
+      // Create 2 previous failed runs with matching timeout error
+      const run1 = createFailedRun("locator.click: Timeout 30000ms exceeded", "locator('#btn')");
+      const run2 = createFailedRun("locator('.x'): Timeout 30000ms exceeded", "locator('.x')");
+
+      // Third run — analyze should find run1 and run2 as related (same category/pattern)
+      const run3 = createFailedRun("locator('#y'): Timeout 30000ms exceeded");
+      const analysis = await analyzer.analyze(run3);
+
+      expect(analysis.category).toBe("timeout");
+      // relatedFailures should include at least run1 and/or run2
+      expect(analysis.relatedFailures.length).toBeGreaterThan(0);
+      expect(analysis.relatedFailures.some(id => id === run1.id || id === run2.id)).toBe(true);
+    });
+
+    it("returns empty relatedFailures when test has been deleted", async () => {
+      const run = createFailedRun("locator.click: Timeout 30000ms exceeded");
+      // Delete test so findRelatedFailures hits the !test early return
+      repo.deleteTest(testId);
+
+      const analysis = await analyzer.analyze(run);
+      // Should still return a valid analysis (just with no related failures)
+      expect(analysis.relatedFailures).toEqual([]);
+    });
+  });
 });

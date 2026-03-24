@@ -9,9 +9,10 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { CopilotClient } from "@github/copilot-sdk";
+import { CopilotClient, defineTool, approveAll } from "@github/copilot-sdk";
 import { TokenTracker } from "./token-tracker.js";
 import type { TokenUsage } from "./token-tracker.js";
+import type { ToolDefinition } from "../talos/tools.js";
 
 export type { TokenUsage };
 
@@ -49,6 +50,7 @@ type AuthState = {
 // type PermissionResponse = { kind: "approved" | "denied-by-rules" | "denied-by-user" };
 
 export type ChatOptions = {
+  tools?: ToolDefinition[];
   model?: string;
   conversationId?: string;
   systemMessage?: { mode: "append" | "replace"; content: string };
@@ -82,6 +84,7 @@ export interface CopilotWrapper {
   isAuthenticated(): Promise<boolean>;
   chat(message: string, options?: ChatOptions): AsyncGenerator<string>;
   listModels(): Promise<CopilotModel[]>;
+  modelSupportsReasoning(modelId: string): boolean;
   getModel(): string;
   setModel(model: string): void;
   getReasoningEffort(): ReasoningEffort | undefined;
@@ -180,7 +183,9 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   private model: string;
   private authTimeoutMs: number;
   private started = false;
+  private startFailed = false;
   private startPromise?: Promise<void>;
+  private modelCapabilitiesCache = new Map<string, { supportsReasoning: boolean }>();
   private defaultReasoningEffort?: ReasoningEffort;
   private providerConfig?: ProviderConfig;
   private sendAndWaitTimeoutMs: number;
@@ -212,13 +217,25 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   }
 
   private async ensureStarted(): Promise<void> {
-    if (this.started) return;
+    if (this.started || this.startFailed) return;
     if (this.startPromise) { await this.startPromise; return; }
     this.startPromise = (async () => {
-      if (this.client.start) await this.client.start();
-      this.started = true;
+      try {
+        if (this.client.start) await this.client.start();
+        this.started = true;
+      } catch {
+        this.startFailed = true;
+      }
     })();
     await this.startPromise;
+  }
+
+  modelSupportsReasoning(modelId: string): boolean {
+    const cached = this.modelCapabilitiesCache.get(modelId);
+    if (cached !== undefined) return cached.supportsReasoning;
+    // Fallback for well-known reasoning model prefixes before cache is populated
+    const lower = modelId.toLowerCase();
+    return lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("o4");
   }
 
   async authenticate(): Promise<DeviceAuthInfo> {
@@ -252,30 +269,67 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   async *chat(message: string, options?: ChatOptions): AsyncGenerator<string> {
     await this.ensureStarted();
 
+    if (this.startFailed) {
+      throw new Error(
+        "Copilot SDK failed to start. Please ensure the GitHub Copilot CLI is up to date."
+      );
+    }
+
+    const effectiveModel = options?.model ?? this.model;
     const conversationId = options?.conversationId ?? `chat-${Date.now()}`;
     let session = this.sessionCache.get(conversationId);
 
+    // Wrap Talos tools with defineTool() so the SDK can invoke them
+    const toolList = options?.tools ?? [];
+    const perCallToolCallback = options?.onToolCall;
+    const wrappedTools = toolList.map((tool) =>
+      defineTool(tool.name, {
+        description: tool.description,
+        parameters: tool.inputSchema,
+        handler: async (args) => {
+          if (perCallToolCallback) perCallToolCallback(tool.name, args);
+          this.emit("tool:call", { tool: tool.name, args });
+          try {
+            const result = await tool.handler(args as Record<string, unknown>);
+            if (result.isError) return `[Tool Error] ${result.text}`;
+            return result.text;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `[Tool Error] ${msg}`;
+          }
+        },
+      })
+    );
+
+    // Only pass reasoningEffort to models that support it
+    const rawReasoningEffort = options?.reasoningEffort ?? this.defaultReasoningEffort;
+    const effectiveReasoningEffort = rawReasoningEffort && this.modelSupportsReasoning(effectiveModel)
+      ? rawReasoningEffort
+      : undefined;
+
     if (!session) {
       session = await this.client.createSession({
-        model: options?.model ?? this.model,
+        model: effectiveModel,
         streaming: true,
+        tools: wrappedTools,
         systemMessage: options?.systemMessage,
-        reasoningEffort: options?.reasoningEffort ?? this.defaultReasoningEffort,
-        provider: this.providerConfig,
+        ...(effectiveReasoningEffort ? { reasoningEffort: effectiveReasoningEffort } : {}),
+        ...(this.providerConfig ? { provider: this.providerConfig } : {}),
+        onPermissionRequest: approveAll,
       });
       this.sessionCache.set(conversationId, session);
     }
 
     const queue = new AsyncQueue<string>();
 
-    const unsubText = session.on("text", (event: { delta?: string; text?: string }) => {
-      const chunk = event.delta ?? event.text ?? "";
+    const unsubDelta = session.on("assistant.message_delta", (event: { data?: { deltaContent?: string } }) => {
+      const chunk = event?.data?.deltaContent ?? "";
       if (chunk) queue.push(chunk);
     });
 
     const unsubTool = session.on("toolCall", (event: { name?: string; arguments?: unknown }) => {
       if (event.name) {
-        options?.onToolCall?.(event.name, event.arguments);
+        perCallToolCallback?.(event.name, event.arguments);
         this.emit("tool:call", { tool: event.name, args: event.arguments });
       }
     });
@@ -291,7 +345,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
         queue.end();
       })
       .finally(() => {
-        unsubText();
+        unsubDelta();
         unsubTool();
         unsubUsage();
       });
@@ -305,8 +359,17 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   async listModels(): Promise<CopilotModel[]> {
     await this.ensureStarted();
+    if (this.startFailed) {
+      throw new Error("Copilot SDK failed to start — cannot list models");
+    }
     if (!this.client.listModels) return [{ id: this.model }];
-    return this.client.listModels();
+    const models = await this.client.listModels();
+    // Cache model capabilities for reasoning-effort gating
+    for (const model of models) {
+      const supportsReasoning = model.capabilities?.supports?.reasoningEffort === true;
+      this.modelCapabilitiesCache.set(model.id, { supportsReasoning });
+    }
+    return models;
   }
 
   getModel(): string { return this.model; }

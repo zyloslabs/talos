@@ -50,59 +50,59 @@
 
 @layer base {
   :root {
-    /* Talos light palette — blue/cyan for test automation theme */
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    /* Talos light palette — stone / ink / ember / tide (synced with OpenZigs) */
+    --background: 36 29% 94%;       /* #f5f1ea stone */
+    --foreground: 240 25% 6%;       /* #0b0b10 ink */
+    --card: 36 29% 94%;
+    --card-foreground: 240 25% 6%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+    --popover-foreground: 240 25% 6%;
+    --primary: 200 60% 27%;         /* #1b4d6d tide */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 36 17% 75%;        /* #c7c1b7 haze */
+    --secondary-foreground: 240 25% 6%;
+    --muted: 36 17% 88%;
+    --muted-foreground: 240 5% 40%;
+    --accent: 16 100% 59%;          /* #ff6a3d ember */
+    --accent-foreground: 240 25% 6%;
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    --radius: 0.5rem;
+    --border: 36 10% 82%;
+    --input: 36 10% 82%;
+    --ring: 200 60% 27%;
+    --radius: 0.75rem;
 
     color-scheme: light;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 20% 98%;
-    --card: 222 47% 14%;
-    --card-foreground: 210 20% 98%;
-    --popover: 222 47% 14%;
-    --popover-foreground: 210 20% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 20% 98%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 20% 98%;
+    --background: 240 25% 6%;       /* ink */
+    --foreground: 36 29% 94%;       /* stone */
+    --card: 240 15% 10%;
+    --card-foreground: 36 29% 94%;
+    --popover: 240 15% 10%;
+    --popover-foreground: 36 29% 94%;
+    --primary: 200 60% 42%;         /* brighter tide for dark */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 10% 18%;
+    --secondary-foreground: 36 29% 94%;
+    --muted: 240 10% 15%;
+    --muted-foreground: 36 10% 60%;
+    --accent: 16 100% 59%;          /* ember stays vivid */
+    --accent-foreground: 0 0% 100%;
     --destructive: 0 62% 50%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --border: 217 33% 20%;
-    --input: 217 33% 20%;
-    --ring: 217 91% 60%;
+    --border: 240 10% 18%;
+    --input: 240 10% 18%;
+    --ring: 200 60% 42%;
 
     color-scheme: dark;
   }
@@ -126,7 +126,7 @@
   }
 
   ::selection {
-    background: hsla(221, 83%, 53%, 0.3);
+    background: hsla(16, 100%, 59%, 0.3);
   }
 }
 
