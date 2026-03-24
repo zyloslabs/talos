@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { NavTabs } from "@/components/talos/nav-tabs";
 import { SectionCard } from "@/components/ui/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +18,7 @@ import {
 } from "@/lib/api";
 import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import {
-  Settings, Shield, Brain, Server, User, KeyRound, Database, ChevronRight,
+  Shield, Brain, Server, User, KeyRound, Database, ChevronRight,
 } from "lucide-react";
 
 // ── Sidebar Navigation (#213) ─────────────────────────────────────────────────
@@ -84,16 +83,17 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <div className="flex flex-col h-full">
-      <NavTabs />
-      <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
-        <div className="flex items-center gap-2 mb-6">
-          <Settings className="h-6 w-6" />
-          <h1 className="text-2xl font-bold">Admin Settings</h1>
-        </div>
-        <div className="flex gap-8">
-          <AdminSidebar activeSection={activeSection} />
-          <div className="flex-1 space-y-6 min-w-0">
+    <div className="mx-auto max-w-6xl px-6 py-10 lg:px-12">
+      <header className="mb-8">
+        <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Talos</p>
+        <h1 className="mt-1 text-3xl font-semibold text-foreground">Administration</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Authentication, personality, models, MCP servers, and environment configuration.
+        </p>
+      </header>
+      <div className="flex gap-8">
+        <AdminSidebar activeSection={activeSection} />
+        <div className="flex-1 space-y-6 min-w-0">
             <SectionCard id="auth" title="Authentication" description="Connect Talos to GitHub Copilot" icon={<Shield className="h-5 w-5" />} defaultOpen>
               <AuthPanel />
             </SectionCard>
@@ -114,8 +114,7 @@ export default function AdminPage() {
             </SectionCard>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
   );
 }
 

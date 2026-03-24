@@ -237,4 +237,50 @@ test.describe("Admin Page", () => {
       }
     });
   });
+
+  // ── Hero Header (#262) ────────────────────────────────────────────────────
+
+  test.describe("Hero Header – Issue #262 (Admin hero header, centered max-w-6xl layout)", () => {
+    // AC: /admin shows a section with uppercase label and large title (h1)
+    test("should display uppercase Talos label in hero header", async () => {
+      // The hero <header> contains a <p> with text "Talos" styled uppercase via CSS
+      await expect(admin.page.locator("header").getByText("Talos")).toBeVisible();
+    });
+
+    test("should display Administration as the h1 heading", async () => {
+      // Issue #262 introduces the hero with an h1 element
+      await expect(
+        admin.page.getByRole("heading", { name: "Administration", level: 1 })
+      ).toBeVisible();
+    });
+  });
+
+  // ── Models Availability (#258) ────────────────────────────────────────────
+
+  test.describe("Models Availability – Issue #258 (capability caching + reasoning guard fix)", () => {
+    // AC: /admin shows a list of available models (or "No models" if none auth'd)
+    // After fix #258, the model listing never crashes: it renders either model buttons
+    // (when authenticated) or the "No models available" fallback message.
+    test("should display model list or No models empty state", async () => {
+      await admin.modelsSection.scrollIntoViewIfNeeded();
+
+      await test.step("Verify the Selected Model label is rendered", async () => {
+        await expect(admin.page.getByText("Selected Model")).toBeVisible();
+      });
+
+      await test.step("Verify model content shows either models or empty state", async () => {
+        // After fix #258 the panel always renders completely. Models and the fallback
+        // are mutually exclusive in the DOM, but .or() can cause strict-mode violations
+        // when both locators momentarily co-exist during hydration. Branch instead.
+        const noModelsMsg = admin.page.getByText("No models available. Authenticate first.");
+        const noMsgVisible = await noModelsMsg.isVisible();
+        if (noMsgVisible) {
+          await expect(noModelsMsg).toBeVisible();
+        } else {
+          // Models loaded — reasoning effort buttons (always 4) plus model buttons exist
+          await expect(admin.modelsSection.getByRole("button").nth(4)).toBeVisible();
+        }
+      });
+    });
+  });
 });

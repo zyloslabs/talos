@@ -317,7 +317,7 @@ export const getSkillAgents = (skillId: string) =>
   fetchApi<SkillDef & { agents: Agent[] }>(`/api/admin/skills/${skillId}`).then((r) => r.agents);
 
 // Environment Variables
-export interface EnvEntry { key: string; value: string; masked: boolean; _raw?: string }
+export interface EnvEntry { key: string; value: string; masked: boolean; source?: "file" | "process"; _raw?: string }
 export interface EnvListResponse { entries: EnvEntry[]; warnings?: { missingRequired: string[] } }
 export const getEnvEntries = () => fetchApi<EnvListResponse>("/api/admin/env");
 export const getEnvRaw = (key: string) => fetchApi<{ key: string; value: string }>(`/api/admin/env/${encodeURIComponent(key)}`);

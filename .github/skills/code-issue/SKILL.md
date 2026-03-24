@@ -66,10 +66,30 @@ This skill should be executed by the **Code Issue** agent (`code-issue.agent.md`
 
 ### Step 2: Branch Setup
 
-1. Ensure working directory is clean
-2. Switch to `main` (or current branch if user specifies) and pull latest
+1. Ensure working directory is clean: `git status`
+2. Switch to `main` and pull latest: `git checkout main && git pull --ff-only origin main`
 3. Create feature branch: `feature/issue-{number}-{short-description}`
-4. Push the branch to establish remote tracking
+4. Push the branch to establish remote tracking: `git push -u origin {branch-name}`
+
+#### Resuming an Existing Branch (Merge Conflict Handling)
+
+If the feature branch already exists (resuming interrupted work) and has fallen behind `main`:
+
+```bash
+git checkout feature/{branch-name} && git fetch origin && git merge origin/main
+```
+
+- **Clean merge** → continue
+- **Conflicts detected** → resolve systematically:
+  1. List conflicted files: `git diff --name-only --diff-filter=U`
+  2. Read each conflict — understand both the incoming (`main`) and current (feature) change before resolving
+  3. Resolution strategy:
+     - Foundation/infrastructure changes from `main` → prefer `main`
+     - New feature code → preserve feature branch intent
+     - Logic conflicts (both sides modified the same function) → merge the intent of both, ask the user if behaviorally ambiguous
+  4. Stage resolved files and complete: `git add {files} && git merge --continue`
+  5. Run the full test suite to verify: `pnpm test`
+  6. If tests fail after merge, fix the regressions before proceeding
 
 ### Step 3: Implementation Loop
 
@@ -111,8 +131,17 @@ If the issue involves UI changes:
 Before creating the PR, perform a comprehensive security review:
 
 1. **Dependency audit**:
-   - `npm audit` for Node.js projects
-   - Gradle/Maven dependency checks for Java projects
+   - Run the package manager audit: `npm audit --audit-level=moderate` (Node.js), `gradle dependencies` (Gradle), or `mvn dependency:check` (Maven)
+   - **CVE lookup for direct dependencies** — for the top direct dependencies (from `package.json` `dependencies`/`devDependencies`, `pom.xml`, or `build.gradle`), use the cve-search tools:
+     ```
+     mcp_cve-search-mc_vul_vendor_product_cve with vendor "{vendor}" product "{package-name}"
+     ```
+   - For any CVE IDs returned by `npm audit`, look up the full record:
+     ```
+     mcp_cve-search-mc_vul_cve_search with cve_id "CVE-XXXX-XXXXX"
+     ```
+   - **Severity gate**: Flag any finding with CVSS ≥ 7.0 as High/Critical — these **block the PR**. CVSS 4.0–6.9 (Medium) are noted but do not block unless exploitable in context.
+   - Check `mcp_cve-search-mc_vul_last_cves` to see if any recently published CVEs match the project's technology stack
 2. **Static code analysis** — Review all changed files for:
    - SQL injection, XSS, CSRF
    - Insecure deserialization
@@ -161,7 +190,30 @@ Update if this issue introduced:
 - Document new configuration options with defaults
 - Update the FAQ if common questions are anticipated
 
-> **Rule**: If `docs/ARCHITECTURE.md` or `docs/USER_GUIDE.md` do not exist, skip this step. These documents are created by the Code Planner agent during project setup.
+#### `.github/copilot-instructions.md`
+Update only when changes affect how a future agent would navigate or build this repo. Trigger conditions:
+
+| Change Type | Example | Update? |
+|---|---|---|
+| New top-level module or service | Added `src/payments/` | ✅ Update Project Layout + Architecture |
+| New build/test/run command | Added `npm run migrate` | ✅ Update Build & Run Commands |
+| New coding convention established | Adopted Zod validation everywhere | ✅ Update Coding Conventions |
+| New major dependency with unusual setup | Added Playwright, Redis | ✅ Update Known Gotchas |
+| New CI check or lint rule | Added type-check step to CI | ✅ Update CI / Validation Pipeline |
+| Routine bug fix or small feature | Fixed a null check | ❌ Skip — no structural change |
+| Test added for existing logic | Added unit test | ❌ Skip |
+
+**What to update** (surgical edits only — keep file under ~150 lines):
+- Update the relevant section(s) in place
+- Do **not** rewrite the entire file
+- Add gotchas only if you hit non-obvious issues during the implementation
+- End with: `<!-- Last updated: {date} by Code Issue agent resolving #{issue-number} -->`
+
+> **Rule**: If `.github/copilot-instructions.md` does not exist, skip this step — it is created by the Code Planner agent during project setup. Do not create it here.
+
+> **Why this matters**: `copilot-instructions.md` is automatically injected into every Copilot Chat request, Copilot code review, and Copilot coding agent session for this repo. Keeping it accurate means future agents (and humans) don't need to re-explore the codebase from scratch.
+
+> **Rule**: If `docs/ARCHITECTURE.md` or `docs/USER_GUIDE.md` do not exist, skip those sections. These documents are created by the Code Planner agent during project setup.
 
 ### Step 6: Delivery
 
