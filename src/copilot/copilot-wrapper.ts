@@ -411,6 +411,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     return !!this.githubToken;
   }
 
+  /** @internal Not part of the CopilotWrapper public interface — promote when called through the interface type. */
   hasSession(conversationId: string): boolean {
     return this.sessionCache.has(conversationId);
   }
