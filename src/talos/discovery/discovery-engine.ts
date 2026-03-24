@@ -110,12 +110,14 @@ export class DiscoveryEngine {
     progress.status = "running";
 
     try {
-      // Resolve GitHub PAT from vault
+      // Resolve GitHub PAT from vault, then fall back to the global env var.
       let pat: string;
       if (application.githubPatRef) {
         pat = await this.resolveSecret(application.githubPatRef);
+      } else if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
+        pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
       } else {
-        throw new Error("No GitHub PAT configured for application");
+        throw new Error("No GitHub PAT configured for application (set githubPatRef on the application or GITHUB_PERSONAL_ACCESS_TOKEN in the environment)");
       }
 
       // Parse repository URL

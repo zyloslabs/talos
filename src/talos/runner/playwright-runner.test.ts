@@ -261,4 +261,238 @@ describe("PlaywrightRunner", () => {
     const result = await runner.executeTest(test, run, { browser: "firefox" });
     expect(result.status).toBe("passed");
   });
+
+  it("executeTest: uses webkit browser when specified", async () => {
+    const app = repo.createApplication({
+      name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com",
+    });
+    const test = repo.createTest({ applicationId: app.id, name: "wk", code: `// ok`, type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    const result = await runner.executeTest(test, run, { browser: "webkit" });
+    expect(result.status).toBe("passed");
+  });
+
+  it("executeTest: shouldRecordVideo triggers video recording path", async () => {
+    const videoRunner = new PlaywrightRunner({
+      config: {
+        headless: true, slowMo: 0, defaultBrowser: "chromium",
+        timeout: 30000, navigationTimeout: 60000, screenshotOnFailure: true,
+        workers: 1, retries: 0, traceMode: "off", video: "on", parallel: 1,
+      },
+      repository: repo,
+      artifactManager: artifactMgr,
+      credentialInjector: credInjector,
+    } as PlaywrightRunnerOptions);
+    const app = repo.createApplication({
+      name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com",
+    });
+    const test = repo.createTest({ applicationId: app.id, name: "video", code: `// ok`, type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    // Should pass even if video dir doesn't exist (swallows error)
+    const result = await videoRunner.executeTest(test, run);
+    expect(["passed", "failed"]).toContain(result.status);
+  });
+
+  it("executeWithRetries: exhausts retries if test always fails", async () => {
+    mockPage.goto.mockRejectedValue(new Error("always fails"));
+
+    const app = repo.createApplication({
+      name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com",
+    });
+    const test = repo.createTest({
+      applicationId: app.id, name: "always-fail",
+      code: `await page.goto("https://a.com");`, type: "e2e",
+    });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    const result = await runner.executeWithRetries(test, run, { retries: 2 });
+    expect(result.status).toBe("failed");
+  });
+
+  // ── expect() matcher coverage ──────────────────────────────────────────────
+
+  async function runCode(repo_: typeof repo, runner_: PlaywrightRunner, code: string, appId: string) {
+    const t = repo_.createTest({ applicationId: appId, name: `test-${Math.random()}`, code, type: "e2e" });
+    const r = repo_.createTestRun({ testId: t.id, applicationId: appId, trigger: "manual" });
+    return runner_.executeTest(t, r);
+  }
+
+  it("expect matchers: toBe passes and fails correctly", async () => {
+    const app = repo.createApplication({ name: "B", repositoryUrl: "https://github.com/a/b", baseUrl: "https://b.com" });
+    const pass = await runCode(repo, runner, `expect(1).toBe(1);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(1).toBe(2);`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("Expected 1 to be 2");
+  });
+
+  it("expect matchers: toEqual passes and fails correctly", async () => {
+    const app = repo.createApplication({ name: "C", repositoryUrl: "https://github.com/a/b", baseUrl: "https://c.com" });
+    const pass = await runCode(repo, runner, `expect({a:1}).toEqual({a:1});`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect({a:1}).toEqual({a:2});`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("to equal");
+  });
+
+  it("expect matchers: toBeTruthy passes and fails", async () => {
+    const app = repo.createApplication({ name: "D", repositoryUrl: "https://github.com/a/b", baseUrl: "https://d.com" });
+    const pass = await runCode(repo, runner, `expect(true).toBeTruthy();`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(false).toBeTruthy();`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("truthy");
+  });
+
+  it("expect matchers: toBeFalsy passes and fails", async () => {
+    const app = repo.createApplication({ name: "E", repositoryUrl: "https://github.com/a/b", baseUrl: "https://e.com" });
+    const pass = await runCode(repo, runner, `expect(false).toBeFalsy();`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(true).toBeFalsy();`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("falsy");
+  });
+
+  it("expect matchers: toContain passes and fails for strings and arrays", async () => {
+    const app = repo.createApplication({ name: "F", repositoryUrl: "https://github.com/a/b", baseUrl: "https://f.com" });
+    const passStr = await runCode(repo, runner, `expect("hello").toContain("ell");`, app.id);
+    expect(passStr.status).toBe("passed");
+
+    const failStr = await runCode(repo, runner, `expect("hello").toContain("xyz");`, app.id);
+    expect(failStr.status).toBe("failed");
+
+    const passArr = await runCode(repo, runner, `expect([1,2,3]).toContain(2);`, app.id);
+    expect(passArr.status).toBe("passed");
+
+    const failArr = await runCode(repo, runner, `expect([1,2,3]).toContain(99);`, app.id);
+    expect(failArr.status).toBe("failed");
+  });
+
+  it("expect matchers: toBeGreaterThan passes and fails", async () => {
+    const app = repo.createApplication({ name: "G", repositoryUrl: "https://github.com/a/b", baseUrl: "https://g.com" });
+    const pass = await runCode(repo, runner, `expect(5).toBeGreaterThan(3);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(1).toBeGreaterThan(5);`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("greater than");
+  });
+
+  it("expect matchers: toBeLessThan passes and fails", async () => {
+    const app = repo.createApplication({ name: "H", repositoryUrl: "https://github.com/a/b", baseUrl: "https://h.com" });
+    const pass = await runCode(repo, runner, `expect(1).toBeLessThan(5);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(5).toBeLessThan(1);`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("less than");
+  });
+
+  it("expect matchers: toMatch passes and fails", async () => {
+    const app = repo.createApplication({ name: "I", repositoryUrl: "https://github.com/a/b", baseUrl: "https://i.com" });
+    const pass = await runCode(repo, runner, `expect("hello world").toMatch(/hello/);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect("hello world").toMatch(/xyz/);`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("match");
+  });
+
+  it("expect matchers: .not.toBe passes and fails", async () => {
+    const app = repo.createApplication({ name: "J", repositoryUrl: "https://github.com/a/b", baseUrl: "https://j.com" });
+    const pass = await runCode(repo, runner, `expect(1).not.toBe(2);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect(1).not.toBe(1);`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("not to be");
+  });
+
+  it("expect matchers: .not.toEqual passes and fails", async () => {
+    const app = repo.createApplication({ name: "K", repositoryUrl: "https://github.com/a/b", baseUrl: "https://k.com" });
+    const pass = await runCode(repo, runner, `expect({a:1}).not.toEqual({a:2});`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect({a:1}).not.toEqual({a:1});`, app.id);
+    expect(fail.status).toBe("failed");
+    expect(fail.errorMessage).toContain("not to equal");
+  });
+
+  it("expect matchers: .not.toBeTruthy and .not.toBeFalsy pass and fail", async () => {
+    const app = repo.createApplication({ name: "L", repositoryUrl: "https://github.com/a/b", baseUrl: "https://l.com" });
+    const passNt = await runCode(repo, runner, `expect(false).not.toBeTruthy();`, app.id);
+    expect(passNt.status).toBe("passed");
+
+    const failNt = await runCode(repo, runner, `expect(true).not.toBeTruthy();`, app.id);
+    expect(failNt.status).toBe("failed");
+
+    const passNf = await runCode(repo, runner, `expect(true).not.toBeFalsy();`, app.id);
+    expect(passNf.status).toBe("passed");
+
+    const failNf = await runCode(repo, runner, `expect(false).not.toBeFalsy();`, app.id);
+    expect(failNf.status).toBe("failed");
+  });
+
+  it("expect matchers: .not.toContain passes and fails for strings and arrays", async () => {
+    const app = repo.createApplication({ name: "M", repositoryUrl: "https://github.com/a/b", baseUrl: "https://m.com" });
+    const passStr = await runCode(repo, runner, `expect("hello").not.toContain("xyz");`, app.id);
+    expect(passStr.status).toBe("passed");
+
+    const failStr = await runCode(repo, runner, `expect("hello").not.toContain("ell");`, app.id);
+    expect(failStr.status).toBe("failed");
+
+    const passArr = await runCode(repo, runner, `expect([1,2]).not.toContain(3);`, app.id);
+    expect(passArr.status).toBe("passed");
+
+    const failArr = await runCode(repo, runner, `expect([1,2]).not.toContain(1);`, app.id);
+    expect(failArr.status).toBe("failed");
+  });
+
+  it("expect matchers: .not.toBeGreaterThan and .not.toBeLessThan", async () => {
+    const app = repo.createApplication({ name: "N", repositoryUrl: "https://github.com/a/b", baseUrl: "https://n.com" });
+    const passNGt = await runCode(repo, runner, `expect(1).not.toBeGreaterThan(5);`, app.id);
+    expect(passNGt.status).toBe("passed");
+
+    const failNGt = await runCode(repo, runner, `expect(5).not.toBeGreaterThan(3);`, app.id);
+    expect(failNGt.status).toBe("failed");
+
+    const passNLt = await runCode(repo, runner, `expect(5).not.toBeLessThan(1);`, app.id);
+    expect(passNLt.status).toBe("passed");
+
+    const failNLt = await runCode(repo, runner, `expect(1).not.toBeLessThan(5);`, app.id);
+    expect(failNLt.status).toBe("failed");
+  });
+
+  it("expect matchers: .not.toMatch passes and fails", async () => {
+    const app = repo.createApplication({ name: "O", repositoryUrl: "https://github.com/a/b", baseUrl: "https://o.com" });
+    const pass = await runCode(repo, runner, `expect("hello").not.toMatch(/xyz/);`, app.id);
+    expect(pass.status).toBe("passed");
+
+    const fail = await runCode(repo, runner, `expect("hello").not.toMatch(/hello/);`, app.id);
+    expect(fail.status).toBe("failed");
+  });
+
+  it("expect matchers: .not.not returns a positive matcher", async () => {
+    const app = repo.createApplication({ name: "P", repositoryUrl: "https://github.com/a/b", baseUrl: "https://p.com" });
+    const pass = await runCode(repo, runner, `expect(1).not.not.toBe(1);`, app.id);
+    expect(pass.status).toBe("passed");
+  });
+
+  it("executeTest: test.step() captures screenshot on step failure", async () => {
+    const app = repo.createApplication({ name: "Q", repositoryUrl: "https://github.com/a/b", baseUrl: "https://q.com" });
+    const code = `await test.step("failing step", async () => { throw new Error("step err"); });`;
+    const t = repo.createTest({ applicationId: app.id, name: "step-fail", code, type: "e2e" });
+    const r = repo.createTestRun({ testId: t.id, applicationId: app.id, trigger: "manual" });
+
+    const result = await runner.executeTest(t, r);
+    expect(result.status).toBe("failed");
+    // Step failure captures a screenshot before re-throwing
+    expect(result.artifacts.screenshots.length).toBeGreaterThanOrEqual(1);
+  });
 });

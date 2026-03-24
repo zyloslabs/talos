@@ -49,6 +49,8 @@ export type EnvEntry = {
   key: string;
   value: string;
   masked: boolean;
+  /** Indicates where the value originates. "file" = stored in ~/.talos/.env; "process" = from the OS process environment. */
+  source?: "file" | "process";
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -61,6 +63,15 @@ function isSensitiveKey(key: string): boolean {
 function maskValue(value: string): string {
   if (value.length <= 4) return "****";
   return value.slice(0, 2) + "*".repeat(Math.min(value.length - 4, 20)) + value.slice(-2);
+}
+
+/**
+ * Returns a masked EnvEntry-compatible value/masked pair for a given key+value.
+ * Exported so callers (e.g. admin routes) can apply the same sensitivity rules to process.env values.
+ */
+export function maskEnvValue(key: string, value: string): { value: string; masked: boolean } {
+  const sensitive = isSensitiveKey(key);
+  return { value: sensitive ? maskValue(value) : value, masked: sensitive };
 }
 
 // ── EnvManager ────────────────────────────────────────────────────────────────

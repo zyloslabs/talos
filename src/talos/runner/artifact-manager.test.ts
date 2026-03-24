@@ -144,4 +144,43 @@ describe("ArtifactManager", () => {
     const result = await manager.cleanup();
     expect(result.deleted).toBeGreaterThanOrEqual(1);
   });
+
+  it("saveScreenshot auto-appends .png when name lacks the extension", async () => {
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    // "capture" does not end with .png — should become "capture.png"
+    const artifact = await manager.saveScreenshot(run.id, Buffer.from("img"), "capture");
+    expect(artifact.type).toBe("screenshot");
+    expect(artifact.filePath).toMatch(/capture\.png/);
+  });
+
+  it("saveVideo saves video artifact from path", async () => {
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    // Write a fake video file
+    const videoPath = path.join(tmpDir, "test-video.webm");
+    await fs.writeFile(videoPath, Buffer.from("fake-webm-content"));
+
+    const artifact = await manager.saveVideo(run.id, videoPath);
+    expect(artifact.type).toBe("video");
+  });
+
+  it("getContent returns null when artifact file is missing from disk", async () => {
+    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+
+    // Save artifact, then delete the file
+    const artifact = await manager.save({ testRunId: run.id, type: "screenshot", content: Buffer.from("x"), fileName: "s.png" });
+    const fullPath = manager.getFullPath(artifact);
+    await fs.unlink(fullPath);
+
+    // getContent should hit the catch branch and return null
+    const content = await manager.getContent(artifact.id);
+    expect(content).toBeNull();
+  });
 });

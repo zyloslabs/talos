@@ -77,9 +77,14 @@ const envManager = new EnvManager(join(DATA_DIR, ".env"));
 
 let copilot: CopilotWrapper | undefined;
 try {
+  // Prefer process.env tokens (set before server start), then fall back to user-managed env file.
+  const githubToken = process.env.GITHUB_TOKEN
+    ?? process.env.COPILOT_GITHUB_TOKEN
+    ?? envManager.getRaw("GITHUB_TOKEN")
+    ?? envManager.getRaw("COPILOT_GITHUB_TOKEN");
   copilot = new CopilotWrapperService({
     authPath: join(DATA_DIR, "auth.json"),
-    githubToken: process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN,
+    githubToken,
   });
 } catch {
   console.warn("[talos] CopilotWrapper initialization failed — AI chat will be unavailable");

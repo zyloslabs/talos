@@ -9,9 +9,10 @@ import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { CopilotClient } from "@github/copilot-sdk";
+import { CopilotClient, defineTool, approveAll } from "@github/copilot-sdk";
 import { TokenTracker } from "./token-tracker.js";
 import type { TokenUsage } from "./token-tracker.js";
+import type { ToolDefinition } from "../talos/tools.js";
 
 export type { TokenUsage };
 
@@ -44,11 +45,11 @@ type AuthState = {
   obtainedAt: number;
 };
 
-// Permission types reserved for future approval-queue integration
-// type PermissionRequest = { kind: string; toolName?: string; toolArgs?: unknown };
-// type PermissionResponse = { kind: "approved" | "denied-by-rules" | "denied-by-user" };
+// Permission types
+export type PermissionHandler = typeof approveAll;
 
 export type ChatOptions = {
+  tools?: ToolDefinition[];
   model?: string;
   conversationId?: string;
   systemMessage?: { mode: "append" | "replace"; content: string };
@@ -74,14 +75,17 @@ type CopilotClientLike = {
   startDeviceAuth?: (input: { clientId: string; scopes: string[] }) => Promise<DeviceAuthInfo>;
   waitForAuth?: (input: { timeoutMs: number }) => Promise<unknown>;
   listModels?: () => Promise<CopilotModel[]>;
+  getAuthStatus?: () => Promise<{ isAuthenticated: boolean; authType?: string }>;
 };
 
 export interface CopilotWrapper {
   authenticate(): Promise<DeviceAuthInfo>;
   waitForAuth(): Promise<void>;
   isAuthenticated(): Promise<boolean>;
+  getAuthType(): Promise<string | undefined>;
   chat(message: string, options?: ChatOptions): AsyncGenerator<string>;
   listModels(): Promise<CopilotModel[]>;
+  modelSupportsReasoning(modelId: string): boolean;
   getModel(): string;
   setModel(model: string): void;
   getReasoningEffort(): ReasoningEffort | undefined;
@@ -93,6 +97,7 @@ export interface CopilotWrapper {
   getSessionUsage(sessionId: string): TokenUsage | null;
   clearSessionUsage(sessionId: string): TokenUsage | null;
   hasGithubToken(): boolean;
+  reinit(token?: string): Promise<void>;
 }
 
 export type CopilotWrapperOptions = {
@@ -105,6 +110,7 @@ export type CopilotWrapperOptions = {
   provider?: ProviderConfig;
   sendAndWaitTimeoutMs?: number;
   githubToken?: string;
+  permissionHandler?: PermissionHandler;
 };
 
 const defaultAuthPath = () => path.join(os.homedir(), ".talos", "auth.json");
@@ -180,12 +186,15 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   private model: string;
   private authTimeoutMs: number;
   private started = false;
+  private startFailed = false;
   private startPromise?: Promise<void>;
+  private modelCapabilitiesCache = new Map<string, { supportsReasoning: boolean }>();
   private defaultReasoningEffort?: ReasoningEffort;
   private providerConfig?: ProviderConfig;
   private sendAndWaitTimeoutMs: number;
   private sessionCache = new Map<string, CopilotSessionLike>();
   private githubToken?: string;
+  private permissionHandler?: PermissionHandler;
   readonly tokenTracker = new TokenTracker();
 
   constructor(options: CopilotWrapperOptions = {}) {
@@ -209,16 +218,29 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     this.defaultReasoningEffort = options.defaultReasoningEffort;
     this.providerConfig = options.provider;
     this.sendAndWaitTimeoutMs = options.sendAndWaitTimeoutMs ?? 10 * 60 * 1000;
+    this.permissionHandler = options.permissionHandler;
   }
 
   private async ensureStarted(): Promise<void> {
-    if (this.started) return;
+    if (this.started || this.startFailed) return;
     if (this.startPromise) { await this.startPromise; return; }
     this.startPromise = (async () => {
-      if (this.client.start) await this.client.start();
-      this.started = true;
+      try {
+        if (this.client.start) await this.client.start();
+        this.started = true;
+      } catch {
+        this.startFailed = true;
+      }
     })();
     await this.startPromise;
+  }
+
+  modelSupportsReasoning(modelId: string): boolean {
+    const cached = this.modelCapabilitiesCache.get(modelId);
+    if (cached !== undefined) return cached.supportsReasoning;
+    // Fallback for well-known reasoning model prefixes before cache is populated
+    const lower = modelId.toLowerCase();
+    return lower.startsWith("o1") || lower.startsWith("o3") || lower.startsWith("o4");
   }
 
   async authenticate(): Promise<DeviceAuthInfo> {
@@ -242,40 +264,96 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (this.githubToken) return true;
+    return (await this._getAuthStatus()).isAuthenticated;
+  }
+
+  async getAuthType(): Promise<string | undefined> {
+    return (await this._getAuthStatus()).authType;
+  }
+
+  private async _getAuthStatus(): Promise<{ isAuthenticated: boolean; authType?: string }> {
+    await this.ensureStarted().catch(() => {});
+    if (!this.startFailed && this.client.getAuthStatus) {
+      try {
+        const status = await this.client.getAuthStatus();
+        return { isAuthenticated: status.isAuthenticated, authType: status.authType };
+      } catch {
+        // SDK unresponsive — fall through to local checks
+      }
+    }
+    // Fallback for token mode or when SDK is unavailable
+    if (this.githubToken) return { isAuthenticated: true, authType: "env" };
     const state = await readAuthState(this.authPath);
-    if (!state) return false;
-    if (state.expiresAt && Date.now() >= state.expiresAt) return false;
-    return true;
+    if (!state || (state.expiresAt && Date.now() >= state.expiresAt)) {
+      return { isAuthenticated: false };
+    }
+    return { isAuthenticated: true, authType: "device" };
   }
 
   async *chat(message: string, options?: ChatOptions): AsyncGenerator<string> {
     await this.ensureStarted();
 
+    if (this.startFailed) {
+      throw new Error(
+        "Copilot SDK failed to start. Please ensure the GitHub Copilot CLI is up to date."
+      );
+    }
+
+    const effectiveModel = options?.model ?? this.model;
     const conversationId = options?.conversationId ?? `chat-${Date.now()}`;
     let session = this.sessionCache.get(conversationId);
 
+    // Wrap Talos tools with defineTool() so the SDK can invoke them
+    const toolList = options?.tools ?? [];
+    const perCallToolCallback = options?.onToolCall;
+    const wrappedTools = toolList.map((tool) =>
+      defineTool(tool.name, {
+        description: tool.description,
+        parameters: tool.inputSchema,
+        handler: async (args) => {
+          if (perCallToolCallback) perCallToolCallback(tool.name, args);
+          this.emit("tool:call", { tool: tool.name, args });
+          try {
+            const result = await tool.handler(args as Record<string, unknown>);
+            if (result.isError) return `[Tool Error] ${result.text}`;
+            return result.text;
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `[Tool Error] ${msg}`;
+          }
+        },
+      })
+    );
+
+    // Only pass reasoningEffort to models that support it
+    const rawReasoningEffort = options?.reasoningEffort ?? this.defaultReasoningEffort;
+    const effectiveReasoningEffort = rawReasoningEffort && this.modelSupportsReasoning(effectiveModel)
+      ? rawReasoningEffort
+      : undefined;
+
     if (!session) {
       session = await this.client.createSession({
-        model: options?.model ?? this.model,
+        model: effectiveModel,
         streaming: true,
+        tools: wrappedTools,
         systemMessage: options?.systemMessage,
-        reasoningEffort: options?.reasoningEffort ?? this.defaultReasoningEffort,
-        provider: this.providerConfig,
+        ...(effectiveReasoningEffort ? { reasoningEffort: effectiveReasoningEffort } : {}),
+        ...(this.providerConfig ? { provider: this.providerConfig } : {}),
+        onPermissionRequest: this.permissionHandler ?? approveAll,
       });
       this.sessionCache.set(conversationId, session);
     }
 
     const queue = new AsyncQueue<string>();
 
-    const unsubText = session.on("text", (event: { delta?: string; text?: string }) => {
-      const chunk = event.delta ?? event.text ?? "";
+    const unsubDelta = session.on("assistant.message_delta", (event: { data?: { deltaContent?: string } }) => {
+      const chunk = event?.data?.deltaContent ?? "";
       if (chunk) queue.push(chunk);
     });
 
     const unsubTool = session.on("toolCall", (event: { name?: string; arguments?: unknown }) => {
       if (event.name) {
-        options?.onToolCall?.(event.name, event.arguments);
+        perCallToolCallback?.(event.name, event.arguments);
         this.emit("tool:call", { tool: event.name, args: event.arguments });
       }
     });
@@ -291,7 +369,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
         queue.end();
       })
       .finally(() => {
-        unsubText();
+        unsubDelta();
         unsubTool();
         unsubUsage();
       });
@@ -305,8 +383,17 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   async listModels(): Promise<CopilotModel[]> {
     await this.ensureStarted();
+    if (this.startFailed) {
+      throw new Error("Copilot SDK failed to start — cannot list models");
+    }
     if (!this.client.listModels) return [{ id: this.model }];
-    return this.client.listModels();
+    const models = await this.client.listModels();
+    // Cache model capabilities for reasoning-effort gating
+    for (const model of models) {
+      const supportsReasoning = model.capabilities?.supports?.reasoningEffort === true;
+      this.modelCapabilitiesCache.set(model.id, { supportsReasoning });
+    }
+    return models;
   }
 
   getModel(): string { return this.model; }
@@ -346,6 +433,23 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     return !!this.githubToken;
   }
 
+  async reinit(token?: string): Promise<void> {
+    await this.clearAllSessions();
+    this.githubToken = token;
+    if (token) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = new CopilotClient({ githubToken: token, useLoggedInUser: false }) as any;
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.client = new CopilotClient() as any;
+    }
+    this.started = false;
+    this.startFailed = false;
+    this.startPromise = undefined;
+    this.modelCapabilitiesCache.clear();
+  }
+
+  /** @internal Not part of the CopilotWrapper public interface — promote when called through the interface type. */
   hasSession(conversationId: string): boolean {
     return this.sessionCache.has(conversationId);
   }
