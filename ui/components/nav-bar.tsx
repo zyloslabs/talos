@@ -103,7 +103,7 @@ export const NavBar = () => {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
+    <nav aria-label="Main navigation" className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <Link href="/talos" className="flex items-center gap-2">
           <FlaskConical className="h-5 w-5 text-primary" />

@@ -45,9 +45,8 @@ type AuthState = {
   obtainedAt: number;
 };
 
-// Permission types reserved for future approval-queue integration
-// type PermissionRequest = { kind: string; toolName?: string; toolArgs?: unknown };
-// type PermissionResponse = { kind: "approved" | "denied-by-rules" | "denied-by-user" };
+// Permission types
+export type PermissionHandler = typeof approveAll;
 
 export type ChatOptions = {
   tools?: ToolDefinition[];
@@ -108,6 +107,7 @@ export type CopilotWrapperOptions = {
   provider?: ProviderConfig;
   sendAndWaitTimeoutMs?: number;
   githubToken?: string;
+  permissionHandler?: PermissionHandler;
 };
 
 const defaultAuthPath = () => path.join(os.homedir(), ".talos", "auth.json");
@@ -191,6 +191,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   private sendAndWaitTimeoutMs: number;
   private sessionCache = new Map<string, CopilotSessionLike>();
   private githubToken?: string;
+  private permissionHandler?: PermissionHandler;
   readonly tokenTracker = new TokenTracker();
 
   constructor(options: CopilotWrapperOptions = {}) {
@@ -214,6 +215,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     this.defaultReasoningEffort = options.defaultReasoningEffort;
     this.providerConfig = options.provider;
     this.sendAndWaitTimeoutMs = options.sendAndWaitTimeoutMs ?? 10 * 60 * 1000;
+    this.permissionHandler = options.permissionHandler;
   }
 
   private async ensureStarted(): Promise<void> {
@@ -315,7 +317,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
         systemMessage: options?.systemMessage,
         ...(effectiveReasoningEffort ? { reasoningEffort: effectiveReasoningEffort } : {}),
         ...(this.providerConfig ? { provider: this.providerConfig } : {}),
-        onPermissionRequest: approveAll,
+        onPermissionRequest: this.permissionHandler ?? approveAll,
       });
       this.sessionCache.set(conversationId, session);
     }

@@ -64,7 +64,7 @@ function renderWithProviders(ui: React.ReactElement) {
 describe("AdminPage", () => {
   it("renders page title", () => {
     renderWithProviders(<AdminPage />);
-    expect(screen.getByText("Admin Settings")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Administration" })).toBeInTheDocument();
   });
 
   it("renders all section headings", () => {
