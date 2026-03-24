@@ -130,7 +130,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   // ── Environment Variables ──────────────────────────────────────────────────
 
   // Keys the UI knows about — supplement with process.env values not yet stored in the env file.
-  const KNOWN_ENV_KEYS = ["GITHUB_CLIENT_ID", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "TALOS_ADMIN_TOKEN", "PORT", "TALOS_DATA_DIR", "TALOS_ALLOWED_DIRS"];
+  const KNOWN_ENV_KEYS = ["GITHUB_CLIENT_ID", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN", "TALOS_ADMIN_TOKEN", "BRAVE_API_KEY", "OPENAI_API_KEY", "PORT", "TALOS_DATA_DIR", "TALOS_ALLOWED_DIRS"];
   // Token keys whose changes require re-initialising the Copilot wrapper.
   const COPILOT_TOKEN_KEYS = new Set(["GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN"]);
 
