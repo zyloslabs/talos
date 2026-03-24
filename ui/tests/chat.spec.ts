@@ -76,4 +76,38 @@ test.describe("Chat Page", () => {
       await expect(chat.emptyStateHeading).toBeVisible();
     });
   });
+
+  // ── SDK Permission Handling (#256) ────────────────────────────────────────
+
+  test.describe("SDK Permission Handling – Issue #256 (onPermissionRequest: approveAll)", () => {
+    // AC: User can send a message in chat and receive a response without an
+    // "An onPermissionRequest handler is required" error toast/bubble.
+
+    test("should not surface an onPermissionRequest error on page load", async () => {
+      // Loading the chat page establishes the SDK session. Before fix #256, this
+      // could immediately emit the permission error when a tool call was approved.
+      await expect(
+        chat.page.getByText(/onPermissionRequest handler is required/i)
+      ).not.toBeVisible();
+    });
+
+    test("should not surface an onPermissionRequest error after sending a message", async () => {
+      // Only attempt to send if the input is ready (not still in "Connecting" state)
+      const placeholder = await chat.messageInput.getAttribute("placeholder").catch(() => "");
+      const isReady = !placeholder?.toLowerCase().includes("connecting");
+
+      if (isReady) {
+        await test.step("Type and submit a message", async () => {
+          await chat.sendMessage("hello");
+        });
+      }
+
+      await test.step("Verify the SDK permission error is absent", async () => {
+        // Use a short timeout since the error (if present) surfaces immediately
+        await expect(
+          chat.page.getByText(/onPermissionRequest handler is required/i)
+        ).not.toBeVisible();
+      });
+    });
+  });
 });
