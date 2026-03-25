@@ -17,10 +17,23 @@ export type TalosApplication = {
   githubPatRef: string | null;
   baseUrl: string;
   status: TalosApplicationStatus;
+  /** Whether mTLS is enabled for this application */
+  mtlsEnabled: boolean;
+  /** mTLS configuration (vault references for certs/keys) */
+  mtlsConfig: MtlsApplicationConfig | null;
   /** JSON metadata for custom fields */
   metadata: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+};
+
+/** mTLS configuration stored per application */
+export type MtlsApplicationConfig = {
+  clientCertVaultRef?: string;
+  clientKeyVaultRef?: string;
+  caVaultRef?: string;
+  pfxVaultRef?: string;
+  passphrase?: string;
 };
 
 export type CreateApplicationInput = {
@@ -29,11 +42,13 @@ export type CreateApplicationInput = {
   repositoryUrl?: string;
   githubPatRef?: string;
   baseUrl?: string;
+  mtlsEnabled?: boolean;
+  mtlsConfig?: MtlsApplicationConfig;
   metadata?: Record<string, unknown>;
 };
 
 export type UpdateApplicationInput = Partial<
-  Pick<TalosApplication, "name" | "description" | "repositoryUrl" | "githubPatRef" | "baseUrl" | "status" | "metadata">
+  Pick<TalosApplication, "name" | "description" | "repositoryUrl" | "githubPatRef" | "baseUrl" | "status" | "mtlsEnabled" | "mtlsConfig" | "metadata">
 >;
 
 // ── Test ──────────────────────────────────────────────────────────────────────
@@ -371,6 +386,8 @@ export type StoredApplication = {
   github_pat_ref: string | null;
   base_url: string;
   status: string;
+  mtls_enabled: number;
+  mtls_config_json: string | null;
   metadata_json: string;
   created_at: string;
   updated_at: string;
