@@ -16,6 +16,8 @@ function makeApp(overrides: Partial<TalosApplication> = {}): TalosApplication {
     description: "",
     githubPatRef: null,
     status: "active",
+    mtlsEnabled: false,
+    mtlsConfig: null,
     metadata: {},
     createdAt: new Date(),
     updatedAt: new Date(),
