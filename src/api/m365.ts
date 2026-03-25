@@ -5,6 +5,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { resolve } from "node:path";
 import type { BrowserAuth } from "../talos/m365/browser-auth.js";
 import type { CopilotScraper } from "../talos/m365/scraper.js";
 import type { EphemeralStore } from "../talos/m365/ephemeral.js";
@@ -117,9 +118,17 @@ export function createM365Router(options: M365RouterOptions): Router {
       return;
     }
 
+    // Prevent path traversal — only allow files within the docs directory
+    const docsDir = ephemeralStore.getDocsDir();
+    const resolved = resolve(filePath);
+    if (!resolved.startsWith(docsDir)) {
+      res.status(403).json({ error: "Access denied: path outside allowed directory" });
+      return;
+    }
+
     try {
       const { readFile } = await import("node:fs/promises");
-      const buffer = await readFile(filePath);
+      const buffer = await readFile(resolved);
       const ext = filePath.toLowerCase().split(".").pop();
       const validExtensions: Record<string, FileType> = {
         docx: "docx",
