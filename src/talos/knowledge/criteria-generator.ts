@@ -161,26 +161,28 @@ Generate up to ${maxCriteria} acceptance criteria from the above context. Respon
     // Limit to maxCriteria
     const criteriaToCreate = parsed.criteria.slice(0, maxCriteria);
 
-    // Save criteria to repository
+    // Save criteria to repository atomically
     let totalConfidence = 0;
     let created = 0;
 
-    for (const c of criteriaToCreate) {
-      const confidence = Math.max(0, Math.min(1, c.confidence ?? 0.5));
-      this.repository.createAcceptanceCriteria({
-        applicationId: appId,
-        title: c.title,
-        description: c.description,
-        scenarios: c.scenarios ?? [],
-        preconditions: c.preconditions ?? [],
-        dataRequirements: c.dataRequirements ?? [],
-        nfrTags: c.nfrTags ?? [],
-        confidence,
-        tags: [],
-      });
-      totalConfidence += confidence;
-      created++;
-    }
+    this.repository.runInTransaction(() => {
+      for (const c of criteriaToCreate) {
+        const confidence = Math.max(0, Math.min(1, c.confidence ?? 0.5));
+        this.repository.createAcceptanceCriteria({
+          applicationId: appId,
+          title: c.title,
+          description: c.description,
+          scenarios: c.scenarios ?? [],
+          preconditions: c.preconditions ?? [],
+          dataRequirements: c.dataRequirements ?? [],
+          nfrTags: c.nfrTags ?? [],
+          confidence,
+          tags: [],
+        });
+        totalConfidence += confidence;
+        created++;
+      }
+    });
 
     return {
       criteriaCreated: created,

@@ -66,6 +66,13 @@ export type HybridSearchOptions = {
 
 // ── Vector Store ──────────────────────────────────────────────────────────────
 
+/** Validates that a string is safe for use in LanceDB filter expressions (alphanumeric, hyphens, underscores). */
+function validateFilterValue(value: string, name: string): void {
+  if (!/^[a-zA-Z0-9_-]+$/.test(value)) {
+    throw new Error(`Invalid ${name}: must be alphanumeric with hyphens/underscores only`);
+  }
+}
+
 export class VectorStore {
   private config: VectorDbConfig;
   private db: unknown = null;
@@ -274,6 +281,9 @@ export class VectorStore {
   ): Promise<VectorSearchResult[]> {
     if (!this.table) return [];
 
+    validateFilterValue(applicationId, "applicationId");
+    if (options.type) validateFilterValue(options.type, "type");
+
     const limit = options.limit ?? 10;
 
     // Build query
@@ -330,6 +340,7 @@ export class VectorStore {
   private async deleteByApplicationLanceDB(applicationId: string): Promise<number> {
     if (!this.table) return 0;
 
+    validateFilterValue(applicationId, "applicationId");
     const countBefore = await this.countLanceDB(applicationId);
     await (this.table as { delete: (condition: string) => Promise<void> })
       .delete(`application_id = '${applicationId}'`);
@@ -339,6 +350,7 @@ export class VectorStore {
   private async countLanceDB(applicationId: string): Promise<number> {
     if (!this.table) return 0;
 
+    validateFilterValue(applicationId, "applicationId");
     const results = await (this.table as { 
       filter: (condition: string) => { 
         select: (columns: string[]) => {
@@ -353,6 +365,8 @@ export class VectorStore {
   private async existsLanceDB(applicationId: string, contentHash: string): Promise<boolean> {
     if (!this.table) return false;
 
+    validateFilterValue(applicationId, "applicationId");
+    validateFilterValue(contentHash, "contentHash");
     const results = await (this.table as {
       filter: (condition: string) => {
         select: (columns: string[]) => {
