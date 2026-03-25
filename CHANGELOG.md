@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Open Source Release**: Added `README.md`, `LICENSE.md` (FSL-1.1-MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md`. Removed `"private": true` from `package.json`. Updated `.gitignore` to exclude log files, build output, and OS artifacts.
+
 - **Knowledge Base Enhancement** (Epic #276): New `src/talos/knowledge/` module for requirements document ingestion and knowledge-base auto-tagging.
   - Extended `TalosChunk` type with new chunk types (`requirement`, `api_spec`, `user_story`) and optional metadata fields (`docId`, `sourceVersion`, `confidence`, `tags`, `links`) (#281).
   - `DocumentIngester` class: ingests Markdown and OpenAPI (JSON/YAML) documents into the RAG knowledge base with semantic section chunking, 10-15% overlap, and stable chunk IDs (#282).
