@@ -115,4 +115,39 @@ describe("RagPipeline", () => {
     const stats = await pipeline.getStats("app-1");
     expect(stats.totalChunks).toBe(10);
   });
+
+  // ── retrieveWithFilters (#284) ──────────────────────────────────────────────
+
+  describe("retrieveWithFilters", () => {
+    it("calls vectorStore.hybridSearch and returns RagContext", async () => {
+      const vs = (pipeline as unknown as { vectorStore: { hybridSearch: ReturnType<typeof vi.fn> } }).vectorStore;
+      vs.hybridSearch = vi.fn().mockResolvedValue([
+        { id: "1", content: "req", filePath: "/r.md", startLine: 1, endLine: 5, type: "requirement", score: 0.9, metadata: {} },
+      ]);
+
+      const result = await pipeline.retrieveWithFilters("app-1", "search query", {
+        types: ["requirement"],
+        tags: ["security"],
+      });
+
+      expect(result.chunks).toHaveLength(1);
+      expect(result.query).toBe("search query");
+      expect(result.totalTokens).toBe(5);
+      expect(vs.hybridSearch).toHaveBeenCalledWith(
+        "app-1",
+        [0.1, 0.2, 0.3],
+        "search query",
+        { types: ["requirement"], tags: ["security"] }
+      );
+    });
+
+    it("passes empty filters as default", async () => {
+      const vs = (pipeline as unknown as { vectorStore: { hybridSearch: ReturnType<typeof vi.fn> } }).vectorStore;
+      vs.hybridSearch = vi.fn().mockResolvedValue([]);
+
+      const result = await pipeline.retrieveWithFilters("app-1", "query");
+      expect(result.chunks).toEqual([]);
+      expect(vs.hybridSearch).toHaveBeenCalledWith("app-1", expect.any(Array), "query", {});
+    });
+  });
 });

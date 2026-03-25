@@ -73,6 +73,19 @@
   - [Artifact Types](#artifact-types)
   - [Storage & Retention](#storage--retention)
   - [Viewing Artifacts](#viewing-artifacts)
+- [Knowledge Base](#knowledge-base)
+  - [Document Ingestion](#document-ingestion)
+  - [Auto-Tagging](#auto-tagging)
+  - [Supported Formats](#supported-formats)
+- [Acceptance Criteria](#acceptance-criteria)
+  - [Creating Criteria](#creating-criteria)
+  - [AI Generation](#ai-generation)
+  - [AI Suggestions](#ai-suggestions)
+  - [Managing Criteria](#managing-criteria)
+- [Traceability](#traceability)
+  - [Linking Criteria to Tests](#linking-criteria-to-tests)
+  - [Coverage Reports](#coverage-reports)
+- [Setup Wizard](#setup-wizard)
 - [Development](#development)
   - [Project Structure](#project-structure)
   - [Running Tests](#running-tests)
@@ -716,7 +729,7 @@ A markdown editor for drafting and previewing content:
 
 ## MCP Tools Reference
 
-TALOS exposes 14 MCP-compatible tools. Each tool validates inputs with Zod, returns JSON responses, and includes a risk level for approval gating.
+TALOS exposes 21 MCP-compatible tools. Each tool validates inputs with Zod, returns JSON responses, and includes a risk level for approval gating.
 
 ### Application Management
 
@@ -758,6 +771,18 @@ TALOS exposes 14 MCP-compatible tools. Each tool validates inputs with Zod, retu
 | Tool | Risk | Description |
 |------|------|-------------|
 | `talos-export-tests` | MEDIUM | Export tests as a standalone Playwright package |
+
+### Knowledge & Criteria
+
+| Tool | Risk | Description |
+|------|------|-------------|
+| `talos_ingest_document` | MEDIUM | Ingest a requirements document (Markdown, OpenAPI) into the knowledge base |
+| `talos_generate_criteria` | MEDIUM | Generate acceptance criteria from knowledge base via AI/RAG |
+| `talos_get_traceability` | LOW | Get requirements traceability report (coverage, gaps) |
+| `talos_create_criteria` | MEDIUM | Create a new acceptance criterion |
+| `talos_update_criteria` | MEDIUM | Update an existing acceptance criterion |
+| `talos_list_criteria` | LOW | List acceptance criteria with optional filters |
+| `talos_delete_criteria` | HIGH | Permanently delete an acceptance criterion |
 
 ---
 
@@ -1164,6 +1189,222 @@ Artifacts are stored at `~/.talos/artifacts/` organized by test run ID:
 - Network request waterfall.
 - Console log messages.
 - Screenshot at each action step.
+
+---
+
+## Knowledge Base
+
+The Knowledge Base allows you to ingest requirements documents (PRDs, user stories, API specifications) into TALOS's RAG pipeline so the test generator can reason over your domain knowledge.
+
+### Document Ingestion
+
+Ingest documents into the knowledge base for a specific application:
+
+**Via MCP Tool:**
+```
+Tool: talos_ingest_document
+Inputs:
+  applicationId: "<app-id>"
+  content: "<raw document content>"
+  format: "markdown"                 # markdown, openapi_json, or openapi_yaml
+  fileName: "requirements.md"
+  docType: "prd"                     # prd, user_story, api_spec, functional_spec
+  version: "1.0.0"                   # Optional version tag
+  tags: ["auth", "security"]         # Optional extra tags
+```
+
+**Via REST API:**
+```bash
+# Ingest via the criteria API is document-level; use the MCP tool for direct ingestion
+```
+
+**What happens:**
+1. The document is parsed and split into semantic chunks (by heading for Markdown, by operation for OpenAPI).
+2. Each chunk receives a stable ID: `req:<appId>:<fileName>:<chunkIndex>:<version>`.
+3. Chunks are auto-tagged using NLP heuristics (personas, NFRs, environments, functional areas).
+4. Embeddings are generated and stored in the vector database.
+5. Duplicate chunks (by content hash) are skipped.
+
+### Auto-Tagging
+
+TALOS automatically tags document chunks using a controlled vocabulary:
+
+| Category | Detected Tags |
+|----------|--------------|
+| **Doc Types** | `prd`, `user_story`, `api_spec`, `functional_spec` |
+| **Personas** | `admin`, `standard`, `guest`, `service`, `user` |
+| **NFR Tags** | `performance`, `security`, `accessibility`, `reliability`, `usability` |
+| **Environments** | `local`, `staging`, `production`, `ci` |
+| **Functional Areas** | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api` |
+
+Tags are detected from content using keyword and regex patterns. Explicit tags from document metadata are also preserved.
+
+### Supported Formats
+
+| Format | Extension | Chunking Strategy |
+|--------|-----------|------------------|
+| Markdown | `.md` | Split by heading sections (## / ###) with paragraph overlap |
+| OpenAPI JSON | `.json` | One chunk per API operation (path + HTTP method) |
+| OpenAPI YAML | `.yaml`, `.yml` | One chunk per API operation (parsed from YAML) |
+
+---
+
+## Acceptance Criteria
+
+TALOS manages structured acceptance criteria in Given/When/Then format, linked to requirements and tests for full traceability.
+
+### Creating Criteria
+
+**Via MCP Tool:**
+```
+Tool: talos_create_criteria
+Inputs:
+  applicationId: "<app-id>"
+  title: "User can reset password via email"
+  description: "Verify the password reset flow works end-to-end"
+  scenarios:
+    - given: "a registered user who forgot their password"
+      when: "they request a reset and click the verification link"
+      then: "they can set a new password and log in"
+  preconditions: ["User has a registered account"]
+  dataRequirements: ["Valid email address"]
+  nfrTags: ["security", "usability"]
+  tags: ["auth"]
+```
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:3000/api/talos/criteria/<app-id> \
+  -H "Content-Type: application/json" \
+  -d '{"title": "User can reset password", "description": "...", "scenarios": [...]}'
+```
+
+### AI Generation
+
+Generate acceptance criteria in bulk from your ingested knowledge base:
+
+**Via MCP Tool:**
+```
+Tool: talos_generate_criteria
+Inputs:
+  applicationId: "<app-id>"
+  requirementFilter: "authentication login"   # Optional filter query
+  maxCriteria: 20                             # Max criteria to generate (1-100)
+```
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:3000/api/talos/criteria/<app-id>/generate \
+  -H "Content-Type: application/json" \
+  -d '{"requirementFilter": "authentication", "maxCriteria": 10}'
+```
+
+The generator:
+1. Retrieves relevant requirement chunks from the RAG knowledge base.
+2. Builds a prompt with system instructions and few-shot examples.
+3. Calls the LLM to generate structured Given/When/Then criteria.
+4. Saves all criteria atomically in a single database transaction.
+5. Returns counts and average confidence scores.
+
+### AI Suggestions
+
+Generate a single criterion from a natural-language description:
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:3000/api/talos/criteria/<app-id>/suggest \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Users should be able to export reports as PDF"}'
+```
+
+### Managing Criteria
+
+**List criteria:**
+```
+Tool: talos_list_criteria
+Inputs:
+  applicationId: "<app-id>"
+  status: "draft"                    # Optional: draft, approved, implemented, deprecated
+  tags: ["auth"]                     # Optional tag filter
+```
+
+**Update a criterion:**
+```
+Tool: talos_update_criteria
+Inputs:
+  id: "<criteria-id>"
+  status: "approved"
+  confidence: 0.95
+```
+
+**Delete a criterion:**
+```
+Tool: talos_delete_criteria
+Inputs:
+  id: "<criteria-id>"
+```
+
+**Status lifecycle:** `draft` → `approved` → `implemented` → `deprecated`
+
+---
+
+## Traceability
+
+TALOS tracks the relationships between requirements, acceptance criteria, and tests to provide full requirements traceability.
+
+### Linking Criteria to Tests
+
+When a test is generated or manually linked, TALOS creates a traceability record connecting:
+- **Requirement chunk** (from the knowledge base)
+- **Acceptance criterion** (the testable requirement)
+- **Test** (the Playwright test that verifies it)
+
+Links are managed automatically when tests are generated from criteria, or manually via the repository API.
+
+### Coverage Reports
+
+Get a traceability report showing requirement coverage:
+
+**Via MCP Tool:**
+```
+Tool: talos_get_traceability
+Inputs:
+  applicationId: "<app-id>"
+```
+
+**Via REST API:**
+```bash
+curl http://localhost:3000/api/talos/criteria/traceability/<app-id>
+```
+
+**Report contents:**
+- Total requirements vs. covered requirements
+- Total criteria vs. implemented criteria
+- Coverage percentage
+- List of unmapped requirements (no criteria linked)
+- List of untested criteria (no test linked)
+
+Use coverage reports to identify gaps in your test coverage and prioritize test generation efforts.
+
+---
+
+## Setup Wizard
+
+The Setup Wizard provides a guided 7-step configuration flow for new TALOS installations, accessible from the UI.
+
+### Wizard Steps
+
+| Step | Name | Description |
+|------|------|-------------|
+| 1 | **Welcome** | Introduction and prerequisites check |
+| 2 | **Authentication** | Connect to GitHub Copilot via device-flow auth |
+| 3 | **Model Selection** | Choose AI model and configure reasoning effort |
+| 4 | **Application Setup** | Register your first target application |
+| 5 | **Vault Credentials** | Configure test user credentials |
+| 6 | **Discovery** | Run initial repository discovery and indexing |
+| 7 | **Verification** | Run a smoke test to verify the setup works |
+
+The wizard stores progress locally and can be resumed if interrupted. Each step validates prerequisites before proceeding to the next.
 
 ---
 

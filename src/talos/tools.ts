@@ -8,6 +8,8 @@
 import * as z from "zod";
 import type { TalosRepository } from "./repository.js";
 import type { TalosConfig } from "./config.js";
+import type { DocumentIngester } from "./knowledge/document-ingester.js";
+import type { CriteriaGenerator } from "./knowledge/criteria-generator.js";
 
 // ── Tool Definition Type ──────────────────────────────────────────────────────
 
@@ -103,15 +105,84 @@ const exportTestsSchema = z.object({
   platform: z.enum(["macos", "windows", "linux"]).optional(),
 });
 
+// ── Knowledge & Criteria Schemas ──────────────────────────────────────────────
+
+const ingestDocumentSchema = z.object({
+  applicationId: z.string(),
+  content: z.string().min(1),
+  format: z.enum(["markdown", "openapi_yaml", "openapi_json"]),
+  fileName: z.string().min(1),
+  docType: z.enum(["prd", "user_story", "api_spec", "functional_spec"]),
+  version: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const generateCriteriaSchema = z.object({
+  applicationId: z.string(),
+  requirementFilter: z.string().optional(),
+  maxCriteria: z.number().min(1).max(100).optional(),
+});
+
+const getTraceabilitySchema = z.object({
+  applicationId: z.string(),
+});
+
+const scenarioSchema = z.object({
+  given: z.string(),
+  when: z.string(),
+  then: z.string(),
+});
+
+const createCriteriaSchema = z.object({
+  applicationId: z.string(),
+  requirementChunkId: z.string().optional(),
+  title: z.string().min(1),
+  description: z.string(),
+  scenarios: z.array(scenarioSchema).optional(),
+  preconditions: z.array(z.string()).optional(),
+  dataRequirements: z.array(z.string()).optional(),
+  nfrTags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "approved", "implemented", "deprecated"]).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const updateCriteriaSchema = z.object({
+  id: z.string(),
+  requirementChunkId: z.string().optional(),
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  scenarios: z.array(scenarioSchema).optional(),
+  preconditions: z.array(z.string()).optional(),
+  dataRequirements: z.array(z.string()).optional(),
+  nfrTags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "approved", "implemented", "deprecated"]).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+const listCriteriaSchema = z.object({
+  applicationId: z.string(),
+  status: z.enum(["draft", "approved", "implemented", "deprecated"]).optional(),
+  tags: z.array(z.string()).optional(),
+  nfrTags: z.array(z.string()).optional(),
+});
+
+const deleteCriteriaSchema = z.object({
+  id: z.string(),
+});
+
 // ── Tool Factory ──────────────────────────────────────────────────────────────
 
 export type TalosToolsOptions = {
   repository: TalosRepository;
   config: TalosConfig;
+  documentIngester?: DocumentIngester;
+  criteriaGenerator?: CriteriaGenerator;
 };
 
 export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
-  const { repository } = options;
+  const { repository, documentIngester, criteriaGenerator } = options;
 
   return [
     // ── Application Management ────────────────────────────────────────────────
@@ -501,6 +572,350 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
         return {
           text: `Export queued for "${app.name}" (format: ${parsed.format ?? "playwright"}, platform: ${parsed.platform ?? "current"})`,
         };
+      },
+    },
+
+    // ── Knowledge & Criteria ───────────────────────────────────────────────────
+    {
+      name: "talos_ingest_document",
+      description:
+        "Ingest a requirements document (Markdown, OpenAPI) into the Talos knowledge base for RAG-powered test generation",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application identifier" },
+          content: { type: "string", description: "Raw document content" },
+          format: {
+            type: "string",
+            enum: ["markdown", "openapi_yaml", "openapi_json"],
+            description: "Document format",
+          },
+          fileName: { type: "string", description: "Source file name" },
+          docType: {
+            type: "string",
+            enum: ["prd", "user_story", "api_spec", "functional_spec"],
+            description: "Type of document",
+          },
+          version: { type: "string", description: "Document version tag" },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Additional tags",
+          },
+        },
+        required: ["applicationId", "content", "format", "fileName", "docType"],
+      },
+      zodSchema: ingestDocumentSchema,
+      category: "knowledge",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        if (!documentIngester) {
+          return {
+            text: "Knowledge module not configured. Provide a DocumentIngester in TalosToolsOptions.",
+            isError: true,
+          };
+        }
+        const parsed = ingestDocumentSchema.parse(args);
+        const result = await documentIngester.ingestDocument(
+          parsed.applicationId,
+          parsed.content,
+          parsed.format,
+          {
+            fileName: parsed.fileName,
+            docType: parsed.docType,
+            version: parsed.version,
+            tags: parsed.tags,
+          }
+        );
+        return {
+          text: JSON.stringify(
+            {
+              chunksCreated: result.chunksCreated,
+              chunksSkipped: result.chunksSkipped,
+              totalTokens: result.totalTokens,
+              docId: result.docId,
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_generate_criteria",
+      description:
+        "Generate acceptance criteria from requirements in the knowledge base using AI/RAG",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application identifier" },
+          requirementFilter: {
+            type: "string",
+            description: "Filter query for which requirements to generate criteria from",
+          },
+          maxCriteria: {
+            type: "number",
+            description: "Maximum number of criteria to generate (1-100)",
+          },
+        },
+        required: ["applicationId"],
+      },
+      zodSchema: generateCriteriaSchema,
+      category: "knowledge",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        if (!criteriaGenerator) {
+          return {
+            text: "Knowledge module not configured. Provide a CriteriaGenerator in TalosToolsOptions.",
+            isError: true,
+          };
+        }
+        const parsed = generateCriteriaSchema.parse(args);
+        const result = await criteriaGenerator.generateCriteria(parsed.applicationId, {
+          requirementFilter: parsed.requirementFilter,
+          maxCriteria: parsed.maxCriteria,
+        });
+        return {
+          text: JSON.stringify(
+            {
+              criteriaCreated: result.criteriaCreated,
+              averageConfidence: result.averageConfidence,
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_get_traceability",
+      description:
+        "Get the requirements traceability report for an application, showing coverage of requirements to criteria to tests",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application identifier" },
+        },
+        required: ["applicationId"],
+      },
+      zodSchema: getTraceabilitySchema,
+      category: "knowledge",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = getTraceabilitySchema.parse(args);
+        const report = repository.getCoverageReport(parsed.applicationId);
+        const lines: string[] = [
+          `Traceability Report for ${parsed.applicationId}`,
+          `──────────────────────────────────────`,
+          `Requirements: ${report.coveredRequirements}/${report.totalRequirements} covered (${report.coveragePercentage}%)`,
+          `Criteria: ${report.implementedCriteria}/${report.totalCriteria} implemented`,
+          `Unmapped requirements: ${report.unmappedRequirements.length}`,
+          `Untested criteria: ${report.untestedCriteria.length}`,
+        ];
+        if (report.unmappedRequirements.length > 0) {
+          lines.push(`\nUnmapped requirement IDs: ${report.unmappedRequirements.join(", ")}`);
+        }
+        if (report.untestedCriteria.length > 0) {
+          lines.push(`Untested criteria IDs: ${report.untestedCriteria.join(", ")}`);
+        }
+        return { text: lines.join("\n") };
+      },
+    },
+
+    {
+      name: "talos_create_criteria",
+      description: "Create a new acceptance criterion for an application",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application identifier" },
+          requirementChunkId: { type: "string", description: "Linked requirement chunk ID" },
+          title: { type: "string", description: "Criterion title" },
+          description: { type: "string", description: "Detailed description" },
+          scenarios: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                given: { type: "string" },
+                when: { type: "string" },
+                then: { type: "string" },
+              },
+              required: ["given", "when", "then"],
+            },
+            description: "Given/When/Then scenarios",
+          },
+          preconditions: { type: "array", items: { type: "string" } },
+          dataRequirements: { type: "array", items: { type: "string" } },
+          nfrTags: { type: "array", items: { type: "string" } },
+          status: {
+            type: "string",
+            enum: ["draft", "approved", "implemented", "deprecated"],
+          },
+          confidence: { type: "number", description: "Confidence score 0-1" },
+          tags: { type: "array", items: { type: "string" } },
+        },
+        required: ["applicationId", "title", "description"],
+      },
+      zodSchema: createCriteriaSchema,
+      category: "knowledge",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = createCriteriaSchema.parse(args);
+        const criteria = repository.createAcceptanceCriteria(parsed);
+        return {
+          text: JSON.stringify(
+            {
+              id: criteria.id,
+              title: criteria.title,
+              status: criteria.status,
+              confidence: criteria.confidence,
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_update_criteria",
+      description: "Update an existing acceptance criterion by ID",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Criterion UUID" },
+          requirementChunkId: { type: "string" },
+          title: { type: "string" },
+          description: { type: "string" },
+          scenarios: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                given: { type: "string" },
+                when: { type: "string" },
+                then: { type: "string" },
+              },
+              required: ["given", "when", "then"],
+            },
+          },
+          preconditions: { type: "array", items: { type: "string" } },
+          dataRequirements: { type: "array", items: { type: "string" } },
+          nfrTags: { type: "array", items: { type: "string" } },
+          status: {
+            type: "string",
+            enum: ["draft", "approved", "implemented", "deprecated"],
+          },
+          confidence: { type: "number" },
+          tags: { type: "array", items: { type: "string" } },
+        },
+        required: ["id"],
+      },
+      zodSchema: updateCriteriaSchema,
+      category: "knowledge",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = updateCriteriaSchema.parse(args);
+        const { id, ...updates } = parsed;
+        const criteria = repository.updateAcceptanceCriteria(id, updates);
+        if (!criteria) {
+          return { text: `Acceptance criteria not found: ${id}`, isError: true };
+        }
+        return {
+          text: JSON.stringify(
+            {
+              id: criteria.id,
+              title: criteria.title,
+              status: criteria.status,
+              confidence: criteria.confidence,
+              updatedAt: criteria.updatedAt.toISOString(),
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_list_criteria",
+      description: "List acceptance criteria for an application with optional filters",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application identifier" },
+          status: {
+            type: "string",
+            enum: ["draft", "approved", "implemented", "deprecated"],
+            description: "Filter by status",
+          },
+          tags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Filter by tags",
+          },
+          nfrTags: {
+            type: "array",
+            items: { type: "string" },
+            description: "Filter by NFR tags",
+          },
+        },
+        required: ["applicationId"],
+      },
+      zodSchema: listCriteriaSchema,
+      category: "knowledge",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = listCriteriaSchema.parse(args);
+        const { applicationId, ...filters } = parsed;
+        const criteria = repository.listAcceptanceCriteria(applicationId, filters);
+        return {
+          text: JSON.stringify(
+            criteria.map((c) => ({
+              id: c.id,
+              title: c.title,
+              status: c.status,
+              confidence: c.confidence,
+              tags: c.tags,
+              nfrTags: c.nfrTags,
+            })),
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_delete_criteria",
+      description: "Permanently delete an acceptance criterion by ID",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Criterion UUID to delete" },
+        },
+        required: ["id"],
+      },
+      zodSchema: deleteCriteriaSchema,
+      category: "knowledge",
+      riskLevel: "high",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = deleteCriteriaSchema.parse(args);
+        const deleted = repository.deleteAcceptanceCriteria(parsed.id);
+        if (!deleted) {
+          return { text: `Acceptance criteria not found: ${parsed.id}`, isError: true };
+        }
+        return { text: `Deleted acceptance criteria ${parsed.id}` };
       },
     },
   ];

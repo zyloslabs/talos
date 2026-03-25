@@ -208,7 +208,13 @@ export type UpdateVaultRoleInput = Partial<
 
 // ── RAG Types ─────────────────────────────────────────────────────────────────
 
-export type TalosChunkType = "code" | "test" | "documentation" | "config" | "schema";
+export type TalosChunkType = "code" | "test" | "documentation" | "config" | "schema" | "requirement" | "api_spec" | "user_story";
+
+/** Link to a related artifact (test, requirement, etc.) */
+export type ArtifactLink = {
+  artifactType: string;
+  artifactId: string;
+};
 
 export type TalosChunk = {
   id: string;
@@ -221,8 +227,38 @@ export type TalosChunk = {
   /** Hash for deduplication */
   contentHash: string;
   metadata: Record<string, unknown>;
+  /** Source document identifier */
+  docId?: string;
+  /** Version of the source document */
+  sourceVersion?: string;
+  /** Confidence score (0-1) for auto-generated chunks */
+  confidence?: number;
+  /** Categorisation tags */
+  tags?: string[];
+  /** Links to related artifacts */
+  links?: ArtifactLink[];
   createdAt: Date;
 };
+
+export type CreateChunkInput = {
+  applicationId: string;
+  type: TalosChunkType;
+  content: string;
+  filePath: string;
+  startLine?: number;
+  endLine?: number;
+  contentHash: string;
+  metadata?: Record<string, unknown>;
+  docId?: string;
+  sourceVersion?: string;
+  confidence?: number;
+  tags?: string[];
+  links?: ArtifactLink[];
+};
+
+export type UpdateChunkInput = Partial<
+  Pick<TalosChunk, "content" | "contentHash" | "metadata" | "docId" | "sourceVersion" | "confidence" | "tags" | "links">
+>;
 
 // ── Discovery Types ───────────────────────────────────────────────────────────
 
@@ -405,4 +441,110 @@ export type StoredVaultRole = {
   metadata_json: string;
   created_at: string;
   updated_at: string;
+};
+
+// ── Acceptance Criteria Types ─────────────────────────────────────────────────
+
+export type AcceptanceCriteriaStatus = "draft" | "approved" | "implemented" | "deprecated";
+
+export type AcceptanceCriteriaScenario = {
+  given: string;
+  when: string;
+  then: string;
+};
+
+export type TalosAcceptanceCriteria = {
+  id: string;
+  applicationId: string;
+  requirementChunkId?: string;
+  title: string;
+  description: string;
+  scenarios: AcceptanceCriteriaScenario[];
+  preconditions: string[];
+  dataRequirements: string[];
+  nfrTags: string[];
+  status: AcceptanceCriteriaStatus;
+  confidence: number;
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateAcceptanceCriteriaInput = {
+  applicationId: string;
+  requirementChunkId?: string;
+  title: string;
+  description: string;
+  scenarios?: AcceptanceCriteriaScenario[];
+  preconditions?: string[];
+  dataRequirements?: string[];
+  nfrTags?: string[];
+  status?: AcceptanceCriteriaStatus;
+  confidence?: number;
+  tags?: string[];
+};
+
+export type UpdateAcceptanceCriteriaInput = Partial<
+  Pick<TalosAcceptanceCriteria, "requirementChunkId" | "title" | "description" | "scenarios" | "preconditions" | "dataRequirements" | "nfrTags" | "status" | "confidence" | "tags">
+>;
+
+export type StoredAcceptanceCriteria = {
+  id: string;
+  application_id: string;
+  requirement_chunk_id: string | null;
+  title: string;
+  description: string;
+  scenarios_json: string;
+  preconditions_json: string;
+  data_requirements_json: string;
+  nfr_tags_json: string;
+  status: string;
+  confidence: number;
+  tags_json: string;
+  created_at: string;
+  updated_at: string;
+};
+
+// ── Traceability Types ────────────────────────────────────────────────────────
+
+export type CoverageStatus = "uncovered" | "partial" | "covered";
+
+export type TraceabilityLink = {
+  id: string;
+  applicationId: string;
+  requirementChunkId: string;
+  acceptanceCriteriaId: string | null;
+  testId: string | null;
+  coverageStatus: CoverageStatus;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateTraceabilityLinkInput = {
+  applicationId: string;
+  requirementChunkId: string;
+  acceptanceCriteriaId?: string;
+  testId?: string;
+  coverageStatus?: CoverageStatus;
+};
+
+export type StoredTraceabilityLink = {
+  id: string;
+  application_id: string;
+  requirement_chunk_id: string;
+  acceptance_criteria_id: string | null;
+  test_id: string | null;
+  coverage_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TraceabilityReport = {
+  totalRequirements: number;
+  coveredRequirements: number;
+  totalCriteria: number;
+  implementedCriteria: number;
+  coveragePercentage: number;
+  unmappedRequirements: string[];
+  untestedCriteria: string[];
 };

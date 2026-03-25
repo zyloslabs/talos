@@ -5,5 +5,5 @@
  */
 
 export { RagPipeline, type RagPipelineOptions } from "./rag-pipeline.js";
-export { VectorStore, type VectorStoreOptions, type VectorSearchResult } from "./vector-store.js";
+export { VectorStore, type VectorStoreOptions, type VectorSearchResult, type HybridSearchOptions } from "./vector-store.js";
 export { EmbeddingService, type EmbeddingServiceOptions, type EmbeddingResult } from "./embedding-service.js";

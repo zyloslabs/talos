@@ -377,4 +377,324 @@ describe("TalosRepository", () => {
       expect(repo.getVaultRole(role.id)).toBeNull();
     });
   });
+
+  describe("acceptance criteria", () => {
+    let appId: string;
+
+    beforeEach(() => {
+      const app = repo.createApplication({ name: "Test App" });
+      appId = app.id;
+    });
+
+    it("should create acceptance criteria", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Login validation",
+        description: "User login must validate credentials",
+        scenarios: [{ given: "valid credentials", when: "user logs in", then: "access granted" }],
+        preconditions: ["User exists"],
+        dataRequirements: ["username", "password"],
+        nfrTags: ["security"],
+        confidence: 0.85,
+        tags: ["auth"],
+      });
+
+      expect(ac.id).toBeDefined();
+      expect(ac.applicationId).toBe(appId);
+      expect(ac.title).toBe("Login validation");
+      expect(ac.scenarios).toHaveLength(1);
+      expect(ac.scenarios[0].given).toBe("valid credentials");
+      expect(ac.preconditions).toEqual(["User exists"]);
+      expect(ac.nfrTags).toEqual(["security"]);
+      expect(ac.confidence).toBe(0.85);
+      expect(ac.status).toBe("draft");
+      expect(ac.createdAt).toEqual(fixedTime);
+    });
+
+    it("should create criteria with defaults", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Minimal",
+        description: "",
+      });
+
+      expect(ac.scenarios).toEqual([]);
+      expect(ac.preconditions).toEqual([]);
+      expect(ac.dataRequirements).toEqual([]);
+      expect(ac.nfrTags).toEqual([]);
+      expect(ac.confidence).toBe(0);
+      expect(ac.tags).toEqual([]);
+      expect(ac.status).toBe("draft");
+    });
+
+    it("should get acceptance criteria by ID", () => {
+      const created = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Test AC",
+        description: "desc",
+      });
+      const fetched = repo.getAcceptanceCriteria(created.id);
+
+      expect(fetched).toBeDefined();
+      expect(fetched?.id).toBe(created.id);
+      expect(fetched?.title).toBe("Test AC");
+    });
+
+    it("should return null for non-existent criteria", () => {
+      const ac = repo.getAcceptanceCriteria("non-existent");
+      expect(ac).toBeNull();
+    });
+
+    it("should list criteria by application", () => {
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "AC1", description: "" });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "AC2", description: "" });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "AC3", description: "" });
+
+      const list = repo.listAcceptanceCriteria(appId);
+      expect(list).toHaveLength(3);
+    });
+
+    it("should filter criteria by status", () => {
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Draft", description: "", status: "draft" });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Approved", description: "", status: "approved" });
+
+      const drafts = repo.listAcceptanceCriteria(appId, { status: "draft" });
+      expect(drafts).toHaveLength(1);
+      expect(drafts[0].title).toBe("Draft");
+    });
+
+    it("should filter criteria by tags", () => {
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Auth", description: "", tags: ["auth", "login"] });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Dashboard", description: "", tags: ["dashboard"] });
+
+      const authCriteria = repo.listAcceptanceCriteria(appId, { tags: ["auth"] });
+      expect(authCriteria).toHaveLength(1);
+      expect(authCriteria[0].title).toBe("Auth");
+    });
+
+    it("should filter criteria by nfrTags", () => {
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Secure", description: "", nfrTags: ["security"] });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Fast", description: "", nfrTags: ["performance"] });
+
+      const secCriteria = repo.listAcceptanceCriteria(appId, { nfrTags: ["security"] });
+      expect(secCriteria).toHaveLength(1);
+      expect(secCriteria[0].title).toBe("Secure");
+    });
+
+    it("should filter criteria by requirementChunkId", () => {
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Linked", description: "", requirementChunkId: "chunk-1" });
+      repo.createAcceptanceCriteria({ applicationId: appId, title: "Unlinked", description: "" });
+
+      const linked = repo.listAcceptanceCriteria(appId, { requirementChunkId: "chunk-1" });
+      expect(linked).toHaveLength(1);
+      expect(linked[0].title).toBe("Linked");
+    });
+
+    it("should update acceptance criteria", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Original",
+        description: "original desc",
+      });
+
+      const updated = repo.updateAcceptanceCriteria(ac.id, {
+        title: "Updated",
+        status: "approved",
+        confidence: 0.95,
+        scenarios: [{ given: "a", when: "b", then: "c" }],
+      });
+
+      expect(updated?.title).toBe("Updated");
+      expect(updated?.status).toBe("approved");
+      expect(updated?.confidence).toBe(0.95);
+      expect(updated?.scenarios).toHaveLength(1);
+    });
+
+    it("should return null when updating non-existent criteria", () => {
+      const result = repo.updateAcceptanceCriteria("fake-id", { title: "Nope" });
+      expect(result).toBeNull();
+    });
+
+    it("should return existing when updating with empty input", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Unchanged",
+        description: "",
+      });
+      const result = repo.updateAcceptanceCriteria(ac.id, {});
+      expect(result?.title).toBe("Unchanged");
+    });
+
+    it("should delete acceptance criteria", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Delete Me",
+        description: "",
+      });
+
+      expect(repo.deleteAcceptanceCriteria(ac.id)).toBe(true);
+      expect(repo.getAcceptanceCriteria(ac.id)).toBeNull();
+    });
+
+    it("should return false when deleting non-existent criteria", () => {
+      expect(repo.deleteAcceptanceCriteria("fake-id")).toBe(false);
+    });
+  });
+
+  describe("traceability", () => {
+    let appId: string;
+
+    beforeEach(() => {
+      const app = repo.createApplication({ name: "Trace App" });
+      appId = app.id;
+    });
+
+    it("should create a traceability link", () => {
+      const link = repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-1",
+        acceptanceCriteriaId: "ac-1",
+        testId: "test-1",
+        coverageStatus: "covered",
+      });
+
+      expect(link.id).toBeDefined();
+      expect(link.applicationId).toBe(appId);
+      expect(link.requirementChunkId).toBe("req-1");
+      expect(link.acceptanceCriteriaId).toBe("ac-1");
+      expect(link.testId).toBe("test-1");
+      expect(link.coverageStatus).toBe("covered");
+    });
+
+    it("should create link with defaults", () => {
+      const link = repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-1",
+      });
+
+      expect(link.acceptanceCriteriaId).toBeNull();
+      expect(link.testId).toBeNull();
+      expect(link.coverageStatus).toBe("uncovered");
+    });
+
+    it("should get traceability links for app", () => {
+      repo.createTraceabilityLink({ applicationId: appId, requirementChunkId: "req-1" });
+      repo.createTraceabilityLink({ applicationId: appId, requirementChunkId: "req-2" });
+
+      const links = repo.getTraceabilityForApp(appId);
+      expect(links).toHaveLength(2);
+    });
+
+    it("should get coverage report", () => {
+      // Create criteria
+      const ac = repo.createAcceptanceCriteria({ applicationId: appId, title: "AC1", description: "" });
+      const ac2 = repo.createAcceptanceCriteria({ applicationId: appId, title: "AC2", description: "", status: "implemented" });
+
+      // Create traceability links
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-1",
+        acceptanceCriteriaId: ac.id,
+        testId: "test-1",
+        coverageStatus: "covered",
+      });
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-2",
+        acceptanceCriteriaId: ac2.id,
+        coverageStatus: "uncovered",
+      });
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-3",
+        coverageStatus: "uncovered",
+      });
+
+      const report = repo.getCoverageReport(appId);
+      expect(report.totalRequirements).toBe(3);
+      expect(report.coveredRequirements).toBe(1);
+      expect(report.totalCriteria).toBe(2);
+      expect(report.implementedCriteria).toBe(1);
+      expect(report.coveragePercentage).toBe(33);
+      expect(report.unmappedRequirements).toContain("req-3");
+      expect(report.untestedCriteria).toContain(ac2.id);
+    });
+
+    it("should get unmapped requirements", () => {
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-linked",
+        acceptanceCriteriaId: "ac-1",
+      });
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-unmapped",
+      });
+
+      const unmapped = repo.getUnmappedRequirements(appId);
+      expect(unmapped).toContain("req-unmapped");
+      expect(unmapped).not.toContain("req-linked");
+    });
+
+    it("should get untested criteria", () => {
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-1",
+        acceptanceCriteriaId: "ac-tested",
+        testId: "test-1",
+      });
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-2",
+        acceptanceCriteriaId: "ac-untested",
+      });
+
+      const untested = repo.getUntestedCriteria(appId);
+      expect(untested).toContain("ac-untested");
+      expect(untested).not.toContain("ac-tested");
+    });
+
+    it("should link criteria to test (existing link)", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "AC",
+        description: "",
+      });
+      repo.createTraceabilityLink({
+        applicationId: appId,
+        requirementChunkId: "req-1",
+        acceptanceCriteriaId: ac.id,
+      });
+
+      const linked = repo.linkCriteriaToTest(ac.id, "test-1");
+      expect(linked).toBeDefined();
+      expect(linked?.testId).toBe("test-1");
+      expect(linked?.coverageStatus).toBe("covered");
+    });
+
+    it("should link criteria to test (new link created)", () => {
+      const ac = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "AC new link",
+        description: "",
+      });
+
+      const linked = repo.linkCriteriaToTest(ac.id, "test-2");
+      expect(linked).toBeDefined();
+      expect(linked?.testId).toBe("test-2");
+      expect(linked?.coverageStatus).toBe("covered");
+    });
+
+    it("should return null when linking non-existent criteria", () => {
+      const result = repo.linkCriteriaToTest("fake-id", "test-1");
+      expect(result).toBeNull();
+    });
+
+    it("should return empty report for app with no traceability", () => {
+      const report = repo.getCoverageReport(appId);
+      expect(report.totalRequirements).toBe(0);
+      expect(report.coveragePercentage).toBe(0);
+      expect(report.unmappedRequirements).toEqual([]);
+    });
+  });
 });

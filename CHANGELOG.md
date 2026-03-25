@@ -6,8 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Knowledge Base Enhancement** (Epic #276): New `src/talos/knowledge/` module for requirements document ingestion and knowledge-base auto-tagging.
+  - Extended `TalosChunk` type with new chunk types (`requirement`, `api_spec`, `user_story`) and optional metadata fields (`docId`, `sourceVersion`, `confidence`, `tags`, `links`) (#281).
+  - `DocumentIngester` class: ingests Markdown and OpenAPI (JSON/YAML) documents into the RAG knowledge base with semantic section chunking, 10-15% overlap, and stable chunk IDs (#282).
+  - `AutoTagger` class: NLP-heuristic auto-tagging with controlled vocabulary for personas, NFR keywords, environments, and functional areas (#283).
+  - Hybrid search (`VectorStore.hybridSearch`): combines vector similarity with keyword boosting and metadata filtering (types, tags, docType, persona, minConfidence). Exposed via `RagPipeline.retrieveWithFilters()` (#284).
+- **Acceptance Criteria System** (Epic #277): AI-powered acceptance criteria generation, management, and requirements traceability.
+  - `TalosAcceptanceCriteria` data model with Given/When/Then scenarios, NFR tags, confidence scores, and full CRUD in `TalosRepository` (#285).
+  - `CriteriaGenerator` class: RAG-powered LLM generation of structured acceptance criteria from ingested requirements, with bulk generation and single-criterion AI-suggest (#286).
+  - Requirements Traceability Matrix (RTM): `talos_traceability` table linking requirements → criteria → tests, with coverage reporting, unmapped requirements, and untested criteria queries (#287).
+  - REST API for criteria management (`/api/talos/criteria`): CRUD endpoints, bulk AI generation, AI-suggest, and traceability report — all inputs validated with Zod schemas (#288).
+- **MCP Tools for Knowledge & Criteria** (Epic #280): Seven new MCP tool definitions in `src/talos/tools.ts` exposing the knowledge base and criteria subsystem to AI agents.
+  - `talos_ingest_document`: Ingest Markdown/OpenAPI documents into the RAG knowledge base via `DocumentIngester` (#297).
+  - `talos_generate_criteria`: AI-powered acceptance criteria generation from knowledge base via `CriteriaGenerator` (#298).
+  - `talos_get_traceability`: Requirements traceability report (coverage %, unmapped requirements, untested criteria) via `TalosRepository.getCoverageReport()` (#299).
+  - Criteria CRUD tools — `talos_create_criteria`, `talos_update_criteria`, `talos_list_criteria`, `talos_delete_criteria` — with full Zod validation and appropriate risk levels (#300).
+- **Testing Agents & Skills** (Epic #279): Agent definitions and skill workflows for the autonomous testing pipeline.
+  - Test Orchestrator agent: coordinates the full testing lifecycle — ingest requirements → generate criteria → generate tests → execute → heal → report (#293).
+  - Test Planner skill: analyzes requirements and codebase to create a prioritized test plan with risk-based prioritization, test type recommendations, and coverage gap analysis (#294).
+  - Criteria Generator skill: converts ingested requirements into structured Given/When/Then acceptance criteria using RAG-powered LLM prompts with few-shot examples, confidence scoring, and auto-tagging (#295).
+  - Test Reviewer skill: reviews generated tests against acceptance criteria for scenario coverage, assertion completeness, POM compliance, and accessible locator usage (#296).
+- **Setup Wizard** (Epic #278): Multi-step guided test configuration wizard in the UI.
+  - Setup Wizard component (`/talos/setup`): 7-step guided workflow — Register App → Upload Docs → Vault Roles → Discovery → Generate Criteria → Review Criteria → Generate Tests — with progress bar and step navigation (#289).
+  - Document upload step: file selection for Markdown/OpenAPI, document type selector, client-side ingestion with chunk count reporting (#290).
+  - Criteria generation and review steps: AI bulk generation with confidence stats, criteria review with Given/When/Then display, approve/reject actions, and AI-suggest for new criteria (#291).
+  - Test generation step: generates Playwright tests from approved criteria with traceability stats and coverage summary (#292).
+  - Acceptance criteria API client functions added to `ui/lib/api.ts` for all criteria endpoints.
+  - "Setup" tab added to NavTabs navigation.
+- **Document Ingestion API Endpoint**: Added `POST /api/talos/applications/:appId/ingest` backend route for the Setup Wizard's document upload step.
+- **Prebuilt Testing Agents & Skills**: Test Orchestrator agent, Test Planner, Criteria Generator, and Test Reviewer skills are now seeded into the app's database on startup — available in the Agents and Skills pages out of the box.
+
 ### Fixed
 
+- **Duplicate Navigation Menus**: Removed redundant `NavTabs` rendering from 7 pages (skills, agents, library, scheduler, tasks, workbench, talos layout). The root layout's `NavBar` is now the single navigation across the entire app.
+- **Setup Wizard not accessible**: Added Setup Wizard to the NavBar's Testing dropdown menu so it's discoverable from any page.
 - **Copilot SDK `onPermissionRequest`** (#256): `createSession` now passes `approveAll` (imported from `@github/copilot-sdk`) as `onPermissionRequest`, resolving the root cause of chat sessions failing with permission errors.
 - **Tool wiring via `defineTool`** (#257): Talos tools from `src/talos/tools.ts` are now wrapped with `defineTool()` and passed to every SDK session. `ChatOptions` gains a `tools?: ToolDefinition[]` parameter. Tool handlers emit `tool:call` events and surface errors gracefully.
 - **`listModels()` + `modelSupportsReasoning()`** (#258): Model listing now guards against `startFailed` (throws a clear error instead of hanging). Model capabilities are cached after the first `listModels()` call. `reasoningEffort` is only forwarded to sessions whose model actually supports it — non-reasoning models (gpt-4.1, claude-sonnet-4, etc.) no longer receive the parameter.

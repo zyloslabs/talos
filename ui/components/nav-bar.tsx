@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, FlaskConical, Zap, Settings } from "lucide-react";
+import { ChevronDown, FlaskConical, Zap, Settings, Wand2 } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import {
   DropdownMenu,
@@ -33,6 +33,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/talos/tests", label: "Test Library" },
       { href: "/talos/vault", label: "Vault Roles" },
       { href: "/talos/artifacts", label: "Artifacts" },
+      { href: "/talos/setup", label: "Setup Wizard" },
     ],
   },
   {
