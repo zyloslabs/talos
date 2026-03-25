@@ -221,21 +221,12 @@ export function htmlToMarkdown(html: string): string {
     md = md.replace(/<[^>]+>/g, "");
   }
 
-  // NOW decode HTML entities — safe because all tags have been stripped.
+  // Decode HTML entities. Angle-bracket entities (&lt; &gt;) are left
+  // encoded to prevent HTML element injection in downstream contexts.
   // Order matters: decode &amp; LAST since other entities contain '&'.
   md = md.replace(/&#39;/g, "'");
   md = md.replace(/&quot;/g, '"');
-  md = md.replace(/&lt;/g, "<");
-  md = md.replace(/&gt;/g, ">");
   md = md.replace(/&amp;/g, "&");
-
-  // SECURITY: Second pass — entity decoding can reconstruct HTML tags
-  // (e.g. &lt;script&gt; → <script>). Strip any that reappeared.
-  prev = "";
-  while (prev !== md) {
-    prev = md;
-    md = md.replace(/<[^>]+>/g, "");
-  }
 
   // Escape any backslashes that could be interpreted in downstream contexts
   md = md.replace(/\\/g, "\\\\");

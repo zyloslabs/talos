@@ -344,15 +344,15 @@ function NetworkPanel() {
   const [httpProxy, setHttpProxy] = useState("");
   const [httpsProxy, setHttpsProxy] = useState("");
   const [noProxy, setNoProxy] = useState("");
+  const [lastProxy, setLastProxy] = useState<ProxyConfig | undefined>(undefined);
 
-  useEffect(() => {
-    if (proxy) {
-      setEnabled(proxy.enabled);
-      setHttpProxy(proxy.httpProxy || "");
-      setHttpsProxy(proxy.httpsProxy || "");
-      setNoProxy(proxy.noProxy || "");
-    }
-  }, [proxy]);
+  if (proxy && proxy !== lastProxy) {
+    setLastProxy(proxy);
+    setEnabled(proxy.enabled);
+    setHttpProxy(proxy.httpProxy || "");
+    setHttpsProxy(proxy.httpsProxy || "");
+    setNoProxy(proxy.noProxy || "");
+  }
 
   const saveMut = useMutation({
     mutationFn: () => setProxyConfig({ enabled, httpProxy, httpsProxy, noProxy }),
