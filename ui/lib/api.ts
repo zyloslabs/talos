@@ -403,3 +403,60 @@ export const getAgentSkills = (agentId: string) =>
   fetchApi<string[]>(`/api/admin/agents/${agentId}/skills`);
 export const setAgentSkills = (agentId: string, skillIds: string[]) =>
   fetchApi<string[]>(`/api/admin/agents/${agentId}/skills`, { method: "PUT", body: JSON.stringify({ skillIds }) });
+
+// ── Acceptance Criteria ─────────────────────────────────────────────────────
+
+export interface AcceptanceCriteriaScenario { given: string; when: string; then: string }
+export interface AcceptanceCriteria {
+  id: string;
+  applicationId: string;
+  requirementChunkId?: string;
+  title: string;
+  description: string;
+  scenarios: AcceptanceCriteriaScenario[];
+  preconditions: string[];
+  dataRequirements: string[];
+  nfrTags: string[];
+  status: "draft" | "approved" | "implemented" | "deprecated";
+  confidence: number;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+export interface CriteriaGenerationResult { criteriaCreated: number; totalChunksAnalyzed: number; averageConfidence: number }
+export interface TraceabilityReport {
+  totalRequirements: number;
+  coveredRequirements: number;
+  totalCriteria: number;
+  implementedCriteria: number;
+  coveragePercentage: number;
+  unmappedRequirements: string[];
+  untestedCriteria: string[];
+}
+export interface IngestResult { chunksCreated: number; chunksSkipped: number; totalTokens: number; docId: string }
+
+export const getCriteria = (appId: string, status?: string) =>
+  fetchApi<{ criteria: AcceptanceCriteria[] }>(
+    status ? `/api/talos/criteria/${appId}?status=${status}` : `/api/talos/criteria/${appId}`
+  ).then(r => r.criteria);
+
+export const createCriteria = (appId: string, data: Partial<AcceptanceCriteria>) =>
+  fetchApi<AcceptanceCriteria>(`/api/talos/criteria/${appId}`, { method: "POST", body: JSON.stringify(data) });
+
+export const updateCriteria = (id: string, data: Partial<AcceptanceCriteria>) =>
+  fetchApi<AcceptanceCriteria>(`/api/talos/criteria/${id}`, { method: "PUT", body: JSON.stringify(data) });
+
+export const deleteCriteria = (id: string) =>
+  fetchApi<void>(`/api/talos/criteria/${id}`, { method: "DELETE" });
+
+export const generateCriteria = (appId: string, options?: { requirementFilter?: string; maxCriteria?: number }) =>
+  fetchApi<CriteriaGenerationResult>(`/api/talos/criteria/${appId}/generate`, { method: "POST", body: JSON.stringify(options ?? {}) });
+
+export const suggestCriteria = (appId: string, description: string) =>
+  fetchApi<AcceptanceCriteria>(`/api/talos/criteria/${appId}/suggest`, { method: "POST", body: JSON.stringify({ description }) });
+
+export const getTraceabilityReport = (appId: string) =>
+  fetchApi<TraceabilityReport>(`/api/talos/criteria/traceability/${appId}`);
+
+export const ingestDocument = (appId: string, data: { content: string; format: string; fileName: string; docType: string; version?: string; tags?: string[] }) =>
+  fetchApi<IngestResult>(`/api/talos/applications/${appId}/ingest`, { method: "POST", body: JSON.stringify(data) });
