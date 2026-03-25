@@ -129,7 +129,7 @@ export async function parsePptx(buffer: Buffer): Promise<string> {
           .map((row) =>
             (row.children ?? [])
               .filter((c) => c.type === "cell")
-              .map((c) => (c.text ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ")),
+              .map((c) => (c.text ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ")),
           );
         if (rows.length > 0) {
           const mdTable = rowsToMarkdownTable(rows);
@@ -172,7 +172,7 @@ export function rowsToMarkdownTable(rows: string[][]): string {
   const normalized = rows.map((row) => {
     const padded = [...row];
     while (padded.length < maxCols) padded.push("");
-    return padded.map((cell) => String(cell ?? "").replace(/\|/g, "\\|").replace(/\n/g, " "));
+    return padded.map((cell) => String(cell ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " "));
   });
 
   if (normalized.length === 0) return "";
@@ -211,19 +211,27 @@ export function htmlToMarkdown(html: string): string {
   md = convertHtmlTables(md);
   md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, "\n$1\n");
   md = md.replace(/<br\s*\/?>/gi, "\n");
-  // Decode entities BEFORE stripping tags to prevent decoded entities
-  // from forming injectable HTML (e.g., &lt;script&gt; -> <script>)
-  md = md.replace(/&amp;/g, "&");
-  md = md.replace(/&lt;/g, "<");
-  md = md.replace(/&gt;/g, ">");
-  md = md.replace(/&quot;/g, '"');
-  md = md.replace(/&#39;/g, "'");
-  // Strip remaining tags (multiple passes to handle nested/reconstructed tags)
+
+  // SECURITY: Strip ALL remaining HTML tags FIRST, before decoding entities.
+  // This prevents entity-encoded tags (e.g., &lt;script&gt;) from becoming
+  // live HTML after decoding. Multiple passes handle nested/reconstructed tags.
   let prev = "";
   while (prev !== md) {
     prev = md;
     md = md.replace(/<[^>]+>/g, "");
   }
+
+  // NOW decode HTML entities — safe because all tags have been stripped.
+  // Order matters: decode &amp; LAST since other entities contain '&'.
+  md = md.replace(/&#39;/g, "'");
+  md = md.replace(/&quot;/g, '"');
+  md = md.replace(/&lt;/g, "<");
+  md = md.replace(/&gt;/g, ">");
+  md = md.replace(/&amp;/g, "&");
+
+  // Escape any backslashes that could be interpreted in downstream contexts
+  md = md.replace(/\\/g, "\\\\");
+
   md = md.replace(/\n{3,}/g, "\n\n");
 
   return md.trim();
