@@ -22,6 +22,11 @@ import { createCriteriaRouter } from "./api/criteria.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
 import { DocumentIngester, type DocFormat, type DocMetadata } from "./talos/knowledge/document-ingester.js";
+import { BrowserAuth } from "./talos/m365/browser-auth.js";
+import { CopilotScraper } from "./talos/m365/scraper.js";
+import { EphemeralStore } from "./talos/m365/ephemeral.js";
+import { createM365Router } from "./api/m365.js";
+import { parseTalosConfig } from "./talos/config.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -705,9 +710,76 @@ app.get("/api/talos/stats", (_req, res) => {
   });
 });
 
+// ── Talos Config ──────────────────────────────────────────────────────────────
+
+const talosConfig = parseTalosConfig({});
+
+// ── Corporate Proxy (#321) ────────────────────────────────────────────────────
+// Apply proxy environment variables from config. These affect globalAgent and
+// any library that respects standard proxy env vars (fetch, node-fetch, etc.).
+
+{
+  const pc = talosConfig.proxy;
+  if (pc.enabled) {
+    if (pc.httpProxy && !process.env.HTTP_PROXY) process.env.HTTP_PROXY = pc.httpProxy;
+    if (pc.httpsProxy && !process.env.HTTPS_PROXY) process.env.HTTPS_PROXY = pc.httpsProxy;
+    if (pc.noProxy && !process.env.NO_PROXY) process.env.NO_PROXY = pc.noProxy;
+  }
+}
+
+// ── M365 Integration (#315) ──────────────────────────────────────────────────
+
+let m365Auth: BrowserAuth | null = null;
+let m365Scraper: CopilotScraper | null = null;
+const m365Ephemeral = new EphemeralStore(talosConfig.m365.docsDir);
+
+if (talosConfig.m365.enabled) {
+  const proxyUrl = talosConfig.proxy.enabled
+    ? (talosConfig.proxy.httpsProxy ?? talosConfig.proxy.httpProxy)
+    : undefined;
+
+  m365Auth = new BrowserAuth({
+    userDataDir: talosConfig.m365.browserDataDir,
+    copilotUrl: talosConfig.m365.url,
+    mfaTimeoutMs: talosConfig.m365.mfaTimeout,
+    proxy: proxyUrl,
+  });
+
+  // Initialize in background — don't block server startup
+  m365Auth.initialize()
+    .then((page) => {
+      m365Scraper = new CopilotScraper(page);
+      console.log("[talos] M365 Copilot integration initialized");
+    })
+    .catch((err) => {
+      console.warn(`[talos] M365 initialization failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
+// ── M365 API Routes (#316) ───────────────────────────────────────────────────
+
+const m365RouterOptions = {
+  browserAuth: m365Auth,
+  get scraper() { return m365Scraper; },
+  ephemeralStore: m365Ephemeral,
+};
+app.use("/api/talos/m365", createM365Router(m365RouterOptions));
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 httpServer.listen(PORT, () => {
   console.log(`[talos] server listening on http://localhost:${PORT}`);
   console.log(`[talos] data directory: ${DATA_DIR}`);
 });
+
+// ── Graceful Shutdown ─────────────────────────────────────────────────────────
+
+async function shutdown() {
+  if (m365Auth) {
+    await m365Auth.close().catch(() => {});
+  }
+  httpServer.close();
+}
+
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
