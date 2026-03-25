@@ -4,7 +4,7 @@
  * Executes Playwright tests with artifact capture and credential injection.
  */
 
-import type { TalosTest, TalosTestRun, TalosTestRunStatus } from "../types.js";
+import type { TalosTest, TalosTestRun, TalosTestRunStatus, TalosApplication } from "../types.js";
 import type { TalosRepository } from "../repository.js";
 import type { RunnerConfig } from "../config.js";
 import { ArtifactManager } from "./artifact-manager.js";
@@ -39,6 +39,7 @@ export type ExecutionOptions = {
   timeout?: number;
   retries?: number;
   slowMo?: number;
+  application?: TalosApplication;
 };
 
 // ── Playwright Runner ─────────────────────────────────────────────────────────
@@ -97,12 +98,29 @@ export class PlaywrightRunner {
         slowMo: options.slowMo ?? this.config.slowMo,
       });
 
-      // Create context with tracing
-      const context = await browserInstance.newContext({
-        recordVideo: this.shouldRecordVideo() ? {
-          dir: `/tmp/talos-videos-${testRun.id}`,
-        } : undefined,
-      });
+      // Create context with tracing and optional mTLS
+      const contextOptions: Record<string, unknown> = {};
+
+      if (this.shouldRecordVideo()) {
+        contextOptions.recordVideo = { dir: `/tmp/talos-videos-${testRun.id}` };
+      }
+
+      // Apply mTLS client certificates if enabled on the application
+      const app = options.application;
+      if (app?.mtlsEnabled && app.mtlsConfig) {
+        const mtls = app.mtlsConfig;
+        const origin = new URL(app.baseUrl).origin;
+        const certEntry: Record<string, unknown> = { origin };
+
+        if (mtls.clientCertVaultRef) certEntry.certPath = mtls.clientCertVaultRef;
+        if (mtls.clientKeyVaultRef) certEntry.keyPath = mtls.clientKeyVaultRef;
+        if (mtls.pfxVaultRef) certEntry.pfxPath = mtls.pfxVaultRef;
+        if (mtls.passphrase) certEntry.passphrase = mtls.passphrase;
+
+        contextOptions.clientCertificates = [certEntry];
+      }
+
+      const context = await browserInstance.newContext(contextOptions);
 
       // Start tracing if configured
       if (this.shouldTrace()) {
