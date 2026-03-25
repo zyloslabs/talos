@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavTabs } from "@/components/talos/nav-tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +35,6 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <NavTabs />
       <main className="flex-1 overflow-auto container px-4 md:px-6 py-4 md:py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
