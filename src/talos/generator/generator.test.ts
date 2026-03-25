@@ -61,7 +61,7 @@ describe("PromptBuilder", () => {
   it("buildPrompt fills template with application info and code snippets", async () => {
     const app: TalosApplication = {
       id: "app-1", name: "TestApp", description: "", repositoryUrl: "https://github.com/o/r",
-      githubPatRef: null, baseUrl: "https://example.com", status: "active", metadata: {},
+      githubPatRef: null, baseUrl: "https://example.com", status: "active", mtlsEnabled: false, mtlsConfig: null, metadata: {},
       createdAt: new Date(), updatedAt: new Date(),
     };
     const existingTests: TalosTest[] = [{
@@ -98,7 +98,7 @@ describe("PromptBuilder", () => {
   it("buildPrompt uses default framework/style", async () => {
     const app: TalosApplication = {
       id: "a", name: "A", description: "", repositoryUrl: "r",
-      githubPatRef: null, baseUrl: "b", status: "active", metadata: {},
+      githubPatRef: null, baseUrl: "b", status: "active", mtlsEnabled: false, mtlsConfig: null, metadata: {},
       createdAt: new Date(), updatedAt: new Date(),
     };
 
