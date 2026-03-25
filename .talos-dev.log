@@ -4,53 +4,6 @@
 
 [talos] server listening on http://localhost:3002
 [talos] data directory: /Users/matthewcronin/.talos
-[CLI subprocess] (node:3706) ExperimentalWarning: SQLite is an experimental feature and might change at any time
-[CLI subprocess] (Use `node --trace-warnings ...` to show where the warning was created)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
-Error: Request models.list failed with message: Not authenticated. Please authenticate first.
-    at handleResponse (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:565:48)
-    at handleMessage (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:345:13)
-    at processMessageQueue (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:362:17)
-    at Immediate.<anonymous> (/Users/matthewcronin/Development/talos/node_modules/.pnpm/vscode-jsonrpc@8.2.1/node_modules/vscode-jsonrpc/lib/common/connection.js:334:13)
-    at process.processImmediate (node:internal/timers:491:21)
+5:58:50 AM [tsx] change in ./src/api/criteria.ts Restarting...
+c[talos] server listening on http://localhost:3002
+[talos] data directory: /Users/matthewcronin/.talos
