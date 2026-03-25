@@ -48,6 +48,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Changed
 
+- **Dependency Upgrades Round 2** (Epic #302): Consolidated upgrades from 11 Dependabot PRs.
+  - `typescript-eslint` 8.57.1 → 8.57.2 (root devDep — patch)
+  - `vite` 8.0.1 → 8.0.2 (root + ui devDep — patch)
+  - `vitest` 4.1.0 → 4.1.1 (ui devDep — patch)
+  - `@tanstack/react-query` 5.95.0 → 5.95.2 (ui — patch)
+  - `lucide-react` 0.577.0 → 1.6.0 (ui — major, no code changes needed — no brand icons used)
+  - `zod` 3.25.76 → 4.3.6 (root — major, error customization API unified; our schemas remained compatible)
+  - `typescript` 5.8.x → 6.0.2 (root + ui — major, added `"types": ["node"]` to root tsconfig)
+  - **Skipped**: ESLint 10 upgrade deferred — `eslint-plugin-react` not yet compatible (tracked upstream at #3977, #3979)
+
 - **Root layout** (#259): Font switched from Inter to Space Grotesk (matching OpenZigs). `NavBar` added to root layout. Footer added. Body grid uses `auto 1fr auto` row template.
 - **Color palette** (#260): CSS variables updated to the stone/ink/ember/tide token set from OpenZigs. Border radius bumped to `0.75rem`. Selection highlight updated to ember (`hsla(16, 100%, 59%, 0.3)`).
 - **NavBar** (#261): Replaced flat `NavTabs` header with OpenZigs-style sticky `NavBar` featuring dropdown groups (Testing, Automation, Admin), active-route highlights, and `ModeToggle`.
