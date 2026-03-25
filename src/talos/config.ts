@@ -162,23 +162,23 @@ export const talosConfigSchema = z.object({
   /** Whether Talos module is enabled */
   enabled: z.boolean().default(true),
   /** Vector database configuration */
-  vectorDb: vectorDbConfigSchema.default({}),
+  vectorDb: vectorDbConfigSchema.default(vectorDbConfigSchema.parse({})),
   /** Embedding configuration */
-  embedding: embeddingConfigSchema.default({}),
+  embedding: embeddingConfigSchema.default(embeddingConfigSchema.parse({})),
   /** Test runner configuration */
-  runner: runnerConfigSchema.default({}),
+  runner: runnerConfigSchema.default(runnerConfigSchema.parse({})),
   /** Self-healing configuration */
-  healing: healingConfigSchema.default({}),
+  healing: healingConfigSchema.default(healingConfigSchema.parse({})),
   /** Test generator configuration */
-  generator: generatorConfigSchema.default({}),
+  generator: generatorConfigSchema.default(generatorConfigSchema.parse({})),
   /** Export configuration */
-  export: exportConfigSchema.default({}),
+  export: exportConfigSchema.default(exportConfigSchema.parse({})),
   /** Artifacts configuration */
-  artifacts: artifactsConfigSchema.default({}),
+  artifacts: artifactsConfigSchema.default(artifactsConfigSchema.parse({})),
   /** Discovery configuration */
-  discovery: discoveryConfigSchema.default({}),
+  discovery: discoveryConfigSchema.default(discoveryConfigSchema.parse({})),
   /** GitHub MCP configuration */
-  githubMcp: githubMcpConfigSchema.default({}),
+  githubMcp: githubMcpConfigSchema.default(githubMcpConfigSchema.parse({})),
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;
