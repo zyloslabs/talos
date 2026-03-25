@@ -47,6 +47,13 @@ export { CredentialSanitizer } from "./export/index.js";
 export { DocumentIngester } from "./knowledge/index.js";
 export { AutoTagger } from "./knowledge/index.js";
 
+// ── M365 Integration ──────────────────────────────────────────────────────────
+
+export { BrowserAuth } from "./m365/index.js";
+export { CopilotScraper } from "./m365/index.js";
+export { EphemeralStore as M365EphemeralStore } from "./m365/index.js";
+export { parseFile as parseM365File } from "./m365/index.js";
+
 // ── Initialization ────────────────────────────────────────────────────────────
 
 import type Database from "better-sqlite3";
