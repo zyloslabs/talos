@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `CriteriaGenerator` class: RAG-powered LLM generation of structured acceptance criteria from ingested requirements, with bulk generation and single-criterion AI-suggest (#286).
   - Requirements Traceability Matrix (RTM): `talos_traceability` table linking requirements → criteria → tests, with coverage reporting, unmapped requirements, and untested criteria queries (#287).
   - REST API for criteria management (`/api/talos/criteria`): CRUD endpoints, bulk AI generation, AI-suggest, and traceability report — all inputs validated with Zod schemas (#288).
+- **MCP Tools for Knowledge & Criteria** (Epic #280): Seven new MCP tool definitions in `src/talos/tools.ts` exposing the knowledge base and criteria subsystem to AI agents.
+  - `talos_ingest_document`: Ingest Markdown/OpenAPI documents into the RAG knowledge base via `DocumentIngester` (#297).
+  - `talos_generate_criteria`: AI-powered acceptance criteria generation from knowledge base via `CriteriaGenerator` (#298).
+  - `talos_get_traceability`: Requirements traceability report (coverage %, unmapped requirements, untested criteria) via `TalosRepository.getCoverageReport()` (#299).
+  - Criteria CRUD tools — `talos_create_criteria`, `talos_update_criteria`, `talos_list_criteria`, `talos_delete_criteria` — with full Zod validation and appropriate risk levels (#300).
 
 ### Fixed
 
