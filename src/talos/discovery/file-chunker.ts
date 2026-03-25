@@ -21,6 +21,7 @@ export type ChunkResult = {
     language?: string;
     symbolName?: string;
     symbolType?: "function" | "class" | "interface" | "type" | "const" | "module";
+    [key: string]: unknown;
   };
 };
 

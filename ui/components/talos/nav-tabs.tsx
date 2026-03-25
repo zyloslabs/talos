@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, KeyRound, TestTube2, FileImage, Moon, Sun, MessageSquare, Settings, BookOpen, Zap, Calendar, ListTodo, FileEdit, Bot } from "lucide-react";
+import { LayoutDashboard, KeyRound, TestTube2, FileImage, Moon, Sun, MessageSquare, Settings, BookOpen, Zap, Calendar, ListTodo, FileEdit, Bot, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/talos/vault", label: "Vault Roles", icon: KeyRound },
   { href: "/talos/tests", label: "Test Library", icon: TestTube2 },
   { href: "/talos/artifacts", label: "Artifacts", icon: FileImage },
+  { href: "/talos/setup", label: "Setup", icon: Wand2 },
   { href: "/library", label: "Prompts", icon: BookOpen },
   { href: "/skills", label: "Skills", icon: Zap },
   { href: "/agents", label: "Agents", icon: Bot },

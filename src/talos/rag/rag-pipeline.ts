@@ -7,7 +7,7 @@
 
 import type { TalosChunkType } from "../types.js";
 import type { VectorDbConfig, EmbeddingConfig } from "../config.js";
-import { VectorStore, type VectorRecord, type VectorSearchResult } from "./vector-store.js";
+import { VectorStore, type VectorRecord, type VectorSearchResult, type HybridSearchOptions } from "./vector-store.js";
 import { EmbeddingService } from "./embedding-service.js";
 import type { ChunkResult } from "../discovery/file-chunker.js";
 
@@ -163,5 +163,29 @@ export class RagPipeline {
   }> {
     const totalChunks = await this.vectorStore.count(applicationId);
     return { totalChunks };
+  }
+
+  /**
+   * Retrieve context using hybrid search with metadata filtering.
+   */
+  async retrieveWithFilters(
+    applicationId: string,
+    query: string,
+    filters: HybridSearchOptions = {}
+  ): Promise<RagContext> {
+    const queryEmbedding = await this.embeddingService.embed(query);
+
+    const chunks = await this.vectorStore.hybridSearch(
+      applicationId,
+      queryEmbedding.embedding,
+      query,
+      filters
+    );
+
+    return {
+      chunks,
+      totalTokens: queryEmbedding.tokenCount,
+      query,
+    };
   }
 }

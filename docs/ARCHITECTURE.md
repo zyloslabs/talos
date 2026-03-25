@@ -19,6 +19,7 @@
   - [Runner Module](#runner-module)
   - [Healing Module](#healing-module)
   - [Export Module](#export-module)
+  - [Knowledge Module](#knowledge-module)
   - [UI Module](#ui-module)
 - [Data Architecture](#data-architecture)
   - [SQLite Schema](#sqlite-schema)
@@ -60,19 +61,19 @@ The engine exposes its functionality through **MCP tools** (Model Context Protoc
                                │ REST + WebSocket
 ┌──────────────────────────────┴──────────────────────────────────────┐
 │                          MCP Tool Layer                              │
-│  14 tools · Zod validation · Risk-level gating · JSON responses      │
-├─────────┬──────────┬──────────┬──────────┬──────────┬───────────────┤
-│Discovery│   RAG    │Generator │  Runner  │ Healing  │    Export     │
-│         │          │          │          │          │               │
-│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │  Package      │
-│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │  Builder      │
-│ Client  │          │          │          │          │               │
-│         │ Vector   │ Code     │ Artifact │ Fix      │  Credential   │
-│ File    │ Store    │ Validator│ Manager  │ Generator│  Sanitizer    │
-│ Chunker │          │          │          │          │               │
-│         │ RAG      │ Test     │Credential│ Healing  │  Export       │
-│         │ Pipeline │ Generator│ Injector │ Engine   │  Engine       │
-├─────────┴──────────┴──────────┴──────────┴──────────┴───────────────┤
+│  21 tools · Zod validation · Risk-level gating · JSON responses      │
+├─────────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┤
+│Discovery│   RAG    │Generator │  Runner  │ Healing  │  Export  │Knowledge│
+│         │          │          │          │          │          │         │
+│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │ Package  │Document │
+│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │ Builder  │Ingester │
+│ Client  │          │          │          │          │          │         │
+│         │ Vector   │ Code     │ Artifact │ Fix      │Credential│ Auto    │
+│ File    │ Store    │ Validator│ Manager  │ Generator│Sanitizer │ Tagger  │
+│ Chunker │          │          │          │          │          │         │
+│         │ RAG      │ Test     │Credential│ Healing  │ Export   │         │
+│         │ Pipeline │ Generator│ Injector │ Engine   │ Engine   │         │
+├─────────┴──────────┴──────────┴──────────┴──────────┴──────────┴─────────┤
 │                        Core Layer                                    │
 │  TalosRepository (SQLite) · TalosConfig (Zod) · Types · initTalos   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -163,7 +164,8 @@ Synchronous SQLite data access layer using `better-sqlite3`.
 
 - **7 tables** with foreign keys, `CHECK` constraints, and indexes.
 - **Automatic migrations** via `migrate()` — creates tables and indexes if they don't exist.
-- **CRUD methods** for: Applications, Tests, TestRuns, Artifacts, VaultRoles.
+- **CRUD methods** for: Applications, Tests, TestRuns, Artifacts, VaultRoles, AcceptanceCriteria, Traceability.
+- **Transaction support**: `runInTransaction()` for atomic batch operations.
 - **Aggregate queries**: `getApplicationStats()` returns totalTests, activeTests, totalRuns, passedRuns, failedRuns, lastRunAt.
 - **JSON serialization**: Fields like `metadata_json`, `tags_json`, `pom_dependencies_json` are stored as TEXT and parsed on read.
 - **ID generation**: `nanoid()` for all primary keys.
@@ -171,12 +173,12 @@ Synchronous SQLite data access layer using `better-sqlite3`.
 
 #### `tools.ts`
 
-Factory function `createTalosTools()` returns an array of **14 MCP tool definitions**, each with:
+Factory function `createTalosTools()` returns an array of **21 MCP tool definitions**, each with:
 
 - `name`, `description`, `inputSchema` (JSON Schema for MCP compatibility)
 - `zodSchema` (Zod schema for runtime validation)
 - `handler` (async function returning `{ text: string; isError?: boolean }`)
-- `category: "testing"`, `riskLevel: "low" | "medium" | "high"`, `source: "talos"`
+- `category: "testing" | "knowledge"`, `riskLevel: "low" | "medium" | "high"`, `source: "talos"`
 
 #### `index.ts`
 
@@ -283,9 +285,10 @@ Retrieval-Augmented Generation pipeline — embeds code chunks, stores them in a
 - **Backend**: LanceDB (embedded, zero-infrastructure).
 - **Storage path**: `~/.talos/vectordb` (configurable, supports remote URIs).
 - **Collection**: `talos_chunks` (configurable).
-- **Schema**: `id`, `applicationId`, `content`, `filePath`, `startLine`, `endLine`, `type`, `contentHash`, `metadata` (JSON), `vector` (Float32 array).
+- **Schema**: `id`, `applicationId`, `content`, `filePath`, `startLine`, `endLine`, `type`, `contentHash`, `metadata` (JSON), `vector` (Float32 array), `docId` (source document ID), `sourceVersion` (document version), `confidence` (0-1 score), `tags` (JSON string array).
 - **Deduplication**: `exists(applicationId, contentHash)` before insert.
-- **Search**: ANN query filtered by `applicationId` and optional `type`, with minimum score threshold. Returns results ranked by similarity.
+- **Search**: ANN query filtered by `applicationId` and optional `type`, with minimum score threshold. Returns results ranked by similarity. Input validation prevents injection via filter expressions (alphanumeric + hyphens only).
+- **Hybrid search**: `hybridSearch()` combines vector similarity with keyword boosting and metadata filtering (types, tags, docType, persona, minConfidence).
 - **Cleanup**: `deleteByApplication(appId)` for re-indexing.
 
 #### RagPipeline
@@ -297,6 +300,7 @@ Coordinates the full RAG lifecycle:
 | `initialize()` | Connects to vector store |
 | `indexChunks(appId, chunks)` | Dedup → embed → store. Returns `{ indexed, skipped, totalTokens }` |
 | `retrieve(appId, query, options?)` | Embed query → ANN search → return ranked `RagContext` |
+| `retrieveWithFilters(appId, query, options?)` | Hybrid search with type, tag, docType, and confidence filters |
 | `findSimilar(appId, content, threshold)` | Semantic dedup / similarity analysis |
 | `clearApplication(appId)` | Wipe all vectors for an app (used before re-index) |
 | `getStats(appId)` | Return chunk count |
@@ -316,6 +320,7 @@ AI-powered Playwright test generation with RAG context, iterative validation, an
 | `TestGenerator` | Orchestrates generation: fetch context → build prompt → call LLM → validate → retry → save |
 | `PromptBuilder` | Assembles system and user prompts with application context, RAG chunks, and existing tests |
 | `CodeValidator` | Validates generated code for syntax, banned patterns, Playwright API usage, and common issues |
+| `CriteriaGenerator` | AI-powered acceptance criteria generation from RAG knowledge base using Given/When/Then format |
 
 #### TestGenerator Flow
 
@@ -539,6 +544,55 @@ Failed TalosTestRun
 
 ---
 
+### Knowledge Module
+
+**Location:** `src/talos/knowledge/`
+
+Document ingestion and auto-tagging for the RAG knowledge base. Enables ingestion of requirements documents (PRDs, user stories, API specs) so the test generator can reason over domain knowledge.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `DocumentIngester` | Ingests Markdown and OpenAPI (JSON/YAML) documents — semantic chunking, stable IDs, integration with `RagPipeline` |
+| `AutoTagger` | NLP-heuristic auto-tagging using controlled vocabulary for personas, NFRs, environments, and functional areas |
+
+#### Document Formats
+
+| Format | Chunking Strategy |
+|--------|------------------|
+| `markdown` | Split by heading sections (## / ###) with 10-15% paragraph overlap |
+| `openapi_json` | One chunk per operation (path + HTTP method) |
+| `openapi_yaml` | One chunk per operation (basic YAML parser) |
+
+#### Controlled Vocabulary (`AutoTagger`)
+
+| Category | Values |
+|----------|--------|
+| Doc Types | `prd`, `user_story`, `api_spec`, `functional_spec` |
+| Personas | `admin`, `standard`, `guest`, `service`, `user` |
+| NFR Tags | `performance`, `security`, `accessibility`, `reliability`, `usability` |
+| Environments | `local`, `staging`, `production`, `ci` |
+| Functional Areas | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api` |
+
+#### Chunk ID Format
+
+Stable, deterministic IDs: `req:<appId>:<fileName>:<chunkIndex>:<version>`
+
+#### Extended Chunk Types
+
+`TalosChunkType` now includes: `code`, `test`, `documentation`, `config`, `schema`, **`requirement`**, **`api_spec`**, **`user_story`**
+
+#### Hybrid Search (`VectorStore.hybridSearch`)
+
+Combines vector similarity with keyword boosting and metadata filtering:
+- Vector search (3× limit for re-ranking)
+- Keyword hit boosting (+0.2 weight)
+- Filter by: `types`, `tags`, `docType`, `persona`, `minConfidence`
+- Exposed via `RagPipeline.retrieveWithFilters()`
+
+---
+
 ### Export Module
 
 **Location:** `src/talos/export/`
@@ -648,7 +702,7 @@ Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles — each w
 
 ### SQLite Schema
 
-TALOS uses a normalized relational schema with 5 core tables:
+TALOS uses a normalized relational schema with 7 core tables:
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
@@ -681,6 +735,14 @@ TALOS uses a normalized relational schema with 5 core tables:
    │   type, filePath,       │
    │   mimeType, sizeBytes)  │
    └────────────────────────┘
+
+   ┌────────────────────────────┐       ┌──────────────────────┐
+   │  talos_acceptance_criteria  │◄──────│   talos_traceability  │
+   │  (id, appId, title,         │       │  (id, appId,          │
+   │   description, scenarios,   │       │   requirementChunkId, │
+   │   status, confidence, tags) │       │   acceptanceCriteriaId,│
+   └────────────────────────────┘       │   testId, coverage)   │
+                                        └──────────────────────┘
 ```
 
 **Index strategy**: Every foreign key is indexed. Additional indexes on `status`, `type`, `name`, and `created_at` for common query patterns.
@@ -699,10 +761,14 @@ LanceDB collection `talos_chunks`:
 | `filePath` | String | Source file path |
 | `startLine` | Int32 | Start line in source |
 | `endLine` | Int32 | End line in source |
-| `type` | String | code, test, documentation, config, schema |
+| `type` | String | code, test, documentation, config, schema, requirement, api_spec, user_story |
 | `contentHash` | String | SHA-256 for dedup |
 | `metadata` | String | JSON metadata |
 | `vector` | FixedSizeList[Float32, 1536] | Embedding vector |
+| `docId` | String | Source document identifier |
+| `sourceVersion` | String | Document version tag |
+| `confidence` | Float32 | Confidence score (0-1, -1 = unset) |
+| `tags` | String | JSON array of filter tags |
 
 ---
 
@@ -752,7 +818,7 @@ Partial configs are accepted — Zod fills missing fields with defaults. Invalid
 
 ## MCP Tool Interface
 
-All 14 tools follow a uniform interface:
+All 21 tools follow a uniform interface:
 
 ```typescript
 interface ToolDefinition {
@@ -789,6 +855,13 @@ interface ToolDefinition {
 | `talos-list-test-runs` | LOW | `applicationId?, testId?, limit?` | List recent test runs |
 | `talos-heal-test` | HIGH | `testRunId, autoApply?` | Trigger self-healing for a failed run |
 | `talos-export-tests` | MEDIUM | `applicationId, testIds?, format?, platform?` | Export tests as standalone package |
+| `talos_ingest_document` | MEDIUM | `applicationId, content, format, fileName, docType, version?, tags?` | Ingest a requirements document into the knowledge base |
+| `talos_generate_criteria` | MEDIUM | `applicationId, requirementFilter?, maxCriteria?` | Generate acceptance criteria from knowledge base via AI/RAG |
+| `talos_get_traceability` | LOW | `applicationId` | Get requirements traceability report (coverage, gaps) |
+| `talos_create_criteria` | MEDIUM | `applicationId, title, description, scenarios?, ...` | Create a new acceptance criterion |
+| `talos_update_criteria` | MEDIUM | `id, title?, description?, status?, ...` | Update an existing acceptance criterion |
+| `talos_list_criteria` | LOW | `applicationId, status?, tags?, nfrTags?` | List acceptance criteria with optional filters |
+| `talos_delete_criteria` | HIGH | `id` | Permanently delete an acceptance criterion |
 
 ---
 
@@ -1013,6 +1086,20 @@ Express Router at `/api/admin` with full CRUD for all platform entities:
 - `GET/POST/PUT /personality/*` — personality management
 - CRUD: `/prompts`, `/scheduler/jobs`, `/tasks`, `/mcp-servers`, `/skills`
 
+### Criteria API (`src/api/criteria.ts`)
+
+Express Router at `/api/talos/criteria` with endpoints for acceptance criteria management:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/:appId` | List criteria for an application (optional `status`, `tags` query params) |
+| `POST` | `/:appId` | Create a new criterion (Zod-validated body) |
+| `PUT` | `/:id` | Update an existing criterion by ID |
+| `DELETE` | `/:id` | Delete a criterion by ID |
+| `POST` | `/:appId/generate` | Bulk AI generation of criteria from knowledge base |
+| `POST` | `/:appId/suggest` | AI suggest a single criterion from natural language |
+| `GET` | `/traceability/:appId` | Get traceability coverage report |
+
 ### UI Pages
 
 | Route | Page | Features |
@@ -1039,7 +1126,7 @@ Express Router at `/api/admin` with full CRUD for all platform entities:
 
 ### Quality Gates
 
-- **122 tests** (backend) across 9 test files
+- **692 tests** (backend) across 32 test files
 - **Lint**: ESLint with @typescript-eslint
 - **Type checking**: `tsc --noEmit` with strict mode
 - **Build verification**: Next.js build for UI
