@@ -23,6 +23,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `talos_generate_criteria`: AI-powered acceptance criteria generation from knowledge base via `CriteriaGenerator` (#298).
   - `talos_get_traceability`: Requirements traceability report (coverage %, unmapped requirements, untested criteria) via `TalosRepository.getCoverageReport()` (#299).
   - Criteria CRUD tools — `talos_create_criteria`, `talos_update_criteria`, `talos_list_criteria`, `talos_delete_criteria` — with full Zod validation and appropriate risk levels (#300).
+- **Testing Agents & Skills** (Epic #279): Agent definitions and skill workflows for the autonomous testing pipeline.
+  - Test Orchestrator agent: coordinates the full testing lifecycle — ingest requirements → generate criteria → generate tests → execute → heal → report (#293).
+  - Test Planner skill: analyzes requirements and codebase to create a prioritized test plan with risk-based prioritization, test type recommendations, and coverage gap analysis (#294).
+  - Criteria Generator skill: converts ingested requirements into structured Given/When/Then acceptance criteria using RAG-powered LLM prompts with few-shot examples, confidence scoring, and auto-tagging (#295).
+  - Test Reviewer skill: reviews generated tests against acceptance criteria for scenario coverage, assertion completeness, POM compliance, and accessible locator usage (#296).
 
 ### Fixed
 
