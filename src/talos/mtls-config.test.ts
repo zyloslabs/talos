@@ -79,7 +79,7 @@ describe("mTLS in full talosConfig", () => {
 describe("mTLS types", () => {
   it("TalosApplication includes mtls fields", async () => {
     // Import types module to ensure mTLS fields exist
-    const { default: _types } = await import("./types.js").catch(() => ({ default: null }));
+    await import("./types.js").catch(() => null);
     
     // Verify the type shape at runtime by creating a mock
     const mockApp = {
