@@ -1408,6 +1408,179 @@ The wizard stores progress locally and can be resumed if interrupted. Each step 
 
 ---
 
+## Microsoft 365 Integration
+
+TALOS can connect to Microsoft Copilot 365 to search and ingest enterprise documents (SharePoint, OneDrive, Teams, Email) as context for test generation.
+
+### Prerequisites
+
+- A Microsoft 365 account with Copilot access
+- Chromium browser (installed via `npx playwright install chromium`)
+- Network access to `m365.cloud.microsoft` (may require proxy — see below)
+
+### Configuration
+
+Add the `m365` section to your TALOS config:
+
+```typescript
+{
+  m365: {
+    enabled: true,                                    // Enable M365 integration
+    url: "https://m365.cloud.microsoft/chat/",        // Copilot 365 URL
+    browserDataDir: "./.browser-data",                // Persistent session storage
+    docsDir: "./docs",                                // Downloaded document storage
+    mfaTimeout: 300000,                               // MFA wait timeout (5 min)
+  }
+}
+```
+
+### Initial Authentication
+
+On first launch with M365 enabled, TALOS opens a visible Chromium window for Microsoft login:
+
+1. Start the server: `pnpm dev`
+2. A Chromium window opens → sign in with your Microsoft 365 account
+3. Complete MFA if required (up to 5 minutes)
+4. Once authenticated, the window closes and future sessions use cached cookies
+
+Session cookies are stored in `browserDataDir`. If the session expires, a new headful login window will open.
+
+### Document Search Workflow
+
+1. **Search**: POST to `/api/talos/m365/search` with a natural language query
+2. **Review results**: Each result includes title, snippet, URL, and detected file type
+3. **Fetch**: POST to `/api/talos/m365/fetch` with the file URL and type to download and convert to Markdown
+4. **Convert local files**: POST to `/api/talos/m365/convert` with a file path to convert local documents
+5. **Cleanup**: POST to `/api/talos/m365/cleanup` to remove all downloaded documents
+
+### UI — M365 Tab
+
+The Setup Wizard includes an **M365** tab for searching and ingesting documents directly from the UI:
+
+1. Navigate to the Setup Wizard (step 4 or later)
+2. Switch to the **M365 Search** tab
+3. Enter a search query (e.g., "Q4 release requirements")
+4. Select documents from the results
+5. Click **Ingest** to download and index them for RAG
+
+### Session Management
+
+- **Check status**: `GET /api/talos/m365/status` — returns `active`, `expired`, `disabled`, or `error`
+- **Re-authenticate**: Restart the server with `m365.enabled: true` if the session expires
+
+---
+
+## Proxy Configuration
+
+Corporate proxy support for environments behind a firewall.
+
+### Configuration
+
+Add the `proxy` section to your TALOS config:
+
+```typescript
+{
+  proxy: {
+    enabled: true,
+    httpProxy: "http://proxy.corporate.com:8080",
+    httpsProxy: "http://proxy.corporate.com:8080",
+    noProxy: "localhost,127.0.0.1,.internal.com",
+  }
+}
+```
+
+### How It Works
+
+When `proxy.enabled` is `true`, TALOS sets environment variables at server startup:
+
+| Environment Variable | Source |
+|---------------------|--------|
+| `HTTP_PROXY` | `proxy.httpProxy` |
+| `HTTPS_PROXY` | `proxy.httpsProxy` |
+| `NO_PROXY` | `proxy.noProxy` |
+
+These are respected by Node.js `fetch()`, Playwright browsers, and npm/pnpm.
+
+### Admin UI — Network Panel
+
+The **Admin > Network** section provides:
+
+- Toggle proxy on/off
+- Configure proxy URLs and bypass list
+- **Test Connection** button — verifies the proxy is reachable (calls `POST /api/admin/proxy/test`)
+
+### Proxy + M365
+
+If M365 is enabled behind a proxy, `BrowserAuth` automatically picks up `HTTPS_PROXY` from the environment and configures the Playwright browser context with the proxy server.
+
+---
+
+## mTLS Configuration
+
+Mutual TLS for testing applications that require client certificate authentication.
+
+### When to Use
+
+Use mTLS when your target application:
+- Requires a client certificate for TLS handshake
+- Is deployed behind a mutual TLS gateway (e.g., corporate staging environments)
+- Uses PFX/PKCS12 bundles for client auth
+
+### Configuration
+
+mTLS is configured **per-application** in the Setup Wizard or via the API:
+
+```typescript
+// In the runner config section:
+{
+  runner: {
+    mtls: {
+      enabled: true,
+      clientCertVaultRef: "vault:client-cert-staging",
+      clientKeyVaultRef: "vault:client-key-staging",
+      caVaultRef: "vault:ca-cert-staging",
+      // OR for PFX:
+      pfxVaultRef: "vault:client-bundle.pfx",
+      passphrase: "bundle-password",
+    }
+  }
+}
+```
+
+### Application-Level mTLS
+
+Each application can have its own mTLS settings:
+
+1. Register the app via the Setup Wizard
+2. Toggle **Enable mTLS** in the app's security section
+3. Provide vault references for cert/key/CA files
+4. TALOS resolves the vault refs at test execution time
+
+### How It Works
+
+When a test runs against an mTLS-enabled application:
+
+1. Vault references are resolved to file paths
+2. Playwright browser context is created with `clientCertificates`:
+   ```
+   origin: <application baseUrl>
+   certPath: <resolved cert path>
+   keyPath: <resolved key path>
+   caPath: <resolved CA path> (optional)
+   ```
+3. All requests to the application origin include the client certificate
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|---------|
+| `ERR_SSL_CLIENT_AUTH_CERT_NEEDED` | Verify vault refs resolve to valid cert/key files |
+| Certificate chain errors | Provide the CA certificate via `caVaultRef` |
+| PFX load failures | Check the passphrase is correct |
+| Tests pass locally but fail in CI | Ensure cert files are available in the CI environment |
+
+---
+
 ## Development
 
 ### Project Structure

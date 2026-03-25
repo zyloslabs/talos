@@ -14,11 +14,12 @@ import {
   getModels, setSelectedModel, setReasoningEffort,
   getAuthStatus, startDeviceAuth, testAuthConnection,
   getMcpServers, createMcpServer, deleteMcpServer,
-  type Personality, type ModelInfo, type McpServer,
+  getProxyConfig, setProxyConfig, testProxyConnection,
+  type Personality, type ModelInfo, type McpServer, type ProxyConfig,
 } from "@/lib/api";
 import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import {
-  Shield, Brain, Server, User, KeyRound, Database, ChevronRight,
+  Shield, Brain, Server, User, KeyRound, Database, ChevronRight, Globe, Loader2,
 } from "lucide-react";
 
 // ── Sidebar Navigation (#213) ─────────────────────────────────────────────────
@@ -28,6 +29,7 @@ const adminSections = [
   { id: "personality", label: "Personality", icon: User },
   { id: "models", label: "Models", icon: Brain },
   { id: "mcp", label: "MCP Servers", icon: Server },
+  { id: "network", label: "Network / Proxy", icon: Globe },
   { id: "env", label: "Environment", icon: KeyRound },
   { id: "knowledge", label: "Knowledge Base", icon: Database },
 ];
@@ -105,6 +107,9 @@ export default function AdminPage() {
             </SectionCard>
             <SectionCard id="mcp" title="MCP Servers" description="Manage Model Context Protocol servers" icon={<Server className="h-5 w-5" />}>
               <McpPanel />
+            </SectionCard>
+            <SectionCard id="network" title="Network / Proxy" description="Corporate proxy and network settings" icon={<Globe className="h-5 w-5" />}>
+              <NetworkPanel />
             </SectionCard>
             <SectionCard id="env" title="Environment Variables" description="Configure .env settings for Talos" icon={<KeyRound className="h-5 w-5" />}>
               <EnvPanel />
@@ -326,6 +331,77 @@ function McpPanel() {
         <Input placeholder="Command (for stdio)" value={command} onChange={(e) => setCommand(e.target.value)} />
         <Button size="sm" onClick={() => createMut.mutate()} disabled={!name}>Add Server</Button>
       </div>
+    </div>
+  );
+}
+
+// ── Network / Proxy Panel (#320) ──────────────────────────────────────────────
+
+function NetworkPanel() {
+  const qc = useQueryClient();
+  const { data: proxy } = useQuery<ProxyConfig>({ queryKey: ["proxy-config"], queryFn: getProxyConfig });
+  const [enabled, setEnabled] = useState(false);
+  const [httpProxy, setHttpProxy] = useState("");
+  const [httpsProxy, setHttpsProxy] = useState("");
+  const [noProxy, setNoProxy] = useState("");
+  const [lastProxy, setLastProxy] = useState<ProxyConfig | undefined>(undefined);
+
+  if (proxy && proxy !== lastProxy) {
+    setLastProxy(proxy);
+    setEnabled(proxy.enabled);
+    setHttpProxy(proxy.httpProxy || "");
+    setHttpsProxy(proxy.httpsProxy || "");
+    setNoProxy(proxy.noProxy || "");
+  }
+
+  const saveMut = useMutation({
+    mutationFn: () => setProxyConfig({ enabled, httpProxy, httpsProxy, noProxy }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["proxy-config"] }),
+  });
+  const testMut = useMutation({ mutationFn: testProxyConnection });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Enable Corporate Proxy</p>
+          <p className="text-xs text-muted-foreground">Route outbound traffic through a corporate proxy server</p>
+        </div>
+        <Switch checked={enabled} onCheckedChange={setEnabled} />
+      </div>
+      {enabled && (
+        <div className="space-y-3 pt-1">
+          <div>
+            <label className="text-sm font-medium mb-1 block">HTTP Proxy</label>
+            <Input placeholder="http://proxy.corp.com:8080" value={httpProxy} onChange={(e) => setHttpProxy(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">HTTPS Proxy</label>
+            <Input placeholder="http://proxy.corp.com:8443" value={httpsProxy} onChange={(e) => setHttpsProxy(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">No Proxy</label>
+            <Input placeholder="localhost,127.0.0.1,.corp.com" value={noProxy} onChange={(e) => setNoProxy(e.target.value)} />
+            <p className="text-xs text-muted-foreground mt-1">Comma-separated list of hosts to bypass the proxy</p>
+          </div>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}>
+          {saveMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Save
+        </Button>
+        {enabled && (
+          <Button variant="outline" onClick={() => testMut.mutate()} disabled={testMut.isPending}>
+            {testMut.isPending ? "Testing..." : "Test Connection"}
+          </Button>
+        )}
+      </div>
+      {testMut.data && (
+        <p className={`text-sm ${testMut.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+          {testMut.data.connected ? "Proxy connection successful" : `Proxy test failed: ${testMut.data.error}`}
+        </p>
+      )}
     </div>
   );
 }

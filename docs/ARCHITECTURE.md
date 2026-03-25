@@ -654,6 +654,119 @@ Output includes a `SanitizationResult` with the cleaned code, a list of replacem
 
 ---
 
+### M365 Integration Module
+
+**Location:** `src/talos/m365/`
+
+Bridges TALOS with Microsoft Copilot 365 for enterprise document discovery and ingestion via Playwright browser automation. Adapted from the standalone `copilot365-int` MCP server.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `BrowserAuth` | Playwright persistent context auth with MFA support. Launches headful for initial login, then runs headless using cached session cookies in `userDataDir`. |
+| `CopilotScraper` | DOM scraping with retry + exponential backoff. Sends enriched queries to the Copilot 365 chat UI, waits for results, extracts structured search results, and downloads files via SharePoint API. |
+| `EphemeralStore` | Path-traversal-safe ephemeral file storage. Sanitizes filenames, validates resolved paths stay within `docsDir`, and provides read/write/list/cleanup operations. |
+| `parseFile()` | File parser router — dispatches to `parseDocx` (mammoth), `parsePdf` (pdf-parse), `parseXlsx` (ExcelJS), `parsePptx` (officeparser). Converts to Markdown. |
+
+#### Architecture
+
+```
+┌──────────────────────────────────────────┐
+│           M365 API Routes                │
+│  POST /search, /fetch, /convert, /cleanup│
+│  GET /status                             │
+├──────────────┬───────────┬───────────────┤
+│ BrowserAuth  │ Scraper   │ FileParser    │
+│ (Playwright  │ (DOM      │ (mammoth,     │
+│  persistent  │  scraping │  pdf-parse,   │
+│  context)    │  + retry) │  ExcelJS,     │
+│              │           │  officeparser)│
+├──────────────┴───────────┴───────────────┤
+│           EphemeralStore                 │
+│  (path-safe docs dir, .md storage)       │
+└──────────────────────────────────────────┘
+```
+
+#### Selectors (`selectors.ts`)
+
+Frozen `SELECTORS` object with 16 CSS selectors for the Copilot 365 web UI. When the UI changes, update **only this file** — no selectors hardcoded elsewhere.
+
+#### Security
+
+- **Path traversal prevention**: `EphemeralStore` validates all paths with `path.resolve()` + `startsWith(docsDir)` check. The `/convert` API endpoint applies the same validation before reading files.
+- **HTML sanitization**: `htmlToMarkdown()` decodes HTML entities before stripping tags (multi-pass) to prevent `&lt;script&gt;` from becoming injectable `<script>` after decode.
+
+---
+
+### Proxy Configuration System
+
+**Location:** `src/talos/config.ts` (schema), `src/index.ts` (application)
+
+Corporate proxy support for environments behind firewalls.
+
+#### Config Schema (`proxyConfigSchema`)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Master switch |
+| `httpProxy` | `string?` | — | HTTP proxy URL (e.g., `http://proxy.corp:8080`) |
+| `httpsProxy` | `string?` | — | HTTPS proxy URL |
+| `noProxy` | `string?` | — | Comma-separated bypass list (e.g., `localhost,*.internal.com`) |
+
+#### Application Flow
+
+When `proxy.enabled` is `true` at server startup, the system sets `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables. These are picked up by Node.js `fetch()`, Playwright, and other HTTP clients automatically.
+
+#### Admin API
+
+- `POST /api/admin/proxy/test` — Tests connectivity through the configured proxy by hitting an external endpoint, returns `{ connected, latencyMs?, error? }`.
+- Proxy settings are persisted via the environment manager (`PUT /api/admin/env`).
+
+---
+
+### mTLS Support (Playwright Runner)
+
+**Location:** `src/talos/config.ts` (schema), `src/talos/runner/` (application)
+
+Mutual TLS authentication for Playwright test execution against applications requiring client certificates.
+
+#### Config Schema (`mtlsConfigSchema`)
+
+Nested under `runner.mtls` in the main config:
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Enable mTLS for the Playwright runner |
+| `clientCertVaultRef` | `string?` | — | Vault reference for client certificate (PEM) |
+| `clientKeyVaultRef` | `string?` | — | Vault reference for client private key (PEM) |
+| `caVaultRef` | `string?` | — | Vault reference for CA certificate (PEM) |
+| `pfxVaultRef` | `string?` | — | Vault reference for PKCS12 bundle |
+| `passphrase` | `string?` | — | Passphrase for key/PFX |
+
+#### PlaywrightRunner Integration
+
+When `mtls.enabled` is `true` and vault refs are resolved, the runner constructs a Playwright `clientCertificates` config:
+
+```typescript
+clientCertificates: [{
+  origin: application.baseUrl,
+  certPath: resolvedCertPath,
+  keyPath: resolvedKeyPath,
+  ...(caPath ? { caPath } : {}),
+}]
+```
+
+This is passed to `browser.newContext()` so all requests to the application origin include the client certificate in the TLS handshake.
+
+#### Database Schema
+
+`TalosApplication` extended with:
+- `mtlsEnabled` (`BOOLEAN DEFAULT 0`)
+- `mtlsConfig` (`TEXT` — JSON-serialized `MtlsApplicationConfig`)
+
+---
+
 ### UI Module
 
 **Location:** `ui/`

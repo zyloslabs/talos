@@ -460,3 +460,50 @@ export const getTraceabilityReport = (appId: string) =>
 
 export const ingestDocument = (appId: string, data: { content: string; format: string; fileName: string; docType: string; version?: string; tags?: string[] }) =>
   fetchApi<IngestResult>(`/api/talos/applications/${appId}/ingest`, { method: "POST", body: JSON.stringify(data) });
+
+// ── M365 Integration ────────────────────────────────────────────────────────
+
+export interface M365SearchResult { title: string; snippet: string; url: string; fileType?: string }
+export interface M365SessionStatus { status: "active" | "expired" | "disabled" | "error"; message?: string; userDataDir?: string }
+export interface M365FetchResult { content: string; savedPath: string }
+
+export const m365Search = (query: string) =>
+  fetchApi<{ results: M365SearchResult[] }>("/api/talos/m365/search", { method: "POST", body: JSON.stringify({ query }) });
+export const m365Fetch = (url: string, fileType: string) =>
+  fetchApi<M365FetchResult>("/api/talos/m365/fetch", { method: "POST", body: JSON.stringify({ url, fileType }) });
+export const m365Status = () =>
+  fetchApi<M365SessionStatus>("/api/talos/m365/status");
+export const m365Cleanup = () =>
+  fetchApi<{ status: string; message: string }>("/api/talos/m365/cleanup", { method: "POST" });
+export const m365Convert = (path: string) =>
+  fetchApi<{ content: string; fileType: string }>("/api/talos/m365/convert", { method: "POST", body: JSON.stringify({ path }) });
+
+// ── Proxy Configuration ─────────────────────────────────────────────────────
+
+export interface ProxyConfig { enabled: boolean; httpProxy?: string; httpsProxy?: string; noProxy?: string }
+
+export const getProxyConfig = () =>
+  fetchApi<ProxyConfig>("/api/admin/env").then((r) => {
+    const entries = (r as unknown as EnvListResponse).entries;
+    return {
+      enabled: entries.some((e) => e.key === "PROXY_ENABLED" && e.value === "true"),
+      httpProxy: entries.find((e) => e.key === "HTTP_PROXY")?.value,
+      httpsProxy: entries.find((e) => e.key === "HTTPS_PROXY")?.value,
+      noProxy: entries.find((e) => e.key === "NO_PROXY")?.value,
+    } as ProxyConfig;
+  });
+
+export const setProxyConfig = async (config: ProxyConfig) => {
+  const entries = [
+    { key: "PROXY_ENABLED", value: config.enabled ? "true" : "false" },
+    ...(config.httpProxy ? [{ key: "HTTP_PROXY", value: config.httpProxy }] : []),
+    ...(config.httpsProxy ? [{ key: "HTTPS_PROXY", value: config.httpsProxy }] : []),
+    ...(config.noProxy ? [{ key: "NO_PROXY", value: config.noProxy }] : []),
+  ];
+  for (const entry of entries) {
+    await setEnvEntry(entry.key, entry.value);
+  }
+};
+
+export const testProxyConnection = () =>
+  fetchApi<{ connected: boolean; latencyMs?: number; error?: string }>("/api/admin/proxy/test", { method: "POST" });
