@@ -8,6 +8,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Microsoft 365 Copilot Integration** (Epic #310): Search, fetch, and convert M365 documents from within Talos.
+  - M365 config schema (`m365ConfigSchema`) with URL, browser data dir, docs dir, and MFA timeout settings (#317).
+  - `BrowserAuth` class: Playwright persistent-context authentication with MFA support and corporate proxy passthrough (#313).
+  - `CopilotScraper` class: Lexical editor manipulation, model selection, result extraction, and SharePoint SSO file download (#313).
+  - `EphemeralStore` class: path-traversal-safe file storage for downloaded M365 documents (#313).
+  - `parseFile` router: converts DOCX (mammoth), PDF (pdf-parse), XLSX (ExcelJS), and PPTX (officeparser) to Markdown (#313).
+  - M365 session lifecycle: background browser initialization and graceful shutdown in server entry point (#315).
+  - M365 REST API routes (`/api/talos/m365`): POST /search, POST /fetch, GET /status, POST /cleanup, POST /convert (#316).
+  - Setup Wizard M365 tab: search M365 documents, select results, fetch and ingest into RAG knowledge base (#318).
+
+- **Corporate Proxy Support** (Epic #312): Route outbound traffic through an enterprise HTTP/HTTPS proxy.
+  - Proxy config schema (`proxyConfigSchema`) with enabled flag, HTTP/HTTPS proxy URLs, and no-proxy list (#322).
+  - Automatic `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` env var application from config on server start (#321).
+  - Network / Proxy admin UI panel with proxy settings, enable/disable toggle, and connection test button (#320).
+
+- **Playwright mTLS Authentication** (Epic #311): Mutual TLS client certificate support for test execution.
+  - mTLS config schema (`mtlsConfigSchema`) with vault refs for client cert, key, CA, PFX, and passphrase (#323).
+  - `TalosApplication` extended with `mtlsEnabled` and `mtlsConfig` fields; SQLite migration for new columns (#323).
+  - `PlaywrightRunner` passes `clientCertificates` to browser context when mTLS is enabled for the application (#325).
+  - Setup Wizard mTLS toggle: enable mTLS per application with vault reference fields for certificates (#324).
+
 - **Open Source Release**: Added `README.md`, `LICENSE.md` (FSL-1.1-MIT), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md`. Removed `"private": true` from `package.json`. Updated `.gitignore` to exclude log files, build output, and OS artifacts.
 
 - **Knowledge Base Enhancement** (Epic #276): New `src/talos/knowledge/` module for requirements document ingestion and knowledge-base auto-tagging.

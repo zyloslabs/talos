@@ -4,7 +4,7 @@
  * Executes Playwright tests with artifact capture and credential injection.
  */
 
-import type { TalosTest, TalosTestRun, TalosTestRunStatus } from "../types.js";
+import type { TalosTest, TalosTestRun, TalosTestRunStatus, TalosApplication } from "../types.js";
 import type { TalosRepository } from "../repository.js";
 import type { RunnerConfig } from "../config.js";
 import { ArtifactManager } from "./artifact-manager.js";
@@ -39,6 +39,7 @@ export type ExecutionOptions = {
   timeout?: number;
   retries?: number;
   slowMo?: number;
+  application?: TalosApplication;
 };
 
 // ── Playwright Runner ─────────────────────────────────────────────────────────
@@ -97,12 +98,46 @@ export class PlaywrightRunner {
         slowMo: options.slowMo ?? this.config.slowMo,
       });
 
-      // Create context with tracing
-      const context = await browserInstance.newContext({
-        recordVideo: this.shouldRecordVideo() ? {
-          dir: `/tmp/talos-videos-${testRun.id}`,
-        } : undefined,
-      });
+      // Create context with tracing and optional mTLS
+      const contextOptions: Record<string, unknown> = {};
+
+      if (this.shouldRecordVideo()) {
+        contextOptions.recordVideo = { dir: `/tmp/talos-videos-${testRun.id}` };
+      }
+
+      // Apply mTLS client certificates if enabled on the application
+      const app = options.application;
+      if (app?.mtlsEnabled && app.mtlsConfig) {
+        const mtls = app.mtlsConfig;
+        const origin = new URL(app.baseUrl).origin;
+        const certEntry: Record<string, unknown> = { origin };
+
+        // Resolve vault refs to file paths and verify they exist
+        const { access } = await import("node:fs/promises");
+        if (mtls.clientCertVaultRef) {
+          try { await access(mtls.clientCertVaultRef); } catch {
+            throw new Error(`mTLS client certificate not found at: ${mtls.clientCertVaultRef}`);
+          }
+          certEntry.certPath = mtls.clientCertVaultRef;
+        }
+        if (mtls.clientKeyVaultRef) {
+          try { await access(mtls.clientKeyVaultRef); } catch {
+            throw new Error(`mTLS client key not found at: ${mtls.clientKeyVaultRef}`);
+          }
+          certEntry.keyPath = mtls.clientKeyVaultRef;
+        }
+        if (mtls.pfxVaultRef) {
+          try { await access(mtls.pfxVaultRef); } catch {
+            throw new Error(`mTLS PFX file not found at: ${mtls.pfxVaultRef}`);
+          }
+          certEntry.pfxPath = mtls.pfxVaultRef;
+        }
+        if (mtls.passphrase) certEntry.passphrase = mtls.passphrase;
+
+        contextOptions.clientCertificates = [certEntry];
+      }
+
+      const context = await browserInstance.newContext(contextOptions);
 
       // Start tracing if configured
       if (this.shouldTrace()) {

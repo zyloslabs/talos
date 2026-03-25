@@ -78,7 +78,7 @@ function isUrlSafe(urlStr: string): boolean {
 export function createAdminRouter({ platformRepo, copilot, adminToken, envManager, ragPipeline }: AdminRouterDeps): Router {
   const router = Router();
 
-  // ── Auth Middleware ────────────────────────────────────────────────────────
+  // ── Auth Middleware ──────────────────────────────────────────────────────
   const token = adminToken ?? process.env.TALOS_ADMIN_TOKEN;
   if (token) {
     router.use((req: Request, res: Response, next: NextFunction) => {
@@ -92,7 +92,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     });
   }
 
-  // ── Auth ────────────────────────────────────────────────────────────────────
+  // ── Auth ────────────────────────────────────────────────────────────────
 
   router.get("/auth/status", async (_req, res) => {
     const authenticated = copilot ? await copilot.isAuthenticated() : false;
@@ -204,8 +204,29 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json({ valid: missing.length === 0, missing });
   });
 
+  // ── Proxy ───────────────────────────────────────────────────────────────
 
-  // ── Models ──────────────────────────────────────────────────────────────────
+  router.post("/proxy/test", async (_req, res) => {
+    const proxyUrl = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+    if (!proxyUrl) {
+      res.json({ connected: false, error: "No proxy configured" });
+      return;
+    }
+    try {
+      const start = Date.now();
+      const response = await fetch("https://www.google.com/generate_204", {
+        signal: AbortSignal.timeout(10_000),
+      });
+      const latencyMs = Date.now() - start;
+      res.json({ connected: response.ok || response.status === 204, latencyMs });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.json({ connected: false, error: `Proxy connection test failed: ${message}` });
+    }
+  });
+
+
+  // ── Models ──────────────────────────────────────────────────────────────
 
   router.get("/models", async (_req, res) => {
     if (!copilot) { res.json({ models: [], selected: "gpt-4.1", reasoningEffort: "medium" }); return; }
@@ -245,7 +266,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json({ provider });
   });
 
-  // ── Personality ─────────────────────────────────────────────────────────────
+  // ── Personality ─────────────────────────────────────────────────────────
 
   router.get("/personality", (_req, res) => {
     const personalities = platformRepo.listPersonalities();
@@ -273,7 +294,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json({ activeId: req.params.id });
   });
 
-  // ── Saved Prompts ───────────────────────────────────────────────────────────
+  // ── Saved Prompts ───────────────────────────────────────────────────────
 
   router.get("/prompts", (req, res) => {
     const category = req.query.category as string | undefined;
@@ -303,7 +324,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.status(204).end();
   });
 
-  // ── Scheduled Jobs ──────────────────────────────────────────────────────────
+  // ── Scheduled Jobs ──────────────────────────────────────────────────────
 
   router.get("/scheduler/jobs", (_req, res) => {
     res.json(platformRepo.listJobs());
@@ -334,7 +355,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.status(204).end();
   });
 
-  // ── Agent Tasks ─────────────────────────────────────────────────────────────
+  // ── Agent Tasks ─────────────────────────────────────────────────────────
 
   router.get("/tasks", (req, res) => {
     const rawStatus = req.query.status as string | undefined;
@@ -371,7 +392,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json(updated);
   });
 
-  // ── MCP Servers ─────────────────────────────────────────────────────────────
+  // ── MCP Servers ─────────────────────────────────────────────────────────
 
   router.get("/mcp-servers", (_req, res) => {
     res.json(platformRepo.listMcpServers());
@@ -409,7 +430,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.status(204).end();
   });
 
-  // ── Skills ──────────────────────────────────────────────────────────────────
+  // ── Skills ──────────────────────────────────────────────────────────────
 
   router.get("/skills", (_req, res) => {
     res.json(platformRepo.listSkills());
@@ -439,7 +460,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.status(204).end();
   });
 
-  // ── Knowledge Base (#214) ───────────────────────────────────────────────────
+  // ── Knowledge Base (#214) ───────────────────────────────────────────────
 
   router.get("/knowledge/stats", (_req, res) => {
     // Returns stats from the platform repository's knowledge tracking
@@ -480,7 +501,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     }
   });
 
-  // ── AI Enhance (#245) ──────────────────────────────────────────────────────
+  // ── AI Enhance (#245) ──────────────────────────────────────────────────
 
   const EnhanceInputSchema = z.object({
     text: z.string().min(1).max(10_000),
@@ -543,7 +564,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json(updated);
   });
 
-  // ── Models Health (#217) ────────────────────────────────────────────────────
+  // ── Models Health (#217) ────────────────────────────────────────────────
 
   router.get("/models/health", async (_req, res) => {
     if (!copilot) {
@@ -556,7 +577,7 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json({ healthy: authenticated, authenticated, latencyMs });
   });
 
-  // ── Agents (#247-#248) ─────────────────────────────────────────────────────
+  // ── Agents (#247-#248) ─────────────────────────────────────────────────
 
   router.get("/agents", (_req, res) => {
     res.json(platformRepo.listAgents());

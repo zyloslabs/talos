@@ -13,6 +13,7 @@ import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   TalosApplication,
+  MtlsApplicationConfig,
   TalosTest,
   TalosTestRun,
   TalosTestArtifact,
@@ -61,6 +62,8 @@ const toApplication = (row: StoredApplication): TalosApplication => ({
   githubPatRef: row.github_pat_ref,
   baseUrl: row.base_url,
   status: row.status as TalosApplicationStatus,
+  mtlsEnabled: row.mtls_enabled === 1,
+  mtlsConfig: row.mtls_config_json ? JSON.parse(row.mtls_config_json) as MtlsApplicationConfig : null,
   metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
@@ -359,6 +362,19 @@ export class TalosRepository {
       CREATE INDEX IF NOT EXISTS idx_talos_trace_test
         ON talos_traceability(test_id);
     `);
+
+    // ── mTLS columns migration ──────────────────────────────────────────────
+    // Add mTLS columns to talos_applications if they don't exist yet.
+    const cols = this.db
+      .prepare("PRAGMA table_info(talos_applications)")
+      .all() as { name: string }[];
+    const colNames = new Set(cols.map((c) => c.name));
+    if (!colNames.has("mtls_enabled")) {
+      this.db.exec(`ALTER TABLE talos_applications ADD COLUMN mtls_enabled INTEGER NOT NULL DEFAULT 0`);
+    }
+    if (!colNames.has("mtls_config_json")) {
+      this.db.exec(`ALTER TABLE talos_applications ADD COLUMN mtls_config_json TEXT`);
+    }
   }
 
   // ── Application CRUD ────────────────────────────────────────────────────────
@@ -370,8 +386,8 @@ export class TalosRepository {
     const stmt = this.db.prepare(`
       INSERT INTO talos_applications (
         id, name, description, repository_url, github_pat_ref, base_url,
-        status, metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        status, mtls_enabled, mtls_config_json, metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -381,6 +397,8 @@ export class TalosRepository {
       input.repositoryUrl ?? "",
       input.githubPatRef ?? null,
       input.baseUrl ?? "",
+      input.mtlsEnabled ? 1 : 0,
+      input.mtlsConfig ? JSON.stringify(input.mtlsConfig) : null,
       JSON.stringify(input.metadata ?? {}),
       now,
       now
@@ -445,6 +463,14 @@ export class TalosRepository {
     if (input.metadata !== undefined) {
       updates.push("metadata_json = ?");
       values.push(JSON.stringify(input.metadata));
+    }
+    if (input.mtlsEnabled !== undefined) {
+      updates.push("mtls_enabled = ?");
+      values.push(input.mtlsEnabled ? 1 : 0);
+    }
+    if (input.mtlsConfig !== undefined) {
+      updates.push("mtls_config_json = ?");
+      values.push(input.mtlsConfig ? JSON.stringify(input.mtlsConfig) : null);
     }
 
     if (updates.length === 0) return existing;

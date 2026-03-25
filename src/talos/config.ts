@@ -22,7 +22,7 @@ export const vectorDbConfigSchema = z.object({
 
 export type VectorDbConfig = z.infer<typeof vectorDbConfigSchema>;
 
-// ── Embedding Config ──────────────────────────────────────────────────────────
+// ── Embedding Config ──────────────────────────────────────────────────────
 
 export const embeddingConfigSchema = z.object({
   /** Embedding provider */
@@ -37,7 +37,26 @@ export const embeddingConfigSchema = z.object({
 
 export type EmbeddingConfig = z.infer<typeof embeddingConfigSchema>;
 
-// ── Runner Config ─────────────────────────────────────────────────────────────
+// ── mTLS Config ───────────────────────────────────────────────────────────
+
+export const mtlsConfigSchema = z.object({
+  /** Whether mTLS is enabled for the runner */
+  enabled: z.boolean().default(false),
+  /** Vault reference for client certificate (PEM) */
+  clientCertVaultRef: z.string().optional(),
+  /** Vault reference for client private key (PEM) */
+  clientKeyVaultRef: z.string().optional(),
+  /** Vault reference for CA certificate (PEM) */
+  caVaultRef: z.string().optional(),
+  /** Vault reference for PFX/PKCS12 bundle */
+  pfxVaultRef: z.string().optional(),
+  /** Passphrase for the client key or PFX file */
+  passphrase: z.string().optional(),
+});
+
+export type MtlsConfig = z.infer<typeof mtlsConfigSchema>;
+
+// ── Runner Config ───────────────────────────────────────────────────────
 
 export const runnerConfigSchema = z.object({
   /** Default browser for test execution */
@@ -60,11 +79,13 @@ export const runnerConfigSchema = z.object({
   headless: z.boolean().default(true),
   /** Slow motion delay (ms) - useful for debugging */
   slowMo: z.number().default(0),
+  /** mTLS configuration for mutual TLS authentication */
+  mtls: mtlsConfigSchema.default(mtlsConfigSchema.parse({})),
 });
 
 export type RunnerConfig = z.infer<typeof runnerConfigSchema>;
 
-// ── Healing Config ────────────────────────────────────────────────────────────
+// ── Healing Config ──────────────────────────────────────────────────────
 
 export const healingConfigSchema = z.object({
   /** Confidence threshold for auto-applying fixes (0-1) */
@@ -81,7 +102,7 @@ export const healingConfigSchema = z.object({
 
 export type HealingConfig = z.infer<typeof healingConfigSchema>;
 
-// ── Generator Config ──────────────────────────────────────────────────────────
+// ── Generator Config ──────────────────────────────────────────────────────
 
 export const generatorConfigSchema = z.object({
   /** Default confidence threshold for auto-activating tests */
@@ -98,7 +119,7 @@ export const generatorConfigSchema = z.object({
 
 export type GeneratorConfig = z.infer<typeof generatorConfigSchema>;
 
-// ── Export Config ─────────────────────────────────────────────────────────────
+// ── Export Config ───────────────────────────────────────────────────────
 
 export const exportConfigSchema = z.object({
   /** Default output directory for exports */
@@ -111,7 +132,7 @@ export const exportConfigSchema = z.object({
 
 export type ExportConfig = z.infer<typeof exportConfigSchema>;
 
-// ── Artifacts Config ──────────────────────────────────────────────────────────
+// ── Artifacts Config ──────────────────────────────────────────────────────
 
 export const artifactsConfigSchema = z.object({
   /** Path to store test artifacts */
@@ -124,7 +145,7 @@ export const artifactsConfigSchema = z.object({
 
 export type ArtifactsConfig = z.infer<typeof artifactsConfigSchema>;
 
-// ── Discovery Config ──────────────────────────────────────────────────────────
+// ── Discovery Config ──────────────────────────────────────────────────────
 
 export const discoveryConfigSchema = z.object({
   /** File extensions to include in discovery */
@@ -141,7 +162,7 @@ export const discoveryConfigSchema = z.object({
 
 export type DiscoveryConfig = z.infer<typeof discoveryConfigSchema>;
 
-// ── GitHub MCP Config ─────────────────────────────────────────────────────────
+// ── GitHub MCP Config ─────────────────────────────────────────────────────
 
 export const githubMcpConfigSchema = z.object({
   /** Rate limit for GitHub API requests per hour */
@@ -156,7 +177,39 @@ export const githubMcpConfigSchema = z.object({
 
 export type GitHubMcpConfig = z.infer<typeof githubMcpConfigSchema>;
 
-// ── Main Talos Config ─────────────────────────────────────────────────────────
+// ── M365 Integration Config ───────────────────────────────────────────────
+
+export const m365ConfigSchema = z.object({
+  /** Whether M365 Copilot integration is enabled */
+  enabled: z.boolean().default(false),
+  /** Copilot 365 URL */
+  url: z.string().default("https://m365.cloud.microsoft/chat/"),
+  /** Path to persistent browser session data */
+  browserDataDir: z.string().default("./.browser-data"),
+  /** Directory for ephemeral downloaded documents */
+  docsDir: z.string().default("./docs"),
+  /** MFA authentication timeout (ms) */
+  mfaTimeout: z.number().default(300000),
+});
+
+export type M365Config = z.infer<typeof m365ConfigSchema>;
+
+// ── Corporate Proxy Config ────────────────────────────────────────────────
+
+export const proxyConfigSchema = z.object({
+  /** Whether corporate proxy is enabled */
+  enabled: z.boolean().default(false),
+  /** HTTP proxy server URL */
+  httpProxy: z.string().optional(),
+  /** HTTPS proxy server URL */
+  httpsProxy: z.string().optional(),
+  /** Comma-separated list of hosts to bypass proxy */
+  noProxy: z.string().optional(),
+});
+
+export type ProxyConfig = z.infer<typeof proxyConfigSchema>;
+
+// ── Main Talos Config ─────────────────────────────────────────────────────
 
 export const talosConfigSchema = z.object({
   /** Whether Talos module is enabled */
@@ -179,6 +232,10 @@ export const talosConfigSchema = z.object({
   discovery: discoveryConfigSchema.default(discoveryConfigSchema.parse({})),
   /** GitHub MCP configuration */
   githubMcp: githubMcpConfigSchema.default(githubMcpConfigSchema.parse({})),
+  /** M365 Copilot integration configuration */
+  m365: m365ConfigSchema.default(m365ConfigSchema.parse({})),
+  /** Corporate proxy configuration */
+  proxy: proxyConfigSchema.default(proxyConfigSchema.parse({})),
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;
