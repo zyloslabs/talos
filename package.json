@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "Talos: Test Automation & Logic Orchestration System - Autonomous E2E testing engine",
   "type": "module",
-  "private": true,
   "license": "FSL-1.1-MIT",
   "author": "Zylos Labs LLC",
   "repository": {

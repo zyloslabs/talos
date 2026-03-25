@@ -1,1 +1,28 @@
 node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Runtime data directory
+.talos/
+
+# Log files
+*.log
+.talos-*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# pnpm
+.pnpm-store/
