@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { AutoTagger, DOC_TYPES, PERSONAS, NFR_TAGS, ENVIRONMENTS } from "./auto-tagger.js";
+import { AutoTagger, DOC_TYPES, PERSONAS, NFR_TAGS, ENVIRONMENTS, FUNCTIONAL_AREAS } from "./auto-tagger.js";
 import type { DocMetadata } from "./document-ingester.js";
 
 const tagger = new AutoTagger();
@@ -30,6 +30,10 @@ describe("AutoTagger", () => {
 
     it("ENVIRONMENTS has expected values", () => {
       expect(ENVIRONMENTS).toEqual(["local", "staging", "production", "ci"]);
+    });
+
+    it("FUNCTIONAL_AREAS has expected values", () => {
+      expect(FUNCTIONAL_AREAS).toEqual(["auth", "checkout", "dashboard", "profile", "search", "notifications", "navigation", "files", "api"]);
     });
   });
 
@@ -184,11 +188,16 @@ describe("AutoTagger", () => {
       expect(result.invalid).toEqual([]);
     });
 
+    it("classifies functional area tags as valid", () => {
+      const result = tagger.validateTags(["auth", "checkout", "dashboard"]);
+      expect(result.valid).toEqual(["auth", "checkout", "dashboard"]);
+      expect(result.invalid).toEqual([]);
+    });
+
     it("classifies unknown tags as invalid", () => {
-      const result = tagger.validateTags(["auth", "checkout", "random-tag"]);
-      expect(result.invalid).toContain("auth");
-      expect(result.invalid).toContain("checkout");
+      const result = tagger.validateTags(["random-tag", "made-up"]);
       expect(result.invalid).toContain("random-tag");
+      expect(result.invalid).toContain("made-up");
     });
 
     it("handles mixed valid and invalid tags", () => {

@@ -17,12 +17,18 @@ export const NFR_TAGS = ["performance", "security", "accessibility", "reliabilit
 
 export const ENVIRONMENTS = ["local", "staging", "production", "ci"] as const;
 
+export const FUNCTIONAL_AREAS = [
+  "auth", "checkout", "dashboard", "profile", "search",
+  "notifications", "navigation", "files", "api",
+] as const;
+
 /** All controlled vocabulary tags combined */
 const CONTROLLED_VOCABULARY = new Set<string>([
   ...DOC_TYPES,
   ...PERSONAS,
   ...NFR_TAGS,
   ...ENVIRONMENTS,
+  ...FUNCTIONAL_AREAS,
 ]);
 
 // ── Keyword Patterns ──────────────────────────────────────────────────────────

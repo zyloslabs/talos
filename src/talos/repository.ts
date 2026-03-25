@@ -1211,4 +1211,13 @@ export class TalosRepository {
       coverageStatus: "covered",
     });
   }
+
+  // ── Transaction Support ─────────────────────────────────────────────────────
+
+  /**
+   * Run a callback inside a SQLite transaction. Rolls back on error.
+   */
+  runInTransaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
 }
