@@ -28,6 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Test Planner skill: analyzes requirements and codebase to create a prioritized test plan with risk-based prioritization, test type recommendations, and coverage gap analysis (#294).
   - Criteria Generator skill: converts ingested requirements into structured Given/When/Then acceptance criteria using RAG-powered LLM prompts with few-shot examples, confidence scoring, and auto-tagging (#295).
   - Test Reviewer skill: reviews generated tests against acceptance criteria for scenario coverage, assertion completeness, POM compliance, and accessible locator usage (#296).
+- **Setup Wizard** (Epic #278): Multi-step guided test configuration wizard in the UI.
+  - Setup Wizard component (`/talos/setup`): 7-step guided workflow — Register App → Upload Docs → Vault Roles → Discovery → Generate Criteria → Review Criteria → Generate Tests — with progress bar and step navigation (#289).
+  - Document upload step: file selection for Markdown/OpenAPI, document type selector, client-side ingestion with chunk count reporting (#290).
+  - Criteria generation and review steps: AI bulk generation with confidence stats, criteria review with Given/When/Then display, approve/reject actions, and AI-suggest for new criteria (#291).
+  - Test generation step: generates Playwright tests from approved criteria with traceability stats and coverage summary (#292).
+  - Acceptance criteria API client functions added to `ui/lib/api.ts` for all criteria endpoints.
+  - "Setup" tab added to NavTabs navigation.
 
 ### Fixed
 
