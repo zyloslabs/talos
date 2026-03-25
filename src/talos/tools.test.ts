@@ -18,7 +18,7 @@ function makeTools() {
   repo.migrate();
   const config = getDefaultTalosConfig();
   const tools = createTalosTools({ repository: repo, config });
-  return { repo, tools, config };
+  return { repo, repository: repo, tools, config };
 }
 
 function findTool(tools: ToolDefinition[], name: string) {
@@ -42,7 +42,7 @@ describe("createTalosTools", () => {
     for (const tool of tools) {
       expect(tool.name).toBeTruthy();
       expect(tool.handler).toBeInstanceOf(Function);
-      expect(tool.category).toBe("testing");
+      expect(["testing", "knowledge"]).toContain(tool.category);
     }
   });
 
@@ -242,5 +242,265 @@ describe("createTalosTools", () => {
     const t = findTool(tools, "talos-export-tests");
     const result = await t.handler({ applicationId: "00000000-0000-0000-0000-000000000000" });
     expect(result.isError).toBe(true);
+  });
+
+  // ── talos_ingest_document (#297) ──
+
+  describe("talos_ingest_document", () => {
+    it("returns error when documentIngester is not configured", async () => {
+      const t = findTool(tools, "talos_ingest_document");
+      const result = await t.handler({
+        applicationId: "app-1",
+        content: "# Hello",
+        format: "markdown",
+        fileName: "readme.md",
+        docType: "prd",
+      });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("not configured");
+    });
+
+    it("calls documentIngester and returns result", async () => {
+      const mockIngester = {
+        ingestDocument: async () => ({
+          chunksCreated: 3,
+          chunksSkipped: 1,
+          totalTokens: 512,
+          docId: "doc:app-1:readme.md:latest",
+        }),
+      };
+      const toolsWithIngester = createTalosTools({
+        ...makeTools(),
+        documentIngester: mockIngester as unknown as import("./knowledge/document-ingester.js").DocumentIngester,
+      });
+      const t = findTool(toolsWithIngester, "talos_ingest_document");
+      const result = await t.handler({
+        applicationId: "app-1",
+        content: "# Hello\n\nParagraph content",
+        format: "markdown",
+        fileName: "readme.md",
+        docType: "prd",
+        version: "1.0",
+        tags: ["onboarding"],
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.text);
+      expect(data.chunksCreated).toBe(3);
+      expect(data.chunksSkipped).toBe(1);
+      expect(data.totalTokens).toBe(512);
+      expect(data.docId).toBe("doc:app-1:readme.md:latest");
+    });
+
+    it("validates input schema", async () => {
+      const t = findTool(tools, "talos_ingest_document");
+      expect(t.zodSchema).toBeDefined();
+      expect(t.riskLevel).toBe("medium");
+      expect(t.category).toBe("knowledge");
+    });
+  });
+
+  // ── talos_generate_criteria (#298) ──
+
+  describe("talos_generate_criteria", () => {
+    it("returns error when criteriaGenerator is not configured", async () => {
+      const t = findTool(tools, "talos_generate_criteria");
+      const result = await t.handler({ applicationId: "app-1" });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("not configured");
+    });
+
+    it("calls criteriaGenerator and returns result", async () => {
+      const mockGenerator = {
+        generateCriteria: async () => ({
+          criteriaCreated: 5,
+          totalChunksAnalyzed: 12,
+          averageConfidence: 0.85,
+        }),
+      };
+      const toolsWithGen = createTalosTools({
+        ...makeTools(),
+        criteriaGenerator: mockGenerator as unknown as import("./knowledge/criteria-generator.js").CriteriaGenerator,
+      });
+      const t = findTool(toolsWithGen, "talos_generate_criteria");
+      const result = await t.handler({
+        applicationId: "app-1",
+        requirementFilter: "login",
+        maxCriteria: 10,
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.text);
+      expect(data.criteriaCreated).toBe(5);
+      expect(data.averageConfidence).toBe(0.85);
+    });
+
+    it("validates input schema", async () => {
+      const t = findTool(tools, "talos_generate_criteria");
+      expect(t.riskLevel).toBe("medium");
+      expect(t.category).toBe("knowledge");
+    });
+  });
+
+  // ── talos_get_traceability (#299) ──
+
+  describe("talos_get_traceability", () => {
+    it("returns traceability report for app with no data", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const t = findTool(tools, "talos_get_traceability");
+      const result = await t.handler({ applicationId: app.id });
+      expect(result.isError).toBeUndefined();
+      expect(result.text).toContain("Traceability Report");
+      expect(result.text).toContain("0/0 covered");
+      expect(result.text).toContain("0%");
+    });
+
+    it("returns traceability with criteria data", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "AC1", description: "d1" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "AC2", description: "d2", status: "implemented" });
+      const t = findTool(tools, "talos_get_traceability");
+      const result = await t.handler({ applicationId: app.id });
+      expect(result.text).toContain("1/2 implemented");
+    });
+
+    it("has low riskLevel", async () => {
+      const t = findTool(tools, "talos_get_traceability");
+      expect(t.riskLevel).toBe("low");
+      expect(t.category).toBe("knowledge");
+    });
+  });
+
+  // ── talos_create_criteria (#300) ──
+
+  describe("talos_create_criteria", () => {
+    it("creates criteria with minimal fields", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const t = findTool(tools, "talos_create_criteria");
+      const result = await t.handler({
+        applicationId: app.id,
+        title: "Login works",
+        description: "User can log in",
+      });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.text);
+      expect(data.title).toBe("Login works");
+      expect(data.status).toBe("draft");
+      expect(data.id).toBeTruthy();
+    });
+
+    it("creates criteria with full fields", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const t = findTool(tools, "talos_create_criteria");
+      const result = await t.handler({
+        applicationId: app.id,
+        title: "Password reset",
+        description: "User can reset password",
+        scenarios: [{ given: "registered user", when: "requests reset", then: "email sent" }],
+        preconditions: ["user exists"],
+        dataRequirements: ["valid email"],
+        nfrTags: ["security"],
+        status: "approved",
+        confidence: 0.9,
+        tags: ["auth"],
+      });
+      const data = JSON.parse(result.text);
+      expect(data.title).toBe("Password reset");
+      expect(data.status).toBe("approved");
+      expect(data.confidence).toBe(0.9);
+    });
+
+    it("has medium riskLevel", () => {
+      const t = findTool(tools, "talos_create_criteria");
+      expect(t.riskLevel).toBe("medium");
+    });
+  });
+
+  // ── talos_update_criteria (#300) ──
+
+  describe("talos_update_criteria", () => {
+    it("updates existing criteria", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const ac = repo.createAcceptanceCriteria({ applicationId: app.id, title: "Original", description: "d" });
+      const t = findTool(tools, "talos_update_criteria");
+      const result = await t.handler({ id: ac.id, title: "Updated", status: "approved" });
+      expect(result.isError).toBeUndefined();
+      const data = JSON.parse(result.text);
+      expect(data.title).toBe("Updated");
+      expect(data.status).toBe("approved");
+    });
+
+    it("returns error for non-existent criteria", async () => {
+      const t = findTool(tools, "talos_update_criteria");
+      const result = await t.handler({ id: "00000000-0000-0000-0000-000000000000", title: "X" });
+      expect(result.isError).toBe(true);
+    });
+
+    it("has medium riskLevel", () => {
+      const t = findTool(tools, "talos_update_criteria");
+      expect(t.riskLevel).toBe("medium");
+    });
+  });
+
+  // ── talos_list_criteria (#300) ──
+
+  describe("talos_list_criteria", () => {
+    it("lists criteria for an application", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "AC1", description: "d1" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "AC2", description: "d2" });
+      const t = findTool(tools, "talos_list_criteria");
+      const result = await t.handler({ applicationId: app.id });
+      const data = JSON.parse(result.text);
+      expect(data).toHaveLength(2);
+      expect(data[0].title).toBeTruthy();
+    });
+
+    it("filters by status", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "Draft", description: "" });
+      repo.createAcceptanceCriteria({ applicationId: app.id, title: "Approved", description: "", status: "approved" });
+      const t = findTool(tools, "talos_list_criteria");
+      const result = await t.handler({ applicationId: app.id, status: "approved" });
+      const data = JSON.parse(result.text);
+      expect(data).toHaveLength(1);
+      expect(data[0].title).toBe("Approved");
+    });
+
+    it("returns empty array when no criteria", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const t = findTool(tools, "talos_list_criteria");
+      const result = await t.handler({ applicationId: app.id });
+      expect(JSON.parse(result.text)).toEqual([]);
+    });
+
+    it("has low riskLevel", () => {
+      const t = findTool(tools, "talos_list_criteria");
+      expect(t.riskLevel).toBe("low");
+    });
+  });
+
+  // ── talos_delete_criteria (#300) ──
+
+  describe("talos_delete_criteria", () => {
+    it("deletes existing criteria", async () => {
+      const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+      const ac = repo.createAcceptanceCriteria({ applicationId: app.id, title: "Del", description: "" });
+      const t = findTool(tools, "talos_delete_criteria");
+      const result = await t.handler({ id: ac.id });
+      expect(result.isError).toBeUndefined();
+      expect(result.text).toContain("Deleted");
+      // Verify it's gone
+      expect(repo.getAcceptanceCriteria(ac.id)).toBeNull();
+    });
+
+    it("returns error for non-existent criteria", async () => {
+      const t = findTool(tools, "talos_delete_criteria");
+      const result = await t.handler({ id: "00000000-0000-0000-0000-000000000000" });
+      expect(result.isError).toBe(true);
+    });
+
+    it("has high riskLevel", () => {
+      const t = findTool(tools, "talos_delete_criteria");
+      expect(t.riskLevel).toBe("high");
+    });
   });
 });
