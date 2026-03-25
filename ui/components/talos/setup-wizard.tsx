@@ -19,9 +19,14 @@ import {
   generateTest,
   getTraceabilityReport,
   ingestDocument,
+  m365Search,
+  m365Fetch,
+  m365Status,
   type TalosApplication,
   type AcceptanceCriteria,
   type TraceabilityReport,
+  type M365SearchResult,
+  type M365SessionStatus,
 } from "@/lib/api";
 import {
   CheckCircle2,
@@ -33,6 +38,9 @@ import {
   Loader2,
   Check,
   X,
+  Search,
+  Globe,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -128,14 +136,30 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [mtlsEnabled, setMtlsEnabled] = useState(false);
+  const [mtlsCert, setMtlsCert] = useState("");
+  const [mtlsKey, setMtlsKey] = useState("");
+  const [mtlsCa, setMtlsCa] = useState("");
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; repositoryUrl: string; baseUrl: string }) =>
-      createApplication(data as Partial<TalosApplication>),
+    mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) => createApplication(data as Partial<TalosApplication>),
     onSuccess: (app) => onComplete(app.id),
   });
+
+  const handleCreate = () => {
+    const payload: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> } = { name, repositoryUrl: repoUrl, baseUrl };
+    if (mtlsEnabled) {
+      payload.mtlsEnabled = true;
+      payload.mtlsConfig = {
+        clientCertPath: mtlsCert,
+        clientKeyPath: mtlsKey,
+        ...(mtlsCa ? { caCertPath: mtlsCa } : {}),
+      };
+    }
+    createMutation.mutate(payload);
+  };
 
   return (
     <div className="space-y-4">
@@ -159,8 +183,41 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
         <Input placeholder="Application name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input placeholder="Repository URL (https://github.com/...)" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} />
         <Input placeholder="Base URL (https://staging.example.com)" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+
+        {/* mTLS Toggle (#324) */}
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Enable mTLS</span>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={mtlsEnabled}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                mtlsEnabled ? "bg-primary" : "bg-input",
+              )}
+              onClick={() => setMtlsEnabled(!mtlsEnabled)}
+            >
+              <span className={cn("pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm transition-transform", mtlsEnabled ? "translate-x-4" : "translate-x-0")} />
+            </button>
+          </div>
+          {mtlsEnabled && (
+            <div className="space-y-2 pt-1">
+              <Input placeholder="Client Certificate vault ref or path" value={mtlsCert} onChange={(e) => setMtlsCert(e.target.value)} />
+              <Input placeholder="Client Key vault ref or path" value={mtlsKey} onChange={(e) => setMtlsKey(e.target.value)} />
+              <Input placeholder="CA Certificate (optional)" value={mtlsCa} onChange={(e) => setMtlsCa(e.target.value)} />
+              <p className="text-xs text-muted-foreground">
+                Playwright will use these certificates for mutual TLS authentication when testing this application.
+              </p>
+            </div>
+          )}
+        </div>
+
         <Button
-          onClick={() => createMutation.mutate({ name, repositoryUrl: repoUrl, baseUrl })}
+          onClick={handleCreate}
           disabled={!name || createMutation.isPending}
         >
           {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -177,6 +234,18 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
   const [files, setFiles] = useState<{ name: string; status: "pending" | "ingesting" | "done" | "error"; chunks?: number }[]>([]);
   const [docType, setDocType] = useState<string>("prd");
   const [isIngesting, setIsIngesting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"local" | "m365">("local");
+  const [m365Query, setM365Query] = useState("");
+  const [m365Results, setM365Results] = useState<M365SearchResult[]>([]);
+  const [m365Selected, setM365Selected] = useState<Set<number>>(new Set());
+  const [m365Searching, setM365Searching] = useState(false);
+  const [m365Fetching, setM365Fetching] = useState(false);
+
+  const { data: sessionStatus } = useQuery<M365SessionStatus>({
+    queryKey: ["m365-status"],
+    queryFn: m365Status,
+    staleTime: 30_000,
+  });
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files;
@@ -184,7 +253,6 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
     const newFiles = Array.from(selected).map((f) => ({ name: f.name, status: "pending" as const, file: f }));
     setFiles((prev) => [...prev, ...newFiles.map(({ name, status }) => ({ name, status }))]);
 
-    // Read and ingest each file
     for (const { file } of newFiles) {
       const reader = new FileReader();
       reader.onload = async () => {
@@ -211,8 +279,73 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
     }
   }, [appId, docType]);
 
+  const handleM365Search = useCallback(async () => {
+    if (!m365Query.trim()) return;
+    setM365Searching(true);
+    try {
+      const response = await m365Search(m365Query);
+      setM365Results(response.results);
+      setM365Selected(new Set());
+    } catch {
+      setM365Results([]);
+    } finally {
+      setM365Searching(false);
+    }
+  }, [m365Query]);
+
+  const handleM365Fetch = useCallback(async () => {
+    setM365Fetching(true);
+    const selected = Array.from(m365Selected).map((i) => m365Results[i]).filter(Boolean);
+    for (const result of selected) {
+      const ft = result.fileType && result.fileType !== "unknown" ? result.fileType : "docx";
+      try {
+        const fetched = await m365Fetch(result.url, ft);
+        const content = fetched.content;
+        setFiles((prev) => [...prev, { name: result.title || `m365-${Date.now()}`, status: "ingesting" }]);
+        const ingested = await ingestDocument(appId, {
+          content,
+          format: "markdown",
+          fileName: result.title || `m365-doc-${Date.now()}.md`,
+          docType,
+        });
+        setFiles((prev) => prev.map((f) => f.name === (result.title || "") ? { ...f, status: "done", chunks: ingested.chunksCreated } : f));
+      } catch {
+        setFiles((prev) => prev.map((f) => f.status === "ingesting" ? { ...f, status: "error" } : f));
+      }
+    }
+    setM365Fetching(false);
+    setM365Selected(new Set());
+  }, [m365Selected, m365Results, appId, docType]);
+
   return (
     <div className="space-y-4">
+      {/* Tab switcher */}
+      <div className="flex gap-1 rounded-lg bg-muted p-1">
+        <button
+          className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", activeTab === "local" ? "bg-background shadow-sm" : "text-muted-foreground")}
+          onClick={() => setActiveTab("local")}
+        >
+          <Upload className="mr-1.5 inline h-3.5 w-3.5" /> Upload Local Files
+        </button>
+        <button
+          className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", activeTab === "m365" ? "bg-background shadow-sm" : "text-muted-foreground")}
+          onClick={() => setActiveTab("m365")}
+        >
+          <Globe className="mr-1.5 inline h-3.5 w-3.5" /> Search M365 Documents
+        </button>
+      </div>
+
+      {/* M365 Session Status Badge */}
+      {activeTab === "m365" && sessionStatus && (
+        <div className="flex items-center gap-2">
+          <Badge variant={sessionStatus.status === "active" ? "default" : sessionStatus.status === "disabled" ? "secondary" : "destructive"}>
+            {sessionStatus.status === "active" ? "M365 Connected" : sessionStatus.status === "disabled" ? "M365 Disabled" : "M365 " + sessionStatus.status}
+          </Badge>
+          {sessionStatus.message && <span className="text-xs text-muted-foreground">{sessionStatus.message}</span>}
+        </div>
+      )}
+
+      {/* Document Type Selector (shared) */}
       <div className="flex gap-3 items-end">
         <div className="flex-1">
           <label className="text-sm font-medium mb-1 block">Document Type</label>
@@ -227,14 +360,63 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
             <option value="functional_spec">Functional Spec</option>
           </select>
         </div>
-        <label className="cursor-pointer">
-          <input type="file" className="hidden" accept=".md,.yaml,.yml,.json" multiple onChange={handleFileSelect} />
-          <Button asChild variant="outline">
-            <span><Upload className="mr-2 h-4 w-4" /> Select Files</span>
-          </Button>
-        </label>
+        {activeTab === "local" && (
+          <label className="cursor-pointer">
+            <input type="file" className="hidden" accept=".md,.yaml,.yml,.json" multiple onChange={handleFileSelect} />
+            <Button asChild variant="outline">
+              <span><Upload className="mr-2 h-4 w-4" /> Select Files</span>
+            </Button>
+          </label>
+        )}
       </div>
 
+      {/* M365 Search Panel */}
+      {activeTab === "m365" && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search M365 documents..."
+              value={m365Query}
+              onChange={(e) => setM365Query(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleM365Search()}
+            />
+            <Button onClick={handleM365Search} disabled={m365Searching || !m365Query.trim()}>
+              {m365Searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
+          </div>
+          {m365Results.length > 0 && (
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {m365Results.map((r, i) => (
+                <label key={i} className="flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={m365Selected.has(i)}
+                    onChange={(e) => {
+                      const next = new Set(m365Selected);
+                      e.target.checked ? next.add(i) : next.delete(i);
+                      setM365Selected(next);
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{r.title}</div>
+                    <div className="text-xs text-muted-foreground line-clamp-2">{r.snippet}</div>
+                    {r.fileType && r.fileType !== "unknown" && <Badge variant="outline" className="mt-1 text-xs">{r.fileType.toUpperCase()}</Badge>}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+          {m365Selected.size > 0 && (
+            <Button onClick={handleM365Fetch} disabled={m365Fetching}>
+              {m365Fetching && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Fetch Selected ({m365Selected.size})
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* File Status List (shared) */}
       {files.length > 0 && (
         <div className="space-y-2">
           {files.map((f) => (
@@ -245,7 +427,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
               </div>
               <div className="flex items-center gap-2">
                 {f.status === "ingesting" && <Loader2 className="h-4 w-4 animate-spin" />}
-                {f.status === "done" && <Badge variant="success">{f.chunks} chunks</Badge>}
+                {f.status === "done" && <Badge variant="default">{f.chunks} chunks</Badge>}
                 {f.status === "error" && <Badge variant="destructive">Error</Badge>}
                 {f.status === "pending" && <Badge variant="secondary">Pending</Badge>}
               </div>
