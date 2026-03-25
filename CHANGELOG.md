@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `DocumentIngester` class: ingests Markdown and OpenAPI (JSON/YAML) documents into the RAG knowledge base with semantic section chunking, 10-15% overlap, and stable chunk IDs (#282).
   - `AutoTagger` class: NLP-heuristic auto-tagging with controlled vocabulary for personas, NFR keywords, environments, and functional areas (#283).
   - Hybrid search (`VectorStore.hybridSearch`): combines vector similarity with keyword boosting and metadata filtering (types, tags, docType, persona, minConfidence). Exposed via `RagPipeline.retrieveWithFilters()` (#284).
+- **Acceptance Criteria System** (Epic #277): AI-powered acceptance criteria generation, management, and requirements traceability.
+  - `TalosAcceptanceCriteria` data model with Given/When/Then scenarios, NFR tags, confidence scores, and full CRUD in `TalosRepository` (#285).
+  - `CriteriaGenerator` class: RAG-powered LLM generation of structured acceptance criteria from ingested requirements, with bulk generation and single-criterion AI-suggest (#286).
+  - Requirements Traceability Matrix (RTM): `talos_traceability` table linking requirements → criteria → tests, with coverage reporting, unmapped requirements, and untested criteria queries (#287).
+  - REST API for criteria management (`/api/talos/criteria`): CRUD endpoints, bulk AI generation, AI-suggest, and traceability report — all inputs validated with Zod schemas (#288).
 
 ### Fixed
 

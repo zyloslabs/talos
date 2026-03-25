@@ -17,6 +17,7 @@ import { TalosRepository } from "./talos/repository.js";
 import { PlatformRepository } from "./platform/repository.js";
 import { EnvManager } from "./platform/env-manager.js";
 import { createAdminRouter } from "./api/admin.js";
+import { createCriteriaRouter } from "./api/criteria.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
 
@@ -291,6 +292,10 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN, envManager }));
+
+// ── Criteria API ──────────────────────────────────────────────────────────────
+
+app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo }));
 
 // ── Test Generation (#220) ────────────────────────────────────────────────────
 
