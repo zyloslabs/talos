@@ -112,9 +112,26 @@ export class PlaywrightRunner {
         const origin = new URL(app.baseUrl).origin;
         const certEntry: Record<string, unknown> = { origin };
 
-        if (mtls.clientCertVaultRef) certEntry.certPath = mtls.clientCertVaultRef;
-        if (mtls.clientKeyVaultRef) certEntry.keyPath = mtls.clientKeyVaultRef;
-        if (mtls.pfxVaultRef) certEntry.pfxPath = mtls.pfxVaultRef;
+        // Resolve vault refs to file paths and verify they exist
+        const { access } = await import("node:fs/promises");
+        if (mtls.clientCertVaultRef) {
+          try { await access(mtls.clientCertVaultRef); } catch {
+            throw new Error(`mTLS client certificate not found at: ${mtls.clientCertVaultRef}`);
+          }
+          certEntry.certPath = mtls.clientCertVaultRef;
+        }
+        if (mtls.clientKeyVaultRef) {
+          try { await access(mtls.clientKeyVaultRef); } catch {
+            throw new Error(`mTLS client key not found at: ${mtls.clientKeyVaultRef}`);
+          }
+          certEntry.keyPath = mtls.clientKeyVaultRef;
+        }
+        if (mtls.pfxVaultRef) {
+          try { await access(mtls.pfxVaultRef); } catch {
+            throw new Error(`mTLS PFX file not found at: ${mtls.pfxVaultRef}`);
+          }
+          certEntry.pfxPath = mtls.pfxVaultRef;
+        }
         if (mtls.passphrase) certEntry.passphrase = mtls.passphrase;
 
         contextOptions.clientCertificates = [certEntry];

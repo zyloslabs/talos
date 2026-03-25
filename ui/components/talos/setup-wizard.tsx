@@ -296,23 +296,34 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
   const handleM365Fetch = useCallback(async () => {
     setM365Fetching(true);
     const selected = Array.from(m365Selected).map((i) => m365Results[i]).filter(Boolean);
-    for (const result of selected) {
-      const ft = result.fileType && result.fileType !== "unknown" ? result.fileType : "docx";
-      try {
+
+    // Fetch all selected documents in parallel
+    const results = await Promise.allSettled(
+      selected.map(async (result) => {
+        const ft = result.fileType && result.fileType !== "unknown" ? result.fileType : "docx";
+        const docName = result.title || `m365-${Date.now()}`;
+        setFiles((prev) => [...prev, { name: docName, status: "ingesting" }]);
         const fetched = await m365Fetch(result.url, ft);
-        const content = fetched.content;
-        setFiles((prev) => [...prev, { name: result.title || `m365-${Date.now()}`, status: "ingesting" }]);
         const ingested = await ingestDocument(appId, {
-          content,
+          content: fetched.content,
           format: "markdown",
-          fileName: result.title || `m365-doc-${Date.now()}.md`,
+          fileName: `${docName}.md`,
           docType,
         });
-        setFiles((prev) => prev.map((f) => f.name === (result.title || "") ? { ...f, status: "done", chunks: ingested.chunksCreated } : f));
-      } catch {
+        return { name: docName, chunks: ingested.chunksCreated };
+      }),
+    );
+
+    // Update file statuses based on settled results
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { name, chunks } = result.value;
+        setFiles((prev) => prev.map((f) => f.name === name ? { ...f, status: "done", chunks } : f));
+      } else {
         setFiles((prev) => prev.map((f) => f.status === "ingesting" ? { ...f, status: "error" } : f));
       }
     }
+
     setM365Fetching(false);
     setM365Selected(new Set());
   }, [m365Selected, m365Results, appId, docType]);

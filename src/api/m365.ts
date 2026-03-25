@@ -18,15 +18,53 @@ export interface M365RouterOptions {
   ephemeralStore: EphemeralStore;
 }
 
+/**
+ * Simple in-memory rate limiter for M365 routes.
+ * Tracks request timestamps per IP and rejects requests that exceed the limit.
+ */
+function createRateLimiter(maxRequests: number, windowMs: number) {
+  const requests = new Map<string, number[]>();
+
+  // Periodically clean up stale entries to prevent memory growth
+  const cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, timestamps] of requests.entries()) {
+      const valid = timestamps.filter((t) => now - t < windowMs);
+      if (valid.length === 0) requests.delete(key);
+      else requests.set(key, valid);
+    }
+  }, windowMs);
+  // Unref so the timer doesn't prevent process exit
+  if (cleanupInterval.unref) cleanupInterval.unref();
+
+  return (req: Request, res: Response, next: () => void): void => {
+    const key = req.ip ?? "unknown";
+    const now = Date.now();
+    const timestamps = (requests.get(key) ?? []).filter((t) => now - t < windowMs);
+    if (timestamps.length >= maxRequests) {
+      res.status(429).json({ error: "Too many requests. Please try again later." });
+      return;
+    }
+    timestamps.push(now);
+    requests.set(key, timestamps);
+    next();
+  };
+}
+
 export function createM365Router(options: M365RouterOptions): Router {
   const router = Router();
   const { browserAuth, ephemeralStore } = options;
+
+  // Rate limit: 30 requests per minute for file-system and destructive routes
+  const fsRateLimiter = createRateLimiter(30, 60_000);
+  // Rate limit: 10 requests per minute for search/fetch (external calls)
+  const externalRateLimiter = createRateLimiter(10, 60_000);
 
   // Helper to get scraper lazily (page may not be ready at router creation)
   const getScraper = (): typeof options.scraper => options.scraper;
 
   // POST /api/talos/m365/search
-  router.post("/search", async (req: Request, res: Response) => {
+  router.post("/search", externalRateLimiter, async (req: Request, res: Response) => {
     const { query } = req.body as { query?: string };
     if (!query) {
       res.status(400).json({ error: "query is required" });
@@ -49,7 +87,7 @@ export function createM365Router(options: M365RouterOptions): Router {
   });
 
   // POST /api/talos/m365/fetch
-  router.post("/fetch", async (req: Request, res: Response) => {
+  router.post("/fetch", externalRateLimiter, async (req: Request, res: Response) => {
     const { url, fileType } = req.body as { url?: string; fileType?: string };
     if (!url || !fileType) {
       res.status(400).json({ error: "url and fileType are required" });
@@ -100,7 +138,7 @@ export function createM365Router(options: M365RouterOptions): Router {
   });
 
   // POST /api/talos/m365/cleanup
-  router.post("/cleanup", async (_req: Request, res: Response) => {
+  router.post("/cleanup", fsRateLimiter, async (_req: Request, res: Response) => {
     try {
       await ephemeralStore.cleanup();
       res.json({ status: "ok", message: "Ephemeral documents cleaned up" });
@@ -111,7 +149,7 @@ export function createM365Router(options: M365RouterOptions): Router {
   });
 
   // POST /api/talos/m365/convert
-  router.post("/convert", async (req: Request, res: Response) => {
+  router.post("/convert", fsRateLimiter, async (req: Request, res: Response) => {
     const { path: filePath } = req.body as { path?: string };
     if (!filePath) {
       res.status(400).json({ error: "path is required" });
