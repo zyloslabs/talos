@@ -246,7 +246,13 @@ function convertHtmlTables(html: string): string {
       const cellRegex = /<(?:td|th)[^>]*>([\s\S]*?)<\/(?:td|th)>/gi;
       let cellMatch;
       while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
-        cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
+        let cellText = cellMatch[1];
+        let prevCell = "";
+        while (prevCell !== cellText) {
+          prevCell = cellText;
+          cellText = cellText.replace(/<[^>]+>/g, "");
+        }
+        cells.push(cellText.trim());
       }
       if (cells.length > 0) rows.push(cells);
     }
