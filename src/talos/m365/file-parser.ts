@@ -211,12 +211,19 @@ export function htmlToMarkdown(html: string): string {
   md = convertHtmlTables(md);
   md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, "\n$1\n");
   md = md.replace(/<br\s*\/?>/gi, "\n");
-  md = md.replace(/<[^>]+>/g, "");
+  // Decode entities BEFORE stripping tags to prevent decoded entities
+  // from forming injectable HTML (e.g., &lt;script&gt; -> <script>)
   md = md.replace(/&amp;/g, "&");
   md = md.replace(/&lt;/g, "<");
   md = md.replace(/&gt;/g, ">");
   md = md.replace(/&quot;/g, '"');
   md = md.replace(/&#39;/g, "'");
+  // Strip remaining tags (multiple passes to handle nested/reconstructed tags)
+  let prev = "";
+  while (prev !== md) {
+    prev = md;
+    md = md.replace(/<[^>]+>/g, "");
+  }
   md = md.replace(/\n{3,}/g, "\n\n");
 
   return md.trim();
