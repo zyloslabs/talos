@@ -52,6 +52,9 @@ vi.mock("@/lib/api", () => ({
     untestedCriteria: [],
   }),
   ingestDocument: vi.fn().mockResolvedValue({ chunksCreated: 12, chunksSkipped: 0, totalTokens: 1500, docId: "doc-1" }),
+  m365Status: vi.fn().mockResolvedValue({ status: "disabled", message: "M365 integration is not enabled" }),
+  m365Search: vi.fn().mockResolvedValue({ results: [] }),
+  m365Fetch: vi.fn().mockResolvedValue({ content: "", savedPath: "" }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {

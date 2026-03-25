@@ -54,6 +54,9 @@ vi.mock("@/lib/api", () => ({
   deleteKnowledgeDocument: vi.fn(),
   getModelsHealth: vi.fn().mockResolvedValue({ healthy: true, authenticated: true, latencyMs: 50 }),
   enhanceText: vi.fn().mockResolvedValue({ enhanced: "enhanced text" }),
+  getProxyConfig: vi.fn().mockResolvedValue({ enabled: false, httpProxy: "", httpsProxy: "", noProxy: "" }),
+  setProxyConfig: vi.fn().mockResolvedValue({}),
+  testProxyConnection: vi.fn().mockResolvedValue({ ok: true }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
