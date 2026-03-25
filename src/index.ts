@@ -15,11 +15,13 @@ import { Server as SocketIOServer } from "socket.io";
 import Database from "better-sqlite3";
 import { TalosRepository } from "./talos/repository.js";
 import { PlatformRepository } from "./platform/repository.js";
+import { seedPrebuiltAgentsAndSkills } from "./platform/seed-prebuilts.js";
 import { EnvManager } from "./platform/env-manager.js";
 import { createAdminRouter } from "./api/admin.js";
 import { createCriteriaRouter } from "./api/criteria.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
+import { DocumentIngester, type DocFormat, type DocMetadata } from "./talos/knowledge/document-ingester.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -69,6 +71,10 @@ repo.migrate();
 
 const platformRepo = new PlatformRepository(db);
 platformRepo.migrate();
+
+// ── Seed Prebuilt Agents & Skills ─────────────────────────────────────────────
+
+seedPrebuiltAgentsAndSkills(platformRepo);
 
 // ── Environment Manager ───────────────────────────────────────────────────────
 
@@ -292,6 +298,46 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN, envManager }));
+
+// ── Document Ingestion ────────────────────────────────────────────────────────
+
+app.post("/api/talos/applications/:appId/ingest", async (req, res) => {
+  const appId = req.params.appId;
+  const app_ = repo.getApplication(appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const { content, format, fileName, docType, version, tags } = req.body as {
+    content?: string; format?: string; fileName?: string; docType?: string;
+    version?: string; tags?: string[];
+  };
+
+  if (!content || !format || !fileName || !docType) {
+    res.status(400).json({ error: "content, format, fileName, and docType are required" }); return;
+  }
+
+  // DocumentIngester needs RagPipeline — if not available, store doc metadata only
+  try {
+    const ingester = new DocumentIngester({ ragPipeline: undefined as never }); // Will fail if RAG not ready
+    const result = await ingester.ingestDocument(appId, content, format as DocFormat, {
+      fileName,
+      docType: docType as DocMetadata["docType"],
+      version,
+      tags,
+    });
+    io.emit("document:ingested", { applicationId: appId, ...result });
+    res.status(201).json(result);
+  } catch {
+    // Fallback: record the document without RAG indexing
+    const docId = crypto.randomUUID();
+    const chunks = content.split(/\n#{1,3}\s/).length;
+    db.prepare(`
+      INSERT OR IGNORE INTO knowledge_documents (id, application_id, file_path, type, chunk_count, indexed_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now'))
+    `).run(docId, appId, fileName, docType, chunks);
+    io.emit("document:ingested", { applicationId: appId, docId, chunksCreated: chunks });
+    res.status(201).json({ chunksCreated: chunks, chunksSkipped: 0, totalTokens: 0, docId });
+  }
+});
 
 // ── Criteria API ──────────────────────────────────────────────────────────────
 

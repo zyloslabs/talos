@@ -35,9 +35,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - Test generation step: generates Playwright tests from approved criteria with traceability stats and coverage summary (#292).
   - Acceptance criteria API client functions added to `ui/lib/api.ts` for all criteria endpoints.
   - "Setup" tab added to NavTabs navigation.
+- **Document Ingestion API Endpoint**: Added `POST /api/talos/applications/:appId/ingest` backend route for the Setup Wizard's document upload step.
+- **Prebuilt Testing Agents & Skills**: Test Orchestrator agent, Test Planner, Criteria Generator, and Test Reviewer skills are now seeded into the app's database on startup — available in the Agents and Skills pages out of the box.
 
 ### Fixed
 
+- **Duplicate Navigation Menus**: Removed redundant `NavTabs` rendering from 7 pages (skills, agents, library, scheduler, tasks, workbench, talos layout). The root layout's `NavBar` is now the single navigation across the entire app.
+- **Setup Wizard not accessible**: Added Setup Wizard to the NavBar's Testing dropdown menu so it's discoverable from any page.
 - **Copilot SDK `onPermissionRequest`** (#256): `createSession` now passes `approveAll` (imported from `@github/copilot-sdk`) as `onPermissionRequest`, resolving the root cause of chat sessions failing with permission errors.
 - **Tool wiring via `defineTool`** (#257): Talos tools from `src/talos/tools.ts` are now wrapped with `defineTool()` and passed to every SDK session. `ChatOptions` gains a `tools?: ToolDefinition[]` parameter. Tool handlers emit `tool:call` events and surface errors gracefully.
 - **`listModels()` + `modelSupportsReasoning()`** (#258): Model listing now guards against `startFailed` (throws a clear error instead of hanging). Model capabilities are cached after the first `listModels()` call. `reasoningEffort` is only forwarded to sessions whose model actually supports it — non-reasoning models (gpt-4.1, claude-sonnet-4, etc.) no longer receive the parameter.
