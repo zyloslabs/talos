@@ -229,6 +229,14 @@ export function htmlToMarkdown(html: string): string {
   md = md.replace(/&gt;/g, ">");
   md = md.replace(/&amp;/g, "&");
 
+  // SECURITY: Second pass — entity decoding can reconstruct HTML tags
+  // (e.g. &lt;script&gt; → <script>). Strip any that reappeared.
+  prev = "";
+  while (prev !== md) {
+    prev = md;
+    md = md.replace(/<[^>]+>/g, "");
+  }
+
   // Escape any backslashes that could be interpreted in downstream contexts
   md = md.replace(/\\/g, "\\\\");
 

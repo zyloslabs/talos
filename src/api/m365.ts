@@ -6,6 +6,7 @@
 
 import { Router, type Request, type Response } from "express";
 import { resolve } from "node:path";
+import rateLimit from "express-rate-limit";
 import type { BrowserAuth } from "../talos/m365/browser-auth.js";
 import type { CopilotScraper } from "../talos/m365/scraper.js";
 import type { EphemeralStore } from "../talos/m365/ephemeral.js";
@@ -18,47 +19,14 @@ export interface M365RouterOptions {
   ephemeralStore: EphemeralStore;
 }
 
-/**
- * Simple in-memory rate limiter for M365 routes.
- * Tracks request timestamps per IP and rejects requests that exceed the limit.
- */
-function createRateLimiter(maxRequests: number, windowMs: number) {
-  const requests = new Map<string, number[]>();
-
-  // Periodically clean up stale entries to prevent memory growth
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [key, timestamps] of requests.entries()) {
-      const valid = timestamps.filter((t) => now - t < windowMs);
-      if (valid.length === 0) requests.delete(key);
-      else requests.set(key, valid);
-    }
-  }, windowMs);
-  // Unref so the timer doesn't prevent process exit
-  if (cleanupInterval.unref) cleanupInterval.unref();
-
-  return (req: Request, res: Response, next: () => void): void => {
-    const key = req.ip ?? "unknown";
-    const now = Date.now();
-    const timestamps = (requests.get(key) ?? []).filter((t) => now - t < windowMs);
-    if (timestamps.length >= maxRequests) {
-      res.status(429).json({ error: "Too many requests. Please try again later." });
-      return;
-    }
-    timestamps.push(now);
-    requests.set(key, timestamps);
-    next();
-  };
-}
-
 export function createM365Router(options: M365RouterOptions): Router {
   const router = Router();
   const { browserAuth, ephemeralStore } = options;
 
   // Rate limit: 30 requests per minute for file-system and destructive routes
-  const fsRateLimiter = createRateLimiter(30, 60_000);
+  const fsRateLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false });
   // Rate limit: 10 requests per minute for search/fetch (external calls)
-  const externalRateLimiter = createRateLimiter(10, 60_000);
+  const externalRateLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false });
 
   // Helper to get scraper lazily (page may not be ready at router creation)
   const getScraper = (): typeof options.scraper => options.scraper;
