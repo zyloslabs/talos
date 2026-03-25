@@ -35,6 +35,17 @@ export class AdminPage {
   // Environment panel
   readonly envSection: Locator;
 
+  // Network / Proxy panel
+  readonly networkLink: Locator;
+  readonly networkSection: Locator;
+  readonly proxyToggle: Locator;
+  readonly httpProxyInput: Locator;
+  readonly httpsProxyInput: Locator;
+  readonly noProxyInput: Locator;
+  readonly proxySaveButton: Locator;
+  readonly proxyTestButton: Locator;
+  readonly proxyTestResult: Locator;
+
   // Knowledge panel
   readonly knowledgeSection: Locator;
   readonly knowledgeSearchInput: Locator;
@@ -50,6 +61,7 @@ export class AdminPage {
     this.personalityLink = page.getByRole("link", { name: "Personality" });
     this.modelsLink = page.getByRole("link", { name: "Models" });
     this.mcpLink = page.getByRole("link", { name: "MCP Servers" });
+    this.networkLink = page.getByRole("link", { name: "Network / Proxy" });
     this.envLink = page.getByRole("link", { name: "Environment" });
     this.knowledgeLink = page.getByRole("link", { name: "Knowledge Base" });
 
@@ -58,6 +70,7 @@ export class AdminPage {
     this.personalitySection = page.locator("#personality");
     this.modelsSection = page.locator("#models");
     this.mcpSection = page.locator("#mcp");
+    this.networkSection = page.locator("#network");
     this.envSection = page.locator("#env");
     this.knowledgeSection = page.locator("#knowledge");
 
@@ -77,6 +90,15 @@ export class AdminPage {
     this.mcpNameInput = this.mcpSection.getByPlaceholder("Name");
     this.mcpCommandInput = this.mcpSection.getByPlaceholder("Command (for stdio)");
     this.addServerButton = this.mcpSection.getByRole("button", { name: "Add Server" });
+
+    // Network / Proxy
+    this.proxyToggle = this.networkSection.getByRole("switch");
+    this.httpProxyInput = this.networkSection.getByLabel("HTTP Proxy");
+    this.httpsProxyInput = this.networkSection.getByLabel("HTTPS Proxy");
+    this.noProxyInput = this.networkSection.getByLabel("No Proxy");
+    this.proxySaveButton = this.networkSection.getByRole("button", { name: "Save" });
+    this.proxyTestButton = this.networkSection.getByRole("button", { name: "Test Connection" });
+    this.proxyTestResult = this.networkSection.getByText(/Proxy connection successful|Proxy test failed/);
 
     // Env
     // (dynamic — env vars by category)
