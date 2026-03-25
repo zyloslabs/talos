@@ -17,6 +17,9 @@ import type {
   TalosTestRun,
   TalosTestArtifact,
   TalosVaultRole,
+  TalosAcceptanceCriteria,
+  TraceabilityLink,
+  TraceabilityReport,
   CreateApplicationInput,
   UpdateApplicationInput,
   CreateTestInput,
@@ -26,11 +29,16 @@ import type {
   CreateArtifactInput,
   CreateVaultRoleInput,
   UpdateVaultRoleInput,
+  CreateAcceptanceCriteriaInput,
+  UpdateAcceptanceCriteriaInput,
+  CreateTraceabilityLinkInput,
   StoredApplication,
   StoredTest,
   StoredTestRun,
   StoredArtifact,
   StoredVaultRole,
+  StoredAcceptanceCriteria,
+  StoredTraceabilityLink,
   TalosApplicationStatus,
   TalosTestStatus,
   TalosTestType,
@@ -38,6 +46,9 @@ import type {
   TalosTestRunTrigger,
   TalosArtifactType,
   TalosVaultRoleType,
+  AcceptanceCriteriaStatus,
+  CoverageStatus,
+  AcceptanceCriteriaScenario,
 } from "./types.js";
 
 // ── Row Converters ────────────────────────────────────────────────────────────
@@ -119,6 +130,34 @@ const toVaultRole = (row: StoredVaultRole): TalosVaultRole => ({
   additionalRefs: JSON.parse(row.additional_refs_json) as Record<string, string>,
   isActive: row.is_active === 1,
   metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at),
+});
+
+const toAcceptanceCriteria = (row: StoredAcceptanceCriteria): TalosAcceptanceCriteria => ({
+  id: row.id,
+  applicationId: row.application_id,
+  requirementChunkId: row.requirement_chunk_id ?? undefined,
+  title: row.title,
+  description: row.description,
+  scenarios: JSON.parse(row.scenarios_json) as AcceptanceCriteriaScenario[],
+  preconditions: JSON.parse(row.preconditions_json) as string[],
+  dataRequirements: JSON.parse(row.data_requirements_json) as string[],
+  nfrTags: JSON.parse(row.nfr_tags_json) as string[],
+  status: row.status as AcceptanceCriteriaStatus,
+  confidence: row.confidence,
+  tags: JSON.parse(row.tags_json) as string[],
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at),
+});
+
+const toTraceabilityLink = (row: StoredTraceabilityLink): TraceabilityLink => ({
+  id: row.id,
+  applicationId: row.application_id,
+  requirementChunkId: row.requirement_chunk_id,
+  acceptanceCriteriaId: row.acceptance_criteria_id,
+  testId: row.test_id,
+  coverageStatus: row.coverage_status as CoverageStatus,
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
 });
@@ -271,6 +310,54 @@ export class TalosRepository {
         ON talos_vault_roles(application_id);
       CREATE INDEX IF NOT EXISTS idx_talos_vault_roles_type 
         ON talos_vault_roles(role_type);
+
+      -- Acceptance criteria table
+      CREATE TABLE IF NOT EXISTS talos_acceptance_criteria (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL REFERENCES talos_applications(id) ON DELETE CASCADE,
+        requirement_chunk_id TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        scenarios_json TEXT NOT NULL DEFAULT '[]',
+        preconditions_json TEXT NOT NULL DEFAULT '[]',
+        data_requirements_json TEXT NOT NULL DEFAULT '[]',
+        nfr_tags_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK(status IN ('draft', 'approved', 'implemented', 'deprecated')),
+        confidence REAL NOT NULL DEFAULT 0,
+        tags_json TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_talos_ac_application
+        ON talos_acceptance_criteria(application_id);
+      CREATE INDEX IF NOT EXISTS idx_talos_ac_status
+        ON talos_acceptance_criteria(status);
+      CREATE INDEX IF NOT EXISTS idx_talos_ac_requirement_chunk
+        ON talos_acceptance_criteria(requirement_chunk_id);
+
+      -- Traceability links table
+      CREATE TABLE IF NOT EXISTS talos_traceability (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL REFERENCES talos_applications(id) ON DELETE CASCADE,
+        requirement_chunk_id TEXT NOT NULL,
+        acceptance_criteria_id TEXT,
+        test_id TEXT,
+        coverage_status TEXT NOT NULL DEFAULT 'uncovered'
+          CHECK(coverage_status IN ('uncovered', 'partial', 'covered')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_talos_trace_application
+        ON talos_traceability(application_id);
+      CREATE INDEX IF NOT EXISTS idx_talos_trace_requirement
+        ON talos_traceability(requirement_chunk_id);
+      CREATE INDEX IF NOT EXISTS idx_talos_trace_criteria
+        ON talos_traceability(acceptance_criteria_id);
+      CREATE INDEX IF NOT EXISTS idx_talos_trace_test
+        ON talos_traceability(test_id);
     `);
   }
 
@@ -829,5 +916,299 @@ export class TalosRepository {
   /** Alias for listArtifactsByRun */
   getArtifactsByRun(testRunId: string): TalosTestArtifact[] {
     return this.listArtifactsByRun(testRunId);
+  }
+
+  // ── Acceptance Criteria CRUD ────────────────────────────────────────────────
+
+  createAcceptanceCriteria(input: CreateAcceptanceCriteriaInput): TalosAcceptanceCriteria {
+    const now = this.clock().toISOString();
+    const id = randomUUID();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO talos_acceptance_criteria (
+        id, application_id, requirement_chunk_id, title, description,
+        scenarios_json, preconditions_json, data_requirements_json, nfr_tags_json,
+        status, confidence, tags_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      input.applicationId,
+      input.requirementChunkId ?? null,
+      input.title,
+      input.description,
+      JSON.stringify(input.scenarios ?? []),
+      JSON.stringify(input.preconditions ?? []),
+      JSON.stringify(input.dataRequirements ?? []),
+      JSON.stringify(input.nfrTags ?? []),
+      input.status ?? "draft",
+      input.confidence ?? 0,
+      JSON.stringify(input.tags ?? []),
+      now,
+      now
+    );
+
+    return this.getAcceptanceCriteria(id)!;
+  }
+
+  getAcceptanceCriteria(id: string): TalosAcceptanceCriteria | null {
+    const stmt = this.db.prepare(`SELECT * FROM talos_acceptance_criteria WHERE id = ?`);
+    const row = stmt.get(id) as StoredAcceptanceCriteria | undefined;
+    return row ? toAcceptanceCriteria(row) : null;
+  }
+
+  listAcceptanceCriteria(
+    applicationId: string,
+    filters?: { status?: AcceptanceCriteriaStatus; tags?: string[]; nfrTags?: string[]; requirementChunkId?: string }
+  ): TalosAcceptanceCriteria[] {
+    const conditions = ["application_id = ?"];
+    const params: unknown[] = [applicationId];
+
+    if (filters?.status) {
+      conditions.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.requirementChunkId) {
+      conditions.push("requirement_chunk_id = ?");
+      params.push(filters.requirementChunkId);
+    }
+
+    const sql = `SELECT * FROM talos_acceptance_criteria WHERE ${conditions.join(" AND ")} ORDER BY created_at DESC`;
+    const stmt = this.db.prepare(sql);
+    let rows = stmt.all(...params) as StoredAcceptanceCriteria[];
+
+    // In-memory tag filtering (JSON array columns)
+    if (filters?.tags?.length) {
+      rows = rows.filter((r) => {
+        const rowTags = JSON.parse(r.tags_json) as string[];
+        return filters.tags!.some((t) => rowTags.includes(t));
+      });
+    }
+    if (filters?.nfrTags?.length) {
+      rows = rows.filter((r) => {
+        const rowNfr = JSON.parse(r.nfr_tags_json) as string[];
+        return filters.nfrTags!.some((t) => rowNfr.includes(t));
+      });
+    }
+
+    return rows.map(toAcceptanceCriteria);
+  }
+
+  updateAcceptanceCriteria(id: string, input: UpdateAcceptanceCriteriaInput): TalosAcceptanceCriteria | null {
+    const existing = this.getAcceptanceCriteria(id);
+    if (!existing) return null;
+
+    const now = this.clock().toISOString();
+    const updates: string[] = [];
+    const values: unknown[] = [];
+
+    if (input.requirementChunkId !== undefined) {
+      updates.push("requirement_chunk_id = ?");
+      values.push(input.requirementChunkId ?? null);
+    }
+    if (input.title !== undefined) {
+      updates.push("title = ?");
+      values.push(input.title);
+    }
+    if (input.description !== undefined) {
+      updates.push("description = ?");
+      values.push(input.description);
+    }
+    if (input.scenarios !== undefined) {
+      updates.push("scenarios_json = ?");
+      values.push(JSON.stringify(input.scenarios));
+    }
+    if (input.preconditions !== undefined) {
+      updates.push("preconditions_json = ?");
+      values.push(JSON.stringify(input.preconditions));
+    }
+    if (input.dataRequirements !== undefined) {
+      updates.push("data_requirements_json = ?");
+      values.push(JSON.stringify(input.dataRequirements));
+    }
+    if (input.nfrTags !== undefined) {
+      updates.push("nfr_tags_json = ?");
+      values.push(JSON.stringify(input.nfrTags));
+    }
+    if (input.status !== undefined) {
+      updates.push("status = ?");
+      values.push(input.status);
+    }
+    if (input.confidence !== undefined) {
+      updates.push("confidence = ?");
+      values.push(input.confidence);
+    }
+    if (input.tags !== undefined) {
+      updates.push("tags_json = ?");
+      values.push(JSON.stringify(input.tags));
+    }
+
+    if (updates.length === 0) return existing;
+
+    updates.push("updated_at = ?");
+    values.push(now);
+    values.push(id);
+
+    const stmt = this.db.prepare(
+      `UPDATE talos_acceptance_criteria SET ${updates.join(", ")} WHERE id = ?`
+    );
+    stmt.run(...values);
+
+    return this.getAcceptanceCriteria(id);
+  }
+
+  deleteAcceptanceCriteria(id: string): boolean {
+    const stmt = this.db.prepare(`DELETE FROM talos_acceptance_criteria WHERE id = ?`);
+    const result = stmt.run(id);
+    return result.changes > 0;
+  }
+
+  // ── Traceability CRUD ───────────────────────────────────────────────────────
+
+  createTraceabilityLink(input: CreateTraceabilityLinkInput): TraceabilityLink {
+    const now = this.clock().toISOString();
+    const id = randomUUID();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO talos_traceability (
+        id, application_id, requirement_chunk_id, acceptance_criteria_id, test_id,
+        coverage_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      id,
+      input.applicationId,
+      input.requirementChunkId,
+      input.acceptanceCriteriaId ?? null,
+      input.testId ?? null,
+      input.coverageStatus ?? "uncovered",
+      now,
+      now
+    );
+
+    return this.getTraceabilityLink(id)!;
+  }
+
+  getTraceabilityLink(id: string): TraceabilityLink | null {
+    const stmt = this.db.prepare(`SELECT * FROM talos_traceability WHERE id = ?`);
+    const row = stmt.get(id) as StoredTraceabilityLink | undefined;
+    return row ? toTraceabilityLink(row) : null;
+  }
+
+  getTraceabilityForApp(applicationId: string): TraceabilityLink[] {
+    const stmt = this.db.prepare(
+      `SELECT * FROM talos_traceability WHERE application_id = ? ORDER BY created_at DESC`
+    );
+    const rows = stmt.all(applicationId) as StoredTraceabilityLink[];
+    return rows.map(toTraceabilityLink);
+  }
+
+  getCoverageReport(applicationId: string): TraceabilityReport {
+    // Total distinct requirement chunk IDs across traceability links
+    const reqStmt = this.db.prepare(`
+      SELECT COUNT(DISTINCT requirement_chunk_id) as total
+      FROM talos_traceability WHERE application_id = ?
+    `);
+    const reqRow = reqStmt.get(applicationId) as { total: number };
+
+    // Requirements with at least partial coverage
+    const coveredReqStmt = this.db.prepare(`
+      SELECT COUNT(DISTINCT requirement_chunk_id) as covered
+      FROM talos_traceability WHERE application_id = ? AND coverage_status IN ('partial', 'covered')
+    `);
+    const coveredReqRow = coveredReqStmt.get(applicationId) as { covered: number };
+
+    // Total criteria in this app
+    const criteriaStmt = this.db.prepare(`
+      SELECT COUNT(*) as total FROM talos_acceptance_criteria WHERE application_id = ?
+    `);
+    const criteriaRow = criteriaStmt.get(applicationId) as { total: number };
+
+    // Criteria with 'implemented' status
+    const implStmt = this.db.prepare(`
+      SELECT COUNT(*) as implemented FROM talos_acceptance_criteria
+      WHERE application_id = ? AND status = 'implemented'
+    `);
+    const implRow = implStmt.get(applicationId) as { implemented: number };
+
+    // Unmapped requirements (no linked criteria)
+    const unmappedStmt = this.db.prepare(`
+      SELECT DISTINCT requirement_chunk_id FROM talos_traceability
+      WHERE application_id = ? AND acceptance_criteria_id IS NULL
+    `);
+    const unmappedRows = unmappedStmt.all(applicationId) as Array<{ requirement_chunk_id: string }>;
+
+    // Untested criteria (no linked tests)
+    const untestedStmt = this.db.prepare(`
+      SELECT DISTINCT acceptance_criteria_id FROM talos_traceability
+      WHERE application_id = ? AND acceptance_criteria_id IS NOT NULL AND test_id IS NULL
+    `);
+    const untestedRows = untestedStmt.all(applicationId) as Array<{ acceptance_criteria_id: string }>;
+
+    const totalReq = reqRow.total;
+    const coveredReq = coveredReqRow.covered;
+
+    return {
+      totalRequirements: totalReq,
+      coveredRequirements: coveredReq,
+      totalCriteria: criteriaRow.total,
+      implementedCriteria: implRow.implemented,
+      coveragePercentage: totalReq > 0 ? Math.round((coveredReq / totalReq) * 100) : 0,
+      unmappedRequirements: unmappedRows.map((r) => r.requirement_chunk_id),
+      untestedCriteria: untestedRows.map((r) => r.acceptance_criteria_id),
+    };
+  }
+
+  getUnmappedRequirements(applicationId: string): string[] {
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT requirement_chunk_id FROM talos_traceability
+      WHERE application_id = ? AND acceptance_criteria_id IS NULL
+    `);
+    const rows = stmt.all(applicationId) as Array<{ requirement_chunk_id: string }>;
+    return rows.map((r) => r.requirement_chunk_id);
+  }
+
+  getUntestedCriteria(applicationId: string): string[] {
+    const stmt = this.db.prepare(`
+      SELECT DISTINCT acceptance_criteria_id FROM talos_traceability
+      WHERE application_id = ? AND acceptance_criteria_id IS NOT NULL AND test_id IS NULL
+    `);
+    const rows = stmt.all(applicationId) as Array<{ acceptance_criteria_id: string }>;
+    return rows.map((r) => r.acceptance_criteria_id);
+  }
+
+  linkCriteriaToTest(criteriaId: string, testId: string): TraceabilityLink | null {
+    // Find a traceability link with this criteria that has no test
+    const existing = this.db.prepare(`
+      SELECT * FROM talos_traceability WHERE acceptance_criteria_id = ? AND test_id IS NULL LIMIT 1
+    `).get(criteriaId) as StoredTraceabilityLink | undefined;
+
+    if (existing) {
+      const now = this.clock().toISOString();
+      this.db.prepare(`
+        UPDATE talos_traceability SET test_id = ?, coverage_status = 'covered', updated_at = ? WHERE id = ?
+      `).run(testId, now, existing.id);
+      return this.getTraceabilityLink(existing.id);
+    }
+
+    // If criteria exists, create a new link with the criteria's app context
+    const criteria = this.getAcceptanceCriteria(criteriaId);
+    if (!criteria) return null;
+
+    // Find a requirement chunk linked to this criteria
+    const reqLink = this.db.prepare(`
+      SELECT requirement_chunk_id FROM talos_traceability
+      WHERE acceptance_criteria_id = ? LIMIT 1
+    `).get(criteriaId) as { requirement_chunk_id: string } | undefined;
+
+    return this.createTraceabilityLink({
+      applicationId: criteria.applicationId,
+      requirementChunkId: reqLink?.requirement_chunk_id ?? "unlinked",
+      acceptanceCriteriaId: criteriaId,
+      testId,
+      coverageStatus: "covered",
+    });
   }
 }

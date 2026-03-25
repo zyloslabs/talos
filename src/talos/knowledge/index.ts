@@ -19,3 +19,10 @@ export {
   NFR_TAGS,
   ENVIRONMENTS,
 } from "./auto-tagger.js";
+
+export {
+  CriteriaGenerator,
+  type CriteriaGeneratorOptions,
+  type GenerationOptions,
+  type GenerationResult,
+} from "./criteria-generator.js";
