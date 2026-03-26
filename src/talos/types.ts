@@ -565,3 +565,130 @@ export type TraceabilityReport = {
   unmappedRequirements: string[];
   untestedCriteria: string[];
 };
+
+// ── Data Source Types ─────────────────────────────────────────────────────────
+
+export type JdbcDriverType = "oracle" | "postgresql" | "mysql" | "sqlserver" | "sqlite" | "other";
+
+export type TalosDataSource = {
+  id: string;
+  applicationId: string;
+  label: string;
+  driverType: JdbcDriverType;
+  jdbcUrl: string;
+  usernameVaultRef: string;
+  passwordVaultRef: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateDataSourceInput = {
+  applicationId: string;
+  label: string;
+  driverType: JdbcDriverType;
+  jdbcUrl: string;
+  usernameVaultRef: string;
+  passwordVaultRef: string;
+};
+
+export type UpdateDataSourceInput = Partial<
+  Pick<TalosDataSource, "label" | "driverType" | "jdbcUrl" | "usernameVaultRef" | "passwordVaultRef" | "isActive">
+>;
+
+export type StoredDataSource = {
+  id: string;
+  application_id: string;
+  label: string;
+  driver_type: string;
+  jdbc_url: string;
+  username_vault_ref: string;
+  password_vault_ref: string;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// ── Atlassian Config Types ────────────────────────────────────────────────────
+
+export type AtlassianDeploymentType = "cloud" | "datacenter";
+
+export type TalosAtlassianConfig = {
+  id: string;
+  applicationId: string;
+  deploymentType: AtlassianDeploymentType;
+  jiraUrl: string;
+  jiraProject: string;
+  jiraUsernameVaultRef: string;
+  jiraApiTokenVaultRef: string;
+  jiraPersonalTokenVaultRef: string;
+  jiraSslVerify: boolean;
+  confluenceUrl: string;
+  confluenceSpaces: string[];
+  confluenceUsernameVaultRef: string;
+  confluenceApiTokenVaultRef: string;
+  confluencePersonalTokenVaultRef: string;
+  confluenceSslVerify: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateAtlassianConfigInput = {
+  applicationId: string;
+  deploymentType: AtlassianDeploymentType;
+  jiraUrl?: string;
+  jiraProject?: string;
+  jiraUsernameVaultRef?: string;
+  jiraApiTokenVaultRef?: string;
+  jiraPersonalTokenVaultRef?: string;
+  jiraSslVerify?: boolean;
+  confluenceUrl?: string;
+  confluenceSpaces?: string[];
+  confluenceUsernameVaultRef?: string;
+  confluenceApiTokenVaultRef?: string;
+  confluencePersonalTokenVaultRef?: string;
+  confluenceSslVerify?: boolean;
+};
+
+export type UpdateAtlassianConfigInput = Partial<
+  Pick<
+    TalosAtlassianConfig,
+    | "deploymentType"
+    | "jiraUrl"
+    | "jiraProject"
+    | "jiraUsernameVaultRef"
+    | "jiraApiTokenVaultRef"
+    | "jiraPersonalTokenVaultRef"
+    | "jiraSslVerify"
+    | "confluenceUrl"
+    | "confluenceSpaces"
+    | "confluenceUsernameVaultRef"
+    | "confluenceApiTokenVaultRef"
+    | "confluencePersonalTokenVaultRef"
+    | "confluenceSslVerify"
+    | "isActive"
+  >
+>;
+
+export type StoredAtlassianConfig = {
+  id: string;
+  application_id: string;
+  deployment_type: string;
+  jira_url: string;
+  jira_project: string;
+  jira_username_vault_ref: string;
+  jira_api_token_vault_ref: string;
+  jira_personal_token_vault_ref: string;
+  jira_ssl_verify: number;
+  confluence_url: string;
+  confluence_spaces_json: string;
+  confluence_username_vault_ref: string;
+  confluence_api_token_vault_ref: string;
+  confluence_personal_token_vault_ref: string;
+  confluence_ssl_verify: number;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
+};
+

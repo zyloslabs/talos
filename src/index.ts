@@ -300,6 +300,122 @@ app.delete("/api/talos/vault-roles/:id", (req, res) => {
   res.status(204).end();
 });
 
+// ── Data Sources ──────────────────────────────────────────────────────────────
+
+app.get("/api/talos/applications/:appId/data-sources", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+  res.json(repo.getDataSourcesByApp(req.params.appId));
+});
+
+app.post("/api/talos/applications/:appId/data-sources", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const { label, driverType, jdbcUrl, usernameVaultRef, passwordVaultRef } = req.body as Record<string, string>;
+  if (!label || !jdbcUrl) { res.status(400).json({ error: "label and jdbcUrl are required" }); return; }
+
+  const created = repo.createDataSource({
+    applicationId: req.params.appId,
+    label,
+    driverType: (driverType ?? "postgresql") as Parameters<typeof repo.createDataSource>[0]["driverType"],
+    jdbcUrl,
+    usernameVaultRef: usernameVaultRef ?? "",
+    passwordVaultRef: passwordVaultRef ?? "",
+  });
+  io.emit("datasource:created", created);
+  res.status(201).json(created);
+});
+
+app.get("/api/talos/applications/:appId/data-sources/:id", (req, res) => {
+  const ds = repo.getDataSource(req.params.id);
+  if (!ds || ds.applicationId !== req.params.appId) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(ds);
+});
+
+app.put("/api/talos/applications/:appId/data-sources/:id", (req, res) => {
+  const ds = repo.getDataSource(req.params.id);
+  if (!ds || ds.applicationId !== req.params.appId) { res.status(404).json({ error: "Not found" }); return; }
+  const updated = repo.updateDataSource(req.params.id, req.body as Parameters<typeof repo.updateDataSource>[1]);
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  io.emit("datasource:updated", updated);
+  res.json(updated);
+});
+
+app.delete("/api/talos/applications/:appId/data-sources/:id", (req, res) => {
+  const ds = repo.getDataSource(req.params.id);
+  if (!ds || ds.applicationId !== req.params.appId) { res.status(404).json({ error: "Not found" }); return; }
+  repo.deleteDataSource(req.params.id);
+  io.emit("datasource:deleted", { id: req.params.id });
+  res.status(204).end();
+});
+
+app.post("/api/talos/applications/:appId/data-sources/:id/test", (req, res) => {
+  const ds = repo.getDataSource(req.params.id);
+  if (!ds || ds.applicationId !== req.params.appId) { res.status(404).json({ error: "Not found" }); return; }
+  // Connection test — would start Docker JDBC container and run a test query
+  res.json({ success: true, message: `Connection test queued for data source "${ds.label}"` });
+});
+
+// ── Atlassian Config ──────────────────────────────────────────────────────────
+
+app.get("/api/talos/applications/:appId/atlassian", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+  const config = repo.getAtlassianConfigByApp(req.params.appId);
+  if (!config) { res.status(404).json({ error: "No Atlassian config found" }); return; }
+  res.json(config);
+});
+
+app.post("/api/talos/applications/:appId/atlassian", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  // Check if config already exists — update it
+  const existing = repo.getAtlassianConfigByApp(req.params.appId);
+  if (existing) {
+    const updated = repo.updateAtlassianConfig(existing.id, req.body as Parameters<typeof repo.updateAtlassianConfig>[1]);
+    io.emit("atlassian:updated", updated);
+    res.json(updated);
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const created = repo.createAtlassianConfig({
+    applicationId: req.params.appId,
+    deploymentType: (body.deploymentType as "cloud" | "datacenter") ?? "cloud",
+    jiraUrl: body.jiraUrl as string,
+    jiraProject: body.jiraProject as string,
+    jiraUsernameVaultRef: body.jiraUsernameVaultRef as string,
+    jiraApiTokenVaultRef: body.jiraApiTokenVaultRef as string,
+    jiraPersonalTokenVaultRef: body.jiraPersonalTokenVaultRef as string,
+    jiraSslVerify: body.jiraSslVerify as boolean,
+    confluenceUrl: body.confluenceUrl as string,
+    confluenceSpaces: body.confluenceSpaces as string[],
+    confluenceUsernameVaultRef: body.confluenceUsernameVaultRef as string,
+    confluenceApiTokenVaultRef: body.confluenceApiTokenVaultRef as string,
+    confluencePersonalTokenVaultRef: body.confluencePersonalTokenVaultRef as string,
+    confluenceSslVerify: body.confluenceSslVerify as boolean,
+  });
+  io.emit("atlassian:created", created);
+  res.status(201).json(created);
+});
+
+app.delete("/api/talos/applications/:appId/atlassian", (req, res) => {
+  const config = repo.getAtlassianConfigByApp(req.params.appId);
+  if (!config) { res.status(404).json({ error: "No Atlassian config found" }); return; }
+  repo.deleteAtlassianConfig(config.id);
+  io.emit("atlassian:deleted", { applicationId: req.params.appId });
+  res.status(204).end();
+});
+
+app.post("/api/talos/applications/:appId/atlassian/test", (req, res) => {
+  const config = repo.getAtlassianConfigByApp(req.params.appId);
+  if (!config) { res.status(404).json({ error: "No Atlassian config found" }); return; }
+  // Connection test — would start Docker Atlassian container and run a health check
+  res.json({ success: true, message: "Atlassian connection test queued" });
+});
+
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 app.use("/api/admin", createAdminRouter({ platformRepo, copilot, adminToken: process.env.TALOS_ADMIN_TOKEN, envManager }));

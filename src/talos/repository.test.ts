@@ -697,4 +697,248 @@ describe("TalosRepository", () => {
       expect(report.unmappedRequirements).toEqual([]);
     });
   });
+
+  // ── Data Source CRUD ──────────────────────────────────────────────────────
+
+  describe("data sources", () => {
+    let appId: string;
+
+    beforeEach(() => {
+      const app = repo.createApplication({ name: "DS Test App" });
+      appId = app.id;
+    });
+
+    it("should create a data source", () => {
+      const ds = repo.createDataSource({
+        applicationId: appId,
+        label: "Primary DB",
+        driverType: "postgresql",
+        jdbcUrl: "jdbc:postgresql://localhost:5432/test",
+        usernameVaultRef: "vault:db-user",
+        passwordVaultRef: "vault:db-pass",
+      });
+
+      expect(ds.id).toBeDefined();
+      expect(ds.label).toBe("Primary DB");
+      expect(ds.driverType).toBe("postgresql");
+      expect(ds.jdbcUrl).toBe("jdbc:postgresql://localhost:5432/test");
+      expect(ds.isActive).toBe(true);
+      expect(ds.createdAt).toEqual(fixedTime);
+    });
+
+    it("should get a data source by ID", () => {
+      const created = repo.createDataSource({
+        applicationId: appId,
+        label: "Test DB",
+        driverType: "oracle",
+        jdbcUrl: "jdbc:oracle:thin:@localhost:1521:xe",
+        usernameVaultRef: "vault:ora-user",
+        passwordVaultRef: "vault:ora-pass",
+      });
+
+      const fetched = repo.getDataSource(created.id);
+      expect(fetched).toBeDefined();
+      expect(fetched?.label).toBe("Test DB");
+      expect(fetched?.driverType).toBe("oracle");
+    });
+
+    it("should return null for non-existent data source", () => {
+      expect(repo.getDataSource("nonexistent")).toBeNull();
+    });
+
+    it("should list data sources by application", () => {
+      repo.createDataSource({ applicationId: appId, label: "DB A", driverType: "postgresql", jdbcUrl: "jdbc:pg://a", usernameVaultRef: "", passwordVaultRef: "" });
+      repo.createDataSource({ applicationId: appId, label: "DB B", driverType: "mysql", jdbcUrl: "jdbc:mysql://b", usernameVaultRef: "", passwordVaultRef: "" });
+
+      const sources = repo.getDataSourcesByApp(appId);
+      expect(sources).toHaveLength(2);
+      expect(sources.map((s) => s.label)).toEqual(["DB A", "DB B"]);
+    });
+
+    it("should update a data source", () => {
+      const ds = repo.createDataSource({
+        applicationId: appId,
+        label: "Old Label",
+        driverType: "postgresql",
+        jdbcUrl: "jdbc:pg://old",
+        usernameVaultRef: "",
+        passwordVaultRef: "",
+      });
+
+      const updated = repo.updateDataSource(ds.id, { label: "New Label", jdbcUrl: "jdbc:pg://new" });
+      expect(updated?.label).toBe("New Label");
+      expect(updated?.jdbcUrl).toBe("jdbc:pg://new");
+    });
+
+    it("should return null when updating non-existent data source", () => {
+      expect(repo.updateDataSource("fake", { label: "x" })).toBeNull();
+    });
+
+    it("should delete a data source", () => {
+      const ds = repo.createDataSource({
+        applicationId: appId,
+        label: "To Delete",
+        driverType: "sqlite",
+        jdbcUrl: "jdbc:sqlite:test.db",
+        usernameVaultRef: "",
+        passwordVaultRef: "",
+      });
+
+      expect(repo.deleteDataSource(ds.id)).toBe(true);
+      expect(repo.getDataSource(ds.id)).toBeNull();
+    });
+
+    it("should return false when deleting non-existent data source", () => {
+      expect(repo.deleteDataSource("fake")).toBe(false);
+    });
+
+    it("should deactivate a data source", () => {
+      const ds = repo.createDataSource({
+        applicationId: appId,
+        label: "Active DB",
+        driverType: "postgresql",
+        jdbcUrl: "jdbc:pg://x",
+        usernameVaultRef: "",
+        passwordVaultRef: "",
+      });
+
+      expect(ds.isActive).toBe(true);
+      const updated = repo.updateDataSource(ds.id, { isActive: false });
+      expect(updated?.isActive).toBe(false);
+    });
+  });
+
+  // ── Atlassian Config CRUD ─────────────────────────────────────────────────
+
+  describe("atlassian configs", () => {
+    let appId: string;
+
+    beforeEach(() => {
+      const app = repo.createApplication({ name: "Atlassian Test App" });
+      appId = app.id;
+    });
+
+    it("should create an Atlassian config", () => {
+      const config = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "cloud",
+        jiraUrl: "https://test.atlassian.net",
+        jiraProject: "TEST",
+        jiraUsernameVaultRef: "vault:jira-user",
+        jiraApiTokenVaultRef: "vault:jira-token",
+        confluenceUrl: "https://test.atlassian.net/wiki",
+        confluenceSpaces: ["DEV", "QA"],
+      });
+
+      expect(config.id).toBeDefined();
+      expect(config.deploymentType).toBe("cloud");
+      expect(config.jiraUrl).toBe("https://test.atlassian.net");
+      expect(config.jiraProject).toBe("TEST");
+      expect(config.confluenceSpaces).toEqual(["DEV", "QA"]);
+      expect(config.isActive).toBe(true);
+    });
+
+    it("should get an Atlassian config by ID", () => {
+      const created = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "datacenter",
+        jiraUrl: "https://jira.internal.com",
+        jiraProject: "INT",
+      });
+
+      const fetched = repo.getAtlassianConfig(created.id);
+      expect(fetched).toBeDefined();
+      expect(fetched?.deploymentType).toBe("datacenter");
+    });
+
+    it("should return null for non-existent Atlassian config", () => {
+      expect(repo.getAtlassianConfig("nonexistent")).toBeNull();
+    });
+
+    it("should get Atlassian config by application ID", () => {
+      repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "cloud",
+        jiraUrl: "https://test.atlassian.net",
+        jiraProject: "TEST",
+      });
+
+      const config = repo.getAtlassianConfigByApp(appId);
+      expect(config).toBeDefined();
+      expect(config?.applicationId).toBe(appId);
+    });
+
+    it("should return null when no Atlassian config for app", () => {
+      expect(repo.getAtlassianConfigByApp(appId)).toBeNull();
+    });
+
+    it("should update an Atlassian config", () => {
+      const config = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "cloud",
+        jiraUrl: "https://old.atlassian.net",
+        jiraProject: "OLD",
+      });
+
+      const updated = repo.updateAtlassianConfig(config.id, {
+        jiraUrl: "https://new.atlassian.net",
+        jiraProject: "NEW",
+        confluenceSpaces: ["SPACE1"],
+      });
+
+      expect(updated?.jiraUrl).toBe("https://new.atlassian.net");
+      expect(updated?.jiraProject).toBe("NEW");
+      expect(updated?.confluenceSpaces).toEqual(["SPACE1"]);
+    });
+
+    it("should return null when updating non-existent config", () => {
+      expect(repo.updateAtlassianConfig("fake", { jiraUrl: "x" })).toBeNull();
+    });
+
+    it("should delete an Atlassian config", () => {
+      const config = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "cloud",
+        jiraUrl: "https://test.atlassian.net",
+        jiraProject: "TEST",
+      });
+
+      expect(repo.deleteAtlassianConfig(config.id)).toBe(true);
+      expect(repo.getAtlassianConfig(config.id)).toBeNull();
+    });
+
+    it("should return false when deleting non-existent config", () => {
+      expect(repo.deleteAtlassianConfig("fake")).toBe(false);
+    });
+
+    it("should handle SSL verify toggle", () => {
+      const config = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "datacenter",
+        jiraSslVerify: false,
+        confluenceSslVerify: false,
+      });
+
+      expect(config.jiraSslVerify).toBe(false);
+      expect(config.confluenceSslVerify).toBe(false);
+
+      const updated = repo.updateAtlassianConfig(config.id, {
+        jiraSslVerify: true,
+        confluenceSslVerify: true,
+      });
+
+      expect(updated?.jiraSslVerify).toBe(true);
+      expect(updated?.confluenceSslVerify).toBe(true);
+    });
+
+    it("should deactivate an Atlassian config", () => {
+      const config = repo.createAtlassianConfig({
+        applicationId: appId,
+        deploymentType: "cloud",
+      });
+
+      const updated = repo.updateAtlassianConfig(config.id, { isActive: false });
+      expect(updated?.isActive).toBe(false);
+    });
+  });
 });

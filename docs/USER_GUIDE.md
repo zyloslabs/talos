@@ -1235,7 +1235,7 @@ TALOS automatically tags document chunks using a controlled vocabulary:
 | **Personas** | `admin`, `standard`, `guest`, `service`, `user` |
 | **NFR Tags** | `performance`, `security`, `accessibility`, `reliability`, `usability` |
 | **Environments** | `local`, `staging`, `production`, `ci` |
-| **Functional Areas** | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api` |
+| **Functional Areas** | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api`, `database`, `schema`, `jira`, `confluence` |
 
 Tags are detected from content using keyword and regex patterns. Explicit tags from document metadata are also preserved.
 
@@ -1390,21 +1390,120 @@ Use coverage reports to identify gaps in your test coverage and prioritize test 
 
 ## Setup Wizard
 
-The Setup Wizard provides a guided 7-step configuration flow for new TALOS installations, accessible from the UI.
+The Setup Wizard provides a guided 9-step configuration flow for new TALOS installations, accessible from the UI.
 
 ### Wizard Steps
 
 | Step | Name | Description |
 |------|------|-------------|
 | 1 | **Welcome** | Introduction and prerequisites check |
-| 2 | **Authentication** | Connect to GitHub Copilot via device-flow auth |
-| 3 | **Model Selection** | Choose AI model and configure reasoning effort |
-| 4 | **Application Setup** | Register your first target application |
-| 5 | **Vault Credentials** | Configure test user credentials |
-| 6 | **Discovery** | Run initial repository discovery and indexing |
-| 7 | **Verification** | Run a smoke test to verify the setup works |
+| 2 | **Data Sources** | Configure JDBC database connections (PostgreSQL, MySQL, Oracle, SQL Server, etc.) |
+| 3 | **Atlassian** | Connect to Jira and Confluence (Cloud or Data Center) for supplementary context |
+| 4 | **Authentication** | Connect to GitHub Copilot via device-flow auth |
+| 5 | **Model Selection** | Choose AI model and configure reasoning effort |
+| 6 | **Application Setup** | Register your first target application |
+| 7 | **Vault Credentials** | Configure test user credentials |
+| 8 | **Discovery** | Run initial repository discovery and indexing |
+| 9 | **Verification** | Run a smoke test to verify the setup works |
 
 The wizard stores progress locally and can be resumed if interrupted. Each step validates prerequisites before proceeding to the next.
+
+---
+
+## JDBC Database Data Sources
+
+TALOS can connect to external databases via JDBC to pull schema information and live data as supplementary context for test generation. Each database connection runs in an isolated Docker container.
+
+### Supported Drivers
+
+| Driver | JDBC URL Pattern |
+|--------|------------------|
+| PostgreSQL | `jdbc:postgresql://host:5432/dbname` |
+| MySQL | `jdbc:mysql://host:3306/dbname` |
+| SQL Server | `jdbc:sqlserver://host:1433;databaseName=dbname` |
+| Oracle | `jdbc:oracle:thin:@host:1521:sid` |
+| SQLite | `jdbc:sqlite:/path/to/database.db` |
+| H2 | `jdbc:h2:mem:testdb` |
+| MariaDB | `jdbc:mariadb://host:3306/dbname` |
+
+### Adding a Data Source
+
+**Via Setup Wizard:** Step 2 (Data Sources) lets you add one or more database connections during initial setup.
+
+**Via Settings UI:** Navigate to your application's settings, find the **Data Sources** section, and click **Add Data Source**.
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:4001/api/talos/applications/<appId>/data-sources \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "label": "Production DB",
+    "driverType": "postgresql",
+    "jdbcUrl": "jdbc:postgresql://db.example.com:5432/myapp",
+    "usernameVaultRef": "vault:prod-db-user",
+    "passwordVaultRef": "vault:prod-db-pass",
+    "readOnly": true
+  }'
+```
+
+### MCP Tools
+
+| Tool | Description | Risk Level |
+|------|-------------|------------|
+| `talos_db_query` | Execute read-only SQL queries (SELECT only) | medium |
+| `talos_db_describe` | Describe a table's columns and types | low |
+| `talos_db_list_tables` | List all tables in the database | low |
+
+> **Security**: Write operations (INSERT, UPDATE, DELETE, DROP, ALTER, etc.) are rejected by the SQL injection guard.
+
+### RAG Integration
+
+When database schemas are fetched via `talos_db_describe`, the schema content is automatically ingested into the RAG knowledge base as `schema` type chunks, tagged with `database` and `schema` functional areas.
+
+---
+
+## Atlassian Integration (Jira + Confluence)
+
+TALOS can connect to Atlassian Jira and Confluence to pull user stories, requirements, and documentation as supplementary context for test generation.
+
+### Deployment Types
+
+| Type | Description |
+|------|-------------|
+| **Cloud** | Atlassian Cloud instances (e.g., `https://myorg.atlassian.net`) |
+| **Data Center** | Self-hosted Atlassian Data Center instances |
+
+### Configuration
+
+**Via Setup Wizard:** Step 3 (Atlassian) lets you configure Jira and Confluence connections. You can skip this step if not needed.
+
+**Via Settings UI:** Navigate to your application's settings, find the **Atlassian** section.
+
+**Via REST API:**
+```bash
+curl -X POST http://localhost:4001/api/talos/applications/<appId>/atlassian \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "deploymentType": "cloud",
+    "jiraUrl": "https://myorg.atlassian.net",
+    "jiraProject": "PROJ",
+    "jiraUsernameVaultRef": "vault:jira-email",
+    "jiraApiTokenVaultRef": "vault:jira-token",
+    "confluenceUrl": "https://myorg.atlassian.net/wiki",
+    "confluenceSpaces": ["PROJ", "DOCS"]
+  }'
+```
+
+### MCP Tools
+
+| Tool | Description | Risk Level |
+|------|-------------|------------|
+| `talos_jira_search` | Search Jira issues using JQL (auto-scoped to configured project) | low |
+| `talos_confluence_search` | Search Confluence pages using CQL (auto-scoped to configured spaces) | low |
+
+### RAG Integration
+
+Jira issues are ingested as `user_story` chunks and Confluence pages as `requirement` chunks, both tagged with `jira` or `confluence` functional areas respectively.
 
 ---
 
