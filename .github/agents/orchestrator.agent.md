@@ -15,7 +15,7 @@ tools:
   - github/*
   - context7/*
   - cve-search-mcp/*
-  - tavily/*
+  - tavily-mcp/*
 agents:
   - Research
   - Code Planner
