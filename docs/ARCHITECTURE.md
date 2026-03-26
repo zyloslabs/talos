@@ -20,6 +20,7 @@
   - [Healing Module](#healing-module)
   - [Export Module](#export-module)
   - [Knowledge Module](#knowledge-module)
+  - [Integration Module](#integration-module)
   - [UI Module](#ui-module)
 - [Data Architecture](#data-architecture)
   - [SQLite Schema](#sqlite-schema)
@@ -62,18 +63,18 @@ The engine exposes its functionality through **MCP tools** (Model Context Protoc
 ┌──────────────────────────────┴──────────────────────────────────────┐
 │                          MCP Tool Layer                              │
 │  21 tools · Zod validation · Risk-level gating · JSON responses      │
-├─────────┬──────────┬──────────┬──────────┬──────────┬──────────┬────────┤
-│Discovery│   RAG    │Generator │  Runner  │ Healing  │  Export  │Knowledge│
-│         │          │          │          │          │          │         │
-│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │ Package  │Document │
-│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │ Builder  │Ingester │
-│ Client  │          │          │          │          │          │         │
-│         │ Vector   │ Code     │ Artifact │ Fix      │Credential│ Auto    │
-│ File    │ Store    │ Validator│ Manager  │ Generator│Sanitizer │ Tagger  │
-│ Chunker │          │          │          │          │          │         │
-│         │ RAG      │ Test     │Credential│ Healing  │ Export   │         │
-│         │ Pipeline │ Generator│ Injector │ Engine   │ Engine   │         │
-├─────────┴──────────┴──────────┴──────────┴──────────┴──────────┴─────────┤
+├─────────┬──────────┬──────────┬──────────┬──────────┬──────────┬─────────┬─────────────┤
+│Discovery│   RAG    │Generator │  Runner  │ Healing  │  Export  │Knowledge│ Integration │
+│         │          │          │          │          │          │         │             │
+│ GitHub  │ Embed    │ Prompt   │Playwright│ Failure  │ Package  │Document │Docker MCP   │
+│ MCP     │ Service  │ Builder  │ Runner   │ Analyzer │ Builder  │Ingester │Manager      │
+│ Client  │          │          │          │          │          │         │             │
+│         │ Vector   │ Code     │ Artifact │ Fix      │Credential│ Auto    │JDBC Tools   │
+│ File    │ Store    │ Validator│ Manager  │ Generator│Sanitizer │ Tagger  │             │
+│ Chunker │          │          │          │          │          │         │Atlassian    │
+│         │ RAG      │ Test     │Credential│ Healing  │ Export   │         │Tools        │
+│         │ Pipeline │ Generator│ Injector │ Engine   │ Engine   │         │             │
+├─────────┴──────────┴──────────┴──────────┴──────────┴──────────┴─────────┴─────────────┤
 │                        Core Layer                                    │
 │  TalosRepository (SQLite) · TalosConfig (Zod) · Types · initTalos   │
 └─────────────────────────────────────────────────────────────────────┘
@@ -573,7 +574,7 @@ Document ingestion and auto-tagging for the RAG knowledge base. Enables ingestio
 | Personas | `admin`, `standard`, `guest`, `service`, `user` |
 | NFR Tags | `performance`, `security`, `accessibility`, `reliability`, `usability` |
 | Environments | `local`, `staging`, `production`, `ci` |
-| Functional Areas | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api` |
+| Functional Areas | `auth`, `checkout`, `dashboard`, `profile`, `search`, `notifications`, `navigation`, `files`, `api`, `database`, `schema`, `jira`, `confluence` |
 
 #### Chunk ID Format
 
@@ -590,6 +591,38 @@ Combines vector similarity with keyword boosting and metadata filtering:
 - Keyword hit boosting (+0.2 weight)
 - Filter by: `types`, `tags`, `docType`, `persona`, `minConfidence`
 - Exposed via `RagPipeline.retrieveWithFilters()`
+
+---
+
+### Integration Module
+
+**Location:** `src/talos/integration/`
+
+Manages external data source connectivity via Docker-hosted MCP servers. Supports JDBC databases and Atlassian (Jira + Confluence) as supplementary context sources for test generation.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `DockerMcpManager` | Starts, stops, and tracks Docker containers running MCP servers (JDBC via jbang, Atlassian via `ghcr.io/sooperset/mcp-atlassian`) |
+| `createJdbcTools()` | Factory returning 3 MCP tools: `talos_db_query` (read-only SQL), `talos_db_describe`, `talos_db_list_tables` |
+| `createAtlassianTools()` | Factory returning 2 MCP tools: `talos_jira_search` (JQL, auto-scoped to project), `talos_confluence_search` (CQL, auto-scoped to spaces) |
+
+#### Security Controls
+
+- **SQL injection guard**: `isReadOnlyQuery()` rejects any SQL containing write patterns (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, `TRUNCATE`, `GRANT`, `REVOKE`).
+- **Vault-ref credentials**: Database passwords and Atlassian API tokens are stored as `vault:key-name` references, resolved at runtime.
+- **Docker resource limits**: 512 MB memory, 1 CPU per container.
+- **Shutdown hooks**: All containers are stopped on process exit / SIGINT / SIGTERM.
+
+#### Docker Container Lifecycle
+
+```
+startJdbcServer(appId, sourceId, config) → docker run --rm -d eclipse-temurin:21-jre ... jbang
+startAtlassianServer(appId, config)       → docker run --rm -d ghcr.io/sooperset/mcp-atlassian
+stopServer(key)                           → docker stop <containerId>
+stopAllForApp(appId)                      → stops all containers matching appId prefix
+```
 
 ---
 
@@ -815,7 +848,7 @@ Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles — each w
 
 ### SQLite Schema
 
-TALOS uses a normalized relational schema with 7 core tables:
+TALOS uses a normalized relational schema with 9 core tables:
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
@@ -856,6 +889,15 @@ TALOS uses a normalized relational schema with 7 core tables:
    │   status, confidence, tags) │       │   acceptanceCriteriaId,│
    └────────────────────────────┘       │   testId, coverage)   │
                                         └──────────────────────┘
+
+   ┌────────────────────────────┐       ┌──────────────────────────────┐
+   │  talos_data_sources         │       │   talos_atlassian_configs     │
+   │  (id, application_id,       │       │  (id, application_id,         │
+   │   label, driver_type,       │       │   deployment_type,            │
+   │   jdbc_url, vault refs,     │       │   jira_url, jira_project,     │
+   │   is_active, read_only)     │       │   confluence_url, vault refs, │
+   └────────────────────────────┘       │   is_active, ssl_verify)      │
+                                        └──────────────────────────────┘
 ```
 
 **Index strategy**: Every foreign key is indexed. Additional indexes on `status`, `type`, `name`, and `created_at` for common query patterns.
@@ -918,6 +960,15 @@ TalosConfig
 ├── artifacts: ArtifactsConfig
 │   ├── path, retentionDays, maxStorageMb
 ├── discovery: DiscoveryConfig
+├── jdbcDataSources: JdbcDataSourceConfig[]
+│   ├── enabled, label, driverType
+│   ├── jdbcUrl, usernameVaultRef, passwordVaultRef
+│   └── readOnly (default: true)
+├── atlassian: AtlassianConfig
+│   ├── enabled, deploymentType (cloud/datacenter)
+│   ├── jiraUrl, jiraProject, jiraApiTokenVaultRef
+│   ├── confluenceUrl, confluenceSpaces[]
+│   └── sslVerifyJira, sslVerifyConfluence, transport
 │   ├── includeExtensions[], excludePatterns[]
 │   ├── maxFileSizeBytes, chunkSize, chunkOverlap
 └── githubMcp: GitHubMcpConfig

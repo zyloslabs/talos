@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **JDBC Database Data Sources & Atlassian Integration** (Epic #328): Connect to external databases and Atlassian tools as supplementary context sources for test generation.
+  - JDBC data source config schema (`jdbcDataSourceConfigSchema`) and Atlassian config schema (`atlassianConfigSchema`) with Zod validation (#329).
+  - `TalosDataSource` and `TalosAtlassianConfig` domain types with full Create/Update input and SQLite stored row types (#329).
+  - `talos_data_sources` and `talos_atlassian_configs` SQLite tables with migrations, indexes, and full CRUD methods on `TalosRepository` (#330, #331).
+  - `DockerMcpManager` class: start/stop/track Docker containers for JDBC (jbang) and Atlassian MCP servers with resource limits and shutdown hooks (#332).
+  - JDBC MCP tools: `talos_db_query` (read-only SQL with injection guard), `talos_db_describe`, `talos_db_list_tables` (#333).
+  - Atlassian MCP tools: `talos_jira_search` (JQL auto-scoped to project), `talos_confluence_search` (CQL auto-scoped to spaces) (#334).
+  - REST API endpoints for data sources and Atlassian config CRUD under `/api/talos/applications/:appId/data-sources` and `/api/talos/applications/:appId/atlassian` (#335).
+  - Setup Wizard new steps: "Data Sources" (step 2) and "Atlassian" (step 3) with multi-source support, driver selection, and connection testing (#336, #337).
+  - Settings UI panels: `DataSourceSettings` and `AtlassianSettings` components for managing integrations on existing applications (#338, #339).
+  - RAG Knowledge Base integration: `ingestSchemaData()` and `ingestAtlassianContent()` methods on `DocumentIngester` for auto-ingesting database schemas and Jira/Confluence content (#340).
+  - Auto-tagger extended with `database`, `schema`, `jira`, `confluence` functional area categories (#340).
+  - Architecture and User Guide documentation updated with new Integration module, updated wizard steps, and configuration reference (#341).
+
 - **Microsoft 365 Copilot Integration** (Epic #310): Search, fetch, and convert M365 documents from within Talos.
   - M365 config schema (`m365ConfigSchema`) with URL, browser data dir, docs dir, and MFA timeout settings (#317).
   - `BrowserAuth` class: Playwright persistent-context authentication with MFA support and corporate proxy passthrough (#313).

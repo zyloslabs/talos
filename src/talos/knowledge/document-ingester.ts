@@ -410,4 +410,92 @@ export class DocumentIngester {
     result.paths = paths;
     return result;
   }
+
+  /**
+   * Ingest JDBC schema information (table descriptions, column lists)
+   * as 'schema' chunks for data-driven test generation.
+   */
+  async ingestSchemaData(
+    appId: string,
+    tableName: string,
+    schemaContent: string,
+    dataSourceLabel: string
+  ): Promise<IngestResult> {
+    const docId = `schema:${appId}:${dataSourceLabel}:${tableName}`;
+    const stableId = `schema:${appId}:${dataSourceLabel}:${tableName}`;
+    const hash = contentHash(schemaContent);
+    const tags = ["database", "schema", dataSourceLabel.toLowerCase().replace(/\s+/g, "-")];
+
+    const chunks: ChunkResult[] = [{
+      content: `## Table: ${tableName}\n\nData Source: ${dataSourceLabel}\n\n${schemaContent}`,
+      filePath: `schema/${dataSourceLabel}/${tableName}`,
+      startLine: 0,
+      endLine: 0,
+      type: "schema" as const,
+      contentHash: hash,
+      metadata: {
+        stableId,
+        docId,
+        chunkType: "schema" as const,
+        contentHash: hash,
+        tags,
+        sourceVersion: "live",
+      },
+    }];
+
+    const result = await this.ragPipeline.indexChunks(appId, chunks);
+    return {
+      chunksCreated: result.indexed,
+      chunksSkipped: result.skipped,
+      totalTokens: result.totalTokens,
+      docId,
+    };
+  }
+
+  /**
+   * Ingest Atlassian content (Jira issues, Confluence pages)
+   * as 'requirement' or 'user_story' chunks for RAG-powered test generation.
+   */
+  async ingestAtlassianContent(
+    appId: string,
+    content: string,
+    source: "jira" | "confluence",
+    itemKey: string,
+    title: string
+  ): Promise<IngestResult> {
+    const docId = `${source}:${appId}:${itemKey}`;
+    const chunkType = source === "jira" ? "user_story" : "requirement";
+    const hash = contentHash(content);
+    const tags = this.autoTagger.autoTag(content, {
+      fileName: `${source}/${itemKey}`,
+      docType: source === "jira" ? "user_story" : "prd",
+    });
+
+    const fullContent = `## ${title}\n\nSource: ${source.toUpperCase()} ${itemKey}\n\n${content}`;
+
+    const chunks: ChunkResult[] = [{
+      content: fullContent,
+      filePath: `${source}/${itemKey}`,
+      startLine: 0,
+      endLine: 0,
+      type: chunkType as TalosChunkType,
+      contentHash: hash,
+      metadata: {
+        stableId: docId,
+        docId,
+        chunkType,
+        contentHash: hash,
+        tags,
+        sourceVersion: "live",
+      },
+    }];
+
+    const result = await this.ragPipeline.indexChunks(appId, chunks);
+    return {
+      chunksCreated: result.indexed,
+      chunksSkipped: result.skipped,
+      totalTokens: result.totalTokens,
+      docId,
+    };
+  }
 }
