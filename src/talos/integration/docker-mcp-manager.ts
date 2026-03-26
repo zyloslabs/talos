@@ -93,8 +93,10 @@ export class DockerMcpManager {
       "--cpus", "1",
       "--network", "none",
       "eclipse-temurin:21-jre",
-      "sh", "-c",
-      `jbang jdbc@quarkiverse/quarkus-mcp-servers "${dataSource.jdbcUrl}" -u "${resolvedCredentials.username}" -p "${resolvedCredentials.password}"`,
+      "jbang", "jdbc@quarkiverse/quarkus-mcp-servers",
+      dataSource.jdbcUrl,
+      "-u", resolvedCredentials.username,
+      "-p", resolvedCredentials.password,
     ];
 
     const { stdout } = await execFileAsync(this.dockerPath, args, { timeout: 30000 });

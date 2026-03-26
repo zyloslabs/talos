@@ -115,6 +115,105 @@ describe("JDBC MCP Tools", () => {
       expect(result.isError).toBe(true);
       expect(result.text).toContain("inactive");
     });
+
+    it("should reject semicolons (statement stacking)", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({ dataSourceId: "ds-001", query: "SELECT 1; DROP TABLE users" });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("Only SELECT queries are allowed");
+    });
+
+    it("should reject CTE with DML (DELETE)", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject CTE with DML (INSERT)", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "WITH x AS (INSERT INTO users VALUES (1) RETURNING id) SELECT * FROM x",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject SELECT INTO OUTFILE", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "SELECT * FROM users INTO OUTFILE '/tmp/data.csv'",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject SELECT INTO DUMPFILE", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "SELECT * FROM users INTO DUMPFILE '/tmp/data.bin'",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject SELECT INTO @variable", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "SELECT password FROM users INTO @pw",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject queries hidden behind block comments", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "/* legitimate query */ DROP TABLE users",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should reject queries hidden behind line comments", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "-- SELECT * FROM users\nDROP TABLE users",
+      });
+      expect(result.isError).toBe(true);
+    });
+
+    it("should allow valid SELECT with string containing keywords", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "SELECT * FROM users WHERE name = 'DROP TABLE test'",
+      });
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should allow legitimate CTE with SELECT only", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "WITH active AS (SELECT * FROM users WHERE active = true) SELECT * FROM active",
+      });
+      // Note: current implementation is conservative — CTEs are checked for DML keywords
+      // A purely SELECT CTE should pass since it doesn't contain DML keywords
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("should reject CTE with DROP", async () => {
+      const tool = tools.find((t) => t.name === "talos_db_query")!;
+      const result = await tool.handler({
+        dataSourceId: "ds-001",
+        query: "WITH x AS (DROP TABLE users) SELECT 1",
+      });
+      expect(result.isError).toBe(true);
+    });
   });
 
   describe("talos_db_describe", () => {

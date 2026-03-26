@@ -26,7 +26,7 @@ import { BrowserAuth } from "./talos/m365/browser-auth.js";
 import { CopilotScraper } from "./talos/m365/scraper.js";
 import { EphemeralStore } from "./talos/m365/ephemeral.js";
 import { createM365Router } from "./api/m365.js";
-import { parseTalosConfig } from "./talos/config.js";
+import { parseTalosConfig, createDataSourceInputSchema, atlassianConfigInputSchema } from "./talos/config.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -312,16 +312,18 @@ app.post("/api/talos/applications/:appId/data-sources", (req, res) => {
   const app_ = repo.getApplication(req.params.appId);
   if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
 
-  const { label, driverType, jdbcUrl, usernameVaultRef, passwordVaultRef } = req.body as Record<string, string>;
-  if (!label || !jdbcUrl) { res.status(400).json({ error: "label and jdbcUrl are required" }); return; }
+  const parsed = createDataSourceInputSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }); return; }
+
+  const { label, driverType, jdbcUrl, usernameVaultRef, passwordVaultRef } = parsed.data;
 
   const created = repo.createDataSource({
     applicationId: req.params.appId,
     label,
-    driverType: (driverType ?? "postgresql") as Parameters<typeof repo.createDataSource>[0]["driverType"],
+    driverType,
     jdbcUrl,
-    usernameVaultRef: usernameVaultRef ?? "",
-    passwordVaultRef: passwordVaultRef ?? "",
+    usernameVaultRef,
+    passwordVaultRef,
   });
   io.emit("datasource:created", created);
   res.status(201).json(created);
@@ -371,31 +373,21 @@ app.post("/api/talos/applications/:appId/atlassian", (req, res) => {
   const app_ = repo.getApplication(req.params.appId);
   if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
 
+  const parsed = atlassianConfigInputSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: "Validation failed", details: parsed.error.flatten().fieldErrors }); return; }
+
   // Check if config already exists — update it
   const existing = repo.getAtlassianConfigByApp(req.params.appId);
   if (existing) {
-    const updated = repo.updateAtlassianConfig(existing.id, req.body as Parameters<typeof repo.updateAtlassianConfig>[1]);
+    const updated = repo.updateAtlassianConfig(existing.id, parsed.data as Parameters<typeof repo.updateAtlassianConfig>[1]);
     io.emit("atlassian:updated", updated);
     res.json(updated);
     return;
   }
 
-  const body = req.body as Record<string, unknown>;
   const created = repo.createAtlassianConfig({
     applicationId: req.params.appId,
-    deploymentType: (body.deploymentType as "cloud" | "datacenter") ?? "cloud",
-    jiraUrl: body.jiraUrl as string,
-    jiraProject: body.jiraProject as string,
-    jiraUsernameVaultRef: body.jiraUsernameVaultRef as string,
-    jiraApiTokenVaultRef: body.jiraApiTokenVaultRef as string,
-    jiraPersonalTokenVaultRef: body.jiraPersonalTokenVaultRef as string,
-    jiraSslVerify: body.jiraSslVerify as boolean,
-    confluenceUrl: body.confluenceUrl as string,
-    confluenceSpaces: body.confluenceSpaces as string[],
-    confluenceUsernameVaultRef: body.confluenceUsernameVaultRef as string,
-    confluenceApiTokenVaultRef: body.confluenceApiTokenVaultRef as string,
-    confluencePersonalTokenVaultRef: body.confluencePersonalTokenVaultRef as string,
-    confluenceSslVerify: body.confluenceSslVerify as boolean,
+    ...parsed.data,
   });
   io.emit("atlassian:created", created);
   res.status(201).json(created);

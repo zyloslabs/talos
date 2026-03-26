@@ -14,10 +14,59 @@ import type { DockerMcpManager } from "./docker-mcp-manager.js";
 
 const SQL_WRITE_PATTERN = /^\s*(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|REPLACE|GRANT|REVOKE|EXEC|EXECUTE|CALL)\b/i;
 
+const SQL_DML_KEYWORDS = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|MERGE|REPLACE|GRANT|REVOKE|EXEC|EXECUTE|CALL)\b/i;
+
+const SQL_INTO_WRITE_PATTERN = /\bINTO\s+(OUTFILE|DUMPFILE|@)/i;
+
+const SQL_SELECT_INTO_PATTERN = /\bSELECT\b[\s\S]+\bINTO\s+/i;
+
+/**
+ * Strip SQL string literals to prevent false positives/negatives from
+ * keywords embedded inside quoted strings.
+ */
+function stripStringLiterals(sql: string): string {
+  return sql
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''")   // single-quoted strings
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""');   // double-quoted strings
+}
+
+/**
+ * Strip SQL comments (block and line) before validation.
+ */
+function stripComments(sql: string): string {
+  return sql.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--[^\n]*/g, "");
+}
+
 function isReadOnlyQuery(sql: string): boolean {
-  // Strip leading comments
-  const stripped = sql.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--[^\n]*/g, "").trim();
-  return !SQL_WRITE_PATTERN.test(stripped);
+  // Step 1: Strip comments
+  const stripped = stripComments(sql).trim();
+
+  // Step 2: Must start with SELECT or WITH (for CTEs); anything else is rejected
+  if (!/^\s*(SELECT|WITH)\b/i.test(stripped)) {
+    return false;
+  }
+  if (SQL_WRITE_PATTERN.test(stripped)) return false;
+
+  // Step 3: Strip string literals so quoted keywords don't trigger false positives
+  const noStrings = stripStringLiterals(stripped);
+
+  // Step 4: Reject semicolons (statement stacking)
+  if (noStrings.includes(";")) return false;
+
+  // Step 5: Reject SELECT INTO (write via SELECT)
+  if (SQL_SELECT_INTO_PATTERN.test(noStrings)) return false;
+
+  // Step 6: Reject INTO OUTFILE/DUMPFILE/@variable
+  if (SQL_INTO_WRITE_PATTERN.test(noStrings)) return false;
+
+  // Step 7: If query starts with WITH (CTE), check that the CTE body doesn't contain DML
+  if (/^\s*WITH\b/i.test(noStrings)) {
+    // Extract everything between WITH and the final SELECT
+    const cteBody = noStrings.replace(/^\s*WITH\b/i, "");
+    if (SQL_DML_KEYWORDS.test(cteBody)) return false;
+  }
+
+  return true;
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
