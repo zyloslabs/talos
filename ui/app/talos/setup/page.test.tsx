@@ -55,6 +55,13 @@ vi.mock("@/lib/api", () => ({
   m365Status: vi.fn().mockResolvedValue({ status: "disabled", message: "M365 integration is not enabled" }),
   m365Search: vi.fn().mockResolvedValue({ results: [] }),
   m365Fetch: vi.fn().mockResolvedValue({ content: "", savedPath: "" }),
+  getDataSources: vi.fn().mockResolvedValue([]),
+  createDataSource: vi.fn().mockResolvedValue({ id: "ds-1", label: "Test DB" }),
+  deleteDataSource: vi.fn().mockResolvedValue(undefined),
+  testDataSourceConnection: vi.fn().mockResolvedValue({ success: true }),
+  getAtlassianConfig: vi.fn().mockResolvedValue(null),
+  saveAtlassianConfig: vi.fn().mockResolvedValue({ id: "atl-1" }),
+  testAtlassianConnection: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 function renderWithProviders(ui: React.ReactElement) {
@@ -90,7 +97,7 @@ describe("SetupPage", () => {
     });
     fireEvent.click(screen.getByText("Test App"));
     await waitFor(() => {
-      expect(screen.getByText("Upload requirements documents")).toBeInTheDocument();
+      expect(screen.getByText("Configure JDBC database connections")).toBeInTheDocument();
     });
   });
 

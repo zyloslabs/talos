@@ -147,6 +147,35 @@ describe("jdbcDataSourceConfigSchema", () => {
   it("should reject invalid driver type", () => {
     expect(() => jdbcDataSourceConfigSchema.parse({ driverType: "invalid" })).toThrow();
   });
+
+  it("should reject invalid JDBC URL format", () => {
+    expect(() => jdbcDataSourceConfigSchema.parse({ jdbcUrl: "not-a-jdbc-url" })).toThrow();
+  });
+
+  it("should accept valid Oracle JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:oracle:thin:@//dbhost:1521/orcl" });
+    expect(config.jdbcUrl).toBe("jdbc:oracle:thin:@//dbhost:1521/orcl");
+  });
+
+  it("should accept valid MySQL JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:mysql://localhost:3306/mydb" });
+    expect(config.jdbcUrl).toBe("jdbc:mysql://localhost:3306/mydb");
+  });
+
+  it("should accept valid SQLite JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:sqlite:/tmp/test.db" });
+    expect(config.jdbcUrl).toBe("jdbc:sqlite:/tmp/test.db");
+  });
+
+  it("should accept valid SQL Server JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:sqlserver://host:1433" });
+    expect(config.jdbcUrl).toBe("jdbc:sqlserver://host:1433");
+  });
+
+  it("should accept empty JDBC URL (default)", () => {
+    const config = jdbcDataSourceConfigSchema.parse({});
+    expect(config.jdbcUrl).toBe("");
+  });
 });
 
 describe("atlassianConfigSchema", () => {
@@ -198,7 +227,7 @@ describe("talosConfigSchema with new fields", () => {
   it("should parse config with JDBC data sources", () => {
     const config = parseTalosConfig({
       jdbcDataSources: [
-        { enabled: true, jdbcUrl: "jdbc:pg://x", driverType: "postgresql", label: "PG" },
+        { enabled: true, jdbcUrl: "jdbc:postgresql://localhost:5432/x", driverType: "postgresql", label: "PG" },
       ],
     });
 
