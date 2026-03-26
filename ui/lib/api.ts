@@ -507,3 +507,70 @@ export const setProxyConfig = async (config: ProxyConfig) => {
 
 export const testProxyConnection = () =>
   fetchApi<{ connected: boolean; latencyMs?: number; error?: string }>("/api/admin/proxy/test", { method: "POST" });
+
+// ── Data Sources ──────────────────────────────────────────────────────────────
+
+export interface TalosDataSource {
+  id: string;
+  applicationId: string;
+  label: string;
+  driverType: "oracle" | "postgresql" | "mysql" | "sqlserver" | "sqlite" | "other";
+  jdbcUrl: string;
+  usernameVaultRef: string;
+  passwordVaultRef: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getDataSources = (appId: string) =>
+  fetchApi<TalosDataSource[]>(`/api/talos/applications/${appId}/data-sources`);
+export const createDataSource = (appId: string, data: Partial<TalosDataSource>) =>
+  fetchApi<TalosDataSource>(`/api/talos/applications/${appId}/data-sources`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+export const updateDataSource = (appId: string, id: string, data: Partial<TalosDataSource>) =>
+  fetchApi<TalosDataSource>(`/api/talos/applications/${appId}/data-sources/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+export const deleteDataSource = (appId: string, id: string) =>
+  fetchApi<void>(`/api/talos/applications/${appId}/data-sources/${id}`, { method: "DELETE" });
+export const testDataSourceConnection = (appId: string, id: string) =>
+  fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/data-sources/${id}/test`, { method: "POST" });
+
+// ── Atlassian Config ──────────────────────────────────────────────────────────
+
+export interface TalosAtlassianConfig {
+  id: string;
+  applicationId: string;
+  deploymentType: "cloud" | "datacenter";
+  jiraUrl: string;
+  jiraProject: string;
+  jiraUsernameVaultRef: string;
+  jiraApiTokenVaultRef: string;
+  jiraPersonalTokenVaultRef: string;
+  jiraSslVerify: boolean;
+  confluenceUrl: string;
+  confluenceSpaces: string[];
+  confluenceUsernameVaultRef: string;
+  confluenceApiTokenVaultRef: string;
+  confluencePersonalTokenVaultRef: string;
+  confluenceSslVerify: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getAtlassianConfig = (appId: string) =>
+  fetchApi<TalosAtlassianConfig>(`/api/talos/applications/${appId}/atlassian`);
+export const saveAtlassianConfig = (appId: string, data: Partial<TalosAtlassianConfig>) =>
+  fetchApi<TalosAtlassianConfig>(`/api/talos/applications/${appId}/atlassian`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+export const deleteAtlassianConfig = (appId: string) =>
+  fetchApi<void>(`/api/talos/applications/${appId}/atlassian`, { method: "DELETE" });
+export const testAtlassianConnection = (appId: string) =>
+  fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/atlassian/test`, { method: "POST" });

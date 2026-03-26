@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseTalosConfig, getDefaultTalosConfig, talosConfigSchema } from "./config.js";
+import { parseTalosConfig, getDefaultTalosConfig, talosConfigSchema, jdbcDataSourceConfigSchema, atlassianConfigSchema } from "./config.js";
 
 describe("parseTalosConfig", () => {
   it("should return default config when no input provided", () => {
@@ -115,5 +115,136 @@ describe("talosConfigSchema", () => {
   it("should be a valid Zod schema", () => {
     expect(talosConfigSchema.parse).toBeDefined();
     expect(typeof talosConfigSchema.parse).toBe("function");
+  });
+});
+
+describe("jdbcDataSourceConfigSchema", () => {
+  it("should return defaults when no input provided", () => {
+    const config = jdbcDataSourceConfigSchema.parse({});
+    expect(config.enabled).toBe(false);
+    expect(config.driverType).toBe("postgresql");
+    expect(config.readOnly).toBe(true);
+    expect(config.jdbcUrl).toBe("");
+    expect(config.label).toBe("");
+  });
+
+  it("should accept valid config", () => {
+    const config = jdbcDataSourceConfigSchema.parse({
+      enabled: true,
+      jdbcUrl: "jdbc:postgresql://localhost:5432/mydb",
+      driverType: "oracle",
+      usernameVaultRef: "vault:db-user",
+      passwordVaultRef: "vault:db-pass",
+      label: "My Oracle DB",
+      readOnly: true,
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.driverType).toBe("oracle");
+    expect(config.label).toBe("My Oracle DB");
+  });
+
+  it("should reject invalid driver type", () => {
+    expect(() => jdbcDataSourceConfigSchema.parse({ driverType: "invalid" })).toThrow();
+  });
+
+  it("should reject invalid JDBC URL format", () => {
+    expect(() => jdbcDataSourceConfigSchema.parse({ jdbcUrl: "not-a-jdbc-url" })).toThrow();
+  });
+
+  it("should accept valid Oracle JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:oracle:thin:@//dbhost:1521/orcl" });
+    expect(config.jdbcUrl).toBe("jdbc:oracle:thin:@//dbhost:1521/orcl");
+  });
+
+  it("should accept valid MySQL JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:mysql://localhost:3306/mydb" });
+    expect(config.jdbcUrl).toBe("jdbc:mysql://localhost:3306/mydb");
+  });
+
+  it("should accept valid SQLite JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:sqlite:/tmp/test.db" });
+    expect(config.jdbcUrl).toBe("jdbc:sqlite:/tmp/test.db");
+  });
+
+  it("should accept valid SQL Server JDBC URL", () => {
+    const config = jdbcDataSourceConfigSchema.parse({ jdbcUrl: "jdbc:sqlserver://host:1433" });
+    expect(config.jdbcUrl).toBe("jdbc:sqlserver://host:1433");
+  });
+
+  it("should accept empty JDBC URL (default)", () => {
+    const config = jdbcDataSourceConfigSchema.parse({});
+    expect(config.jdbcUrl).toBe("");
+  });
+});
+
+describe("atlassianConfigSchema", () => {
+  it("should return defaults when no input provided", () => {
+    const config = atlassianConfigSchema.parse({});
+    expect(config.enabled).toBe(false);
+    expect(config.deploymentType).toBe("cloud");
+    expect(config.jiraSslVerify).toBe(true);
+    expect(config.confluenceSslVerify).toBe(true);
+    expect(config.confluenceSpaces).toEqual([]);
+    expect(config.transport).toBe("docker");
+  });
+
+  it("should accept valid cloud config", () => {
+    const config = atlassianConfigSchema.parse({
+      enabled: true,
+      deploymentType: "cloud",
+      jiraUrl: "https://test.atlassian.net",
+      jiraProject: "TEST",
+      jiraUsernameVaultRef: "vault:jira-user",
+      jiraApiTokenVaultRef: "vault:jira-token",
+      confluenceUrl: "https://test.atlassian.net/wiki",
+      confluenceSpaces: ["DEV", "QA"],
+    });
+
+    expect(config.enabled).toBe(true);
+    expect(config.deploymentType).toBe("cloud");
+    expect(config.confluenceSpaces).toEqual(["DEV", "QA"]);
+  });
+
+  it("should accept datacenter deployment type", () => {
+    const config = atlassianConfigSchema.parse({ deploymentType: "datacenter" });
+    expect(config.deploymentType).toBe("datacenter");
+  });
+
+  it("should reject invalid deployment type", () => {
+    expect(() => atlassianConfigSchema.parse({ deploymentType: "invalid" })).toThrow();
+  });
+});
+
+describe("talosConfigSchema with new fields", () => {
+  it("should include jdbcDataSources and atlassian in default config", () => {
+    const config = getDefaultTalosConfig();
+    expect(config.jdbcDataSources).toEqual([]);
+    expect(config.atlassian.enabled).toBe(false);
+    expect(config.atlassian.deploymentType).toBe("cloud");
+  });
+
+  it("should parse config with JDBC data sources", () => {
+    const config = parseTalosConfig({
+      jdbcDataSources: [
+        { enabled: true, jdbcUrl: "jdbc:postgresql://localhost:5432/x", driverType: "postgresql", label: "PG" },
+      ],
+    });
+
+    expect(config.jdbcDataSources).toHaveLength(1);
+    expect(config.jdbcDataSources[0].label).toBe("PG");
+  });
+
+  it("should parse config with Atlassian settings", () => {
+    const config = parseTalosConfig({
+      atlassian: {
+        enabled: true,
+        jiraUrl: "https://jira.example.com",
+        jiraProject: "PROJ",
+      },
+    });
+
+    expect(config.atlassian.enabled).toBe(true);
+    expect(config.atlassian.jiraUrl).toBe("https://jira.example.com");
   });
 });
