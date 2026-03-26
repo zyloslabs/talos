@@ -194,6 +194,102 @@ export const m365ConfigSchema = z.object({
 
 export type M365Config = z.infer<typeof m365ConfigSchema>;
 
+// ── JDBC Data Source Config ────────────────────────────────────────────────
+
+export const jdbcDataSourceConfigSchema = z.object({
+  /** Whether this data source integration is enabled */
+  enabled: z.boolean().default(false),
+  /** JDBC connection URL */
+  jdbcUrl: z.string().default("").refine(
+    (val) => val === "" || /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val),
+    { message: "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)" },
+  ),
+  /** Database driver type */
+  driverType: z.enum(["oracle", "postgresql", "mysql", "sqlserver", "sqlite", "other"]).default("postgresql"),
+  /** Vault reference for database username */
+  usernameVaultRef: z.string().default(""),
+  /** Vault reference for database password */
+  passwordVaultRef: z.string().default(""),
+  /** Human-readable label for this data source */
+  label: z.string().default(""),
+  /** Whether to enforce read-only access */
+  readOnly: z.boolean().default(true),
+});
+
+export type JdbcDataSourceConfig = z.infer<typeof jdbcDataSourceConfigSchema>;
+
+// ── Atlassian Integration Config ──────────────────────────────────────────
+
+export const atlassianConfigSchema = z.object({
+  /** Whether Atlassian integration is enabled */
+  enabled: z.boolean().default(false),
+  /** Deployment type */
+  deploymentType: z.enum(["cloud", "datacenter"]).default("cloud"),
+  /** Jira server URL */
+  jiraUrl: z.string().default(""),
+  /** Jira project key */
+  jiraProject: z.string().default(""),
+  /** Vault reference for Jira username */
+  jiraUsernameVaultRef: z.string().default(""),
+  /** Vault reference for Jira API token (Cloud) */
+  jiraApiTokenVaultRef: z.string().default(""),
+  /** Vault reference for Jira personal access token (Data Center) */
+  jiraPersonalTokenVaultRef: z.string().default(""),
+  /** Whether to verify SSL for Jira */
+  jiraSslVerify: z.boolean().default(true),
+  /** Confluence server URL */
+  confluenceUrl: z.string().default(""),
+  /** Confluence space keys to search */
+  confluenceSpaces: z.array(z.string()).default([]),
+  /** Vault reference for Confluence username */
+  confluenceUsernameVaultRef: z.string().default(""),
+  /** Vault reference for Confluence API token (Cloud) */
+  confluenceApiTokenVaultRef: z.string().default(""),
+  /** Vault reference for Confluence personal access token (Data Center) */
+  confluencePersonalTokenVaultRef: z.string().default(""),
+  /** Whether to verify SSL for Confluence */
+  confluenceSslVerify: z.boolean().default(true),
+  /** Transport mechanism for MCP server */
+  transport: z.enum(["docker"]).default("docker"),
+});
+
+export type AtlassianConfig = z.infer<typeof atlassianConfigSchema>;
+
+// ── API Input Schemas ─────────────────────────────────────────────────────────
+
+/** Zod schema for validating POST /data-sources request body */
+export const createDataSourceInputSchema = z.object({
+  label: z.string().min(1, "label is required"),
+  driverType: z.enum(["oracle", "postgresql", "mysql", "sqlserver", "sqlite", "other"]).default("postgresql"),
+  jdbcUrl: z.string().min(1, "jdbcUrl is required").refine(
+    (val) => /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val),
+    { message: "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)" },
+  ),
+  usernameVaultRef: z.string().default(""),
+  passwordVaultRef: z.string().default(""),
+});
+
+export type CreateDataSourceApiInput = z.infer<typeof createDataSourceInputSchema>;
+
+/** Zod schema for validating POST /atlassian request body */
+export const atlassianConfigInputSchema = z.object({
+  deploymentType: z.enum(["cloud", "datacenter"]).default("cloud"),
+  jiraUrl: z.string().default(""),
+  jiraProject: z.string().default(""),
+  jiraUsernameVaultRef: z.string().default(""),
+  jiraApiTokenVaultRef: z.string().default(""),
+  jiraPersonalTokenVaultRef: z.string().default(""),
+  jiraSslVerify: z.boolean().default(true),
+  confluenceUrl: z.string().default(""),
+  confluenceSpaces: z.array(z.string()).default([]),
+  confluenceUsernameVaultRef: z.string().default(""),
+  confluenceApiTokenVaultRef: z.string().default(""),
+  confluencePersonalTokenVaultRef: z.string().default(""),
+  confluenceSslVerify: z.boolean().default(true),
+});
+
+export type AtlassianConfigApiInput = z.infer<typeof atlassianConfigInputSchema>;
+
 // ── Corporate Proxy Config ────────────────────────────────────────────────
 
 export const proxyConfigSchema = z.object({
@@ -236,6 +332,10 @@ export const talosConfigSchema = z.object({
   m365: m365ConfigSchema.default(m365ConfigSchema.parse({})),
   /** Corporate proxy configuration */
   proxy: proxyConfigSchema.default(proxyConfigSchema.parse({})),
+  /** JDBC data source configuration */
+  jdbcDataSources: z.array(jdbcDataSourceConfigSchema).default([]),
+  /** Atlassian (Jira + Confluence) integration configuration */
+  atlassian: atlassianConfigSchema.default(atlassianConfigSchema.parse({})),
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;

@@ -20,6 +20,7 @@ export const ENVIRONMENTS = ["local", "staging", "production", "ci"] as const;
 export const FUNCTIONAL_AREAS = [
   "auth", "checkout", "dashboard", "profile", "search",
   "notifications", "navigation", "files", "api",
+  "database", "schema", "jira", "confluence",
 ] as const;
 
 /** All controlled vocabulary tags combined */
@@ -66,6 +67,10 @@ const FUNCTIONAL_AREA_PATTERNS: Array<{ pattern: RegExp; tag: string }> = [
   { pattern: /\b(?:navigation|menu|sidebar|header|footer|breadcrumb)\b/i, tag: "navigation" },
   { pattern: /\b(?:upload|download|file|import|export)\b/i, tag: "files" },
   { pattern: /\b(?:API|endpoint|REST|GraphQL|webhook)\b/i, tag: "api" },
+  { pattern: /\b(?:database|db|JDBC|SQL|table|column|row|relational|data\s*source)\b/i, tag: "database" },
+  { pattern: /\b(?:schema|DDL|CREATE TABLE|ALTER TABLE|migration|index|constraint|foreign key)\b/i, tag: "schema" },
+  { pattern: /\b(?:Jira|issue tracker|sprint|backlog|story point|epic|user story|JQL)\b/i, tag: "jira" },
+  { pattern: /\b(?:Confluence|wiki|knowledge base|page tree|space|CQL)\b/i, tag: "confluence" },
 ];
 
 // ── AutoTagger Class ──────────────────────────────────────────────────────────

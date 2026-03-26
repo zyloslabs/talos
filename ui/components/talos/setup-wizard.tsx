@@ -22,11 +22,20 @@ import {
   m365Search,
   m365Fetch,
   m365Status,
+  getDataSources,
+  createDataSource,
+  deleteDataSource,
+  testDataSourceConnection,
+  getAtlassianConfig,
+  saveAtlassianConfig,
+  testAtlassianConnection,
   type TalosApplication,
   type AcceptanceCriteria,
   type TraceabilityReport,
   type M365SearchResult,
   type M365SessionStatus,
+  type TalosDataSource,
+  type TalosAtlassianConfig,
 } from "@/lib/api";
 import {
   CheckCircle2,
@@ -41,6 +50,9 @@ import {
   Search,
   Globe,
   Shield,
+  Database,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +60,8 @@ import { cn } from "@/lib/utils";
 
 const STEPS = [
   { label: "Register App", description: "Set up your target application" },
+  { label: "Data Sources", description: "Configure JDBC database connections" },
+  { label: "Atlassian", description: "Connect Jira & Confluence (optional)" },
   { label: "Upload Docs", description: "Upload requirements documents" },
   { label: "Vault Roles", description: "Configure test credentials" },
   { label: "Discovery", description: "Index your repository" },
@@ -106,12 +120,14 @@ export function SetupWizard() {
         </CardHeader>
         <CardContent>
           {currentStep === 0 && <RegisterAppStep onComplete={(id) => { setAppId(id); goNext(); }} />}
-          {currentStep === 1 && appId && <UploadDocsStep appId={appId} onComplete={goNext} />}
-          {currentStep === 2 && appId && <VaultRolesStep appId={appId} onComplete={goNext} />}
-          {currentStep === 3 && appId && <DiscoveryStep appId={appId} onComplete={goNext} />}
-          {currentStep === 4 && appId && <GenerateCriteriaStep appId={appId} onComplete={goNext} />}
-          {currentStep === 5 && appId && <ReviewCriteriaStep appId={appId} onComplete={goNext} />}
-          {currentStep === 6 && appId && <GenerateTestsStep appId={appId} />}
+          {currentStep === 1 && appId && <DataSourcesStep appId={appId} onComplete={goNext} />}
+          {currentStep === 2 && appId && <AtlassianStep appId={appId} onComplete={goNext} />}
+          {currentStep === 3 && appId && <UploadDocsStep appId={appId} onComplete={goNext} />}
+          {currentStep === 4 && appId && <VaultRolesStep appId={appId} onComplete={goNext} />}
+          {currentStep === 5 && appId && <DiscoveryStep appId={appId} onComplete={goNext} />}
+          {currentStep === 6 && appId && <GenerateCriteriaStep appId={appId} onComplete={goNext} />}
+          {currentStep === 7 && appId && <ReviewCriteriaStep appId={appId} onComplete={goNext} />}
+          {currentStep === 8 && appId && <GenerateTestsStep appId={appId} />}
         </CardContent>
       </Card>
 
@@ -131,6 +147,8 @@ export function SetupWizard() {
 }
 
 // ── Step 1: Register Application ──────────────────────────────────────────────
+
+// ── Step: Register Application (existing) ─────────────────────────────────
 
 function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }) {
   const [name, setName] = useState("");
@@ -802,6 +820,242 @@ function GenerateTestsStep({ appId }: { appId: string }) {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Step: Data Sources Configuration (#336) ───────────────────────────────────
+
+type DataSourceDraft = {
+  label: string;
+  driverType: string;
+  jdbcUrl: string;
+  usernameVaultRef: string;
+  passwordVaultRef: string;
+};
+
+const emptyDraft = (): DataSourceDraft => ({
+  label: "",
+  driverType: "postgresql",
+  jdbcUrl: "",
+  usernameVaultRef: "",
+  passwordVaultRef: "",
+});
+
+function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<DataSourceDraft[]>([emptyDraft()]);
+  const [saving, setSaving] = useState(false);
+
+  const { data: existing } = useQuery({
+    queryKey: ["data-sources", appId],
+    queryFn: () => getDataSources(appId),
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: Partial<TalosDataSource>) => createDataSource(appId, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["data-sources", appId] }),
+  });
+
+  const addDraft = () => setDrafts((prev) => [...prev, emptyDraft()]);
+  const removeDraft = (i: number) => setDrafts((prev) => prev.filter((_, idx) => idx !== i));
+  const updateDraft = (i: number, field: keyof DataSourceDraft, value: string) => {
+    setDrafts((prev) => prev.map((d, idx) => idx === i ? { ...d, [field]: value } : d));
+  };
+
+  const handleSaveAll = async () => {
+    setSaving(true);
+    const valid = drafts.filter((d) => d.label && d.jdbcUrl);
+    for (const d of valid) {
+      await createMut.mutateAsync(d as unknown as Partial<TalosDataSource>);
+    }
+    setSaving(false);
+    onComplete();
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Add JDBC database data sources for schema-aware test generation. Each data source runs in an isolated Docker container with read-only access.
+      </p>
+
+      {existing && existing.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Existing Data Sources:</p>
+          {existing.map((ds) => (
+            <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">{ds.label}</span>
+              <Badge variant="secondary">{ds.driverType}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {drafts.map((draft, i) => (
+        <div key={i} className="rounded-lg border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Data Source {i + 1}</span>
+            {drafts.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <Input placeholder="Label (e.g., Production Oracle)" value={draft.label} onChange={(e) => updateDraft(i, "label", e.target.value)} />
+          <select
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            value={draft.driverType}
+            onChange={(e) => updateDraft(i, "driverType", e.target.value)}
+          >
+            <option value="postgresql">PostgreSQL</option>
+            <option value="oracle">Oracle</option>
+            <option value="mysql">MySQL</option>
+            <option value="sqlserver">SQL Server</option>
+            <option value="sqlite">SQLite</option>
+            <option value="other">Other</option>
+          </select>
+          <Input placeholder="JDBC URL (jdbc:postgresql://host:5432/db)" value={draft.jdbcUrl} onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)} />
+          <Input placeholder="Username vault ref (vault:db-user)" value={draft.usernameVaultRef} onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)} />
+          <Input placeholder="Password vault ref (vault:db-pass)" value={draft.passwordVaultRef} onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)} />
+        </div>
+      ))}
+
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" onClick={addDraft}>
+          <Plus className="mr-1 h-4 w-4" /> Add Data Source
+        </Button>
+      </div>
+
+      <Button onClick={handleSaveAll} disabled={saving || !drafts.some((d) => d.label && d.jdbcUrl)}>
+        {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
+      </Button>
+    </div>
+  );
+}
+
+// ── Step: Atlassian Configuration (#337) ──────────────────────────────────────
+
+function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
+  const [deploymentType, setDeploymentType] = useState<"cloud" | "datacenter">("cloud");
+  const [jiraUrl, setJiraUrl] = useState("");
+  const [jiraProject, setJiraProject] = useState("");
+  const [jiraUsername, setJiraUsername] = useState("");
+  const [jiraApiToken, setJiraApiToken] = useState("");
+  const [jiraPersonalToken, setJiraPersonalToken] = useState("");
+  const [jiraSslVerify, setJiraSslVerify] = useState(true);
+  const [confluenceUrl, setConfluenceUrl] = useState("");
+  const [confluenceSpacesRaw, setConfluenceSpacesRaw] = useState("");
+  const [confluenceUsername, setConfluenceUsername] = useState("");
+  const [confluenceApiToken, setConfluenceApiToken] = useState("");
+  const [confluencePersonalToken, setConfluencePersonalToken] = useState("");
+  const [confluenceSslVerify, setConfluenceSslVerify] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const saveMut = useMutation({
+    mutationFn: (data: Partial<TalosAtlassianConfig>) => saveAtlassianConfig(appId, data),
+  });
+
+  const handleSave = async () => {
+    setSaving(true);
+    await saveMut.mutateAsync({
+      deploymentType,
+      jiraUrl,
+      jiraProject,
+      jiraUsernameVaultRef: jiraUsername,
+      jiraApiTokenVaultRef: jiraApiToken,
+      jiraPersonalTokenVaultRef: jiraPersonalToken,
+      jiraSslVerify,
+      confluenceUrl,
+      confluenceSpaces: confluenceSpacesRaw.split(",").map((s) => s.trim()).filter(Boolean),
+      confluenceUsernameVaultRef: confluenceUsername,
+      confluenceApiTokenVaultRef: confluenceApiToken,
+      confluencePersonalTokenVaultRef: confluencePersonalToken,
+      confluenceSslVerify,
+    });
+    setSaving(false);
+    onComplete();
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testAtlassianConnection(appId);
+      setTestResult(result);
+    } catch {
+      setTestResult({ success: false, message: "Connection test failed" });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Connect to Jira and Confluence to import requirements and acceptance criteria into the RAG knowledge base. This step is optional.
+      </p>
+
+      <div className="flex gap-2">
+        <Button variant={deploymentType === "cloud" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("cloud")}>Cloud</Button>
+        <Button variant={deploymentType === "datacenter" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("datacenter")}>Data Center</Button>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <span className="text-sm font-medium">Jira</span>
+        <Input placeholder="Jira URL (https://your-org.atlassian.net)" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} />
+        <Input placeholder="Project key (e.g., PROJ)" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} />
+        {deploymentType === "cloud" ? (
+          <>
+            <Input placeholder="Username vault ref" value={jiraUsername} onChange={(e) => setJiraUsername(e.target.value)} />
+            <Input placeholder="API token vault ref" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} />
+          </>
+        ) : (
+          <Input placeholder="Personal access token vault ref" value={jiraPersonalToken} onChange={(e) => setJiraPersonalToken(e.target.value)} />
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={jiraSslVerify} onChange={(e) => setJiraSslVerify(e.target.checked)} />
+          Verify SSL
+        </label>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <span className="text-sm font-medium">Confluence</span>
+        <Input placeholder="Confluence URL (https://your-org.atlassian.net/wiki)" value={confluenceUrl} onChange={(e) => setConfluenceUrl(e.target.value)} />
+        <Input placeholder="Space keys (comma-separated: DEV, QA)" value={confluenceSpacesRaw} onChange={(e) => setConfluenceSpacesRaw(e.target.value)} />
+        {deploymentType === "cloud" ? (
+          <>
+            <Input placeholder="Username vault ref" value={confluenceUsername} onChange={(e) => setConfluenceUsername(e.target.value)} />
+            <Input placeholder="API token vault ref" value={confluenceApiToken} onChange={(e) => setConfluenceApiToken(e.target.value)} />
+          </>
+        ) : (
+          <Input placeholder="Personal access token vault ref" value={confluencePersonalToken} onChange={(e) => setConfluencePersonalToken(e.target.value)} />
+        )}
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={confluenceSslVerify} onChange={(e) => setConfluenceSslVerify(e.target.checked)} />
+          Verify SSL
+        </label>
+      </div>
+
+      {testResult && (
+        <div className={cn("flex items-center gap-2 text-sm", testResult.success ? "text-green-600" : "text-red-600")}>
+          {testResult.success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+          {testResult.message}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={handleTest} disabled={testing || !jiraUrl}>
+          {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Test Connection
+        </Button>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
+        </Button>
+        <Button variant="ghost" onClick={onComplete}>Skip</Button>
+      </div>
     </div>
   );
 }

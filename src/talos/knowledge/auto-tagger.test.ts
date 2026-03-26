@@ -33,7 +33,7 @@ describe("AutoTagger", () => {
     });
 
     it("FUNCTIONAL_AREAS has expected values", () => {
-      expect(FUNCTIONAL_AREAS).toEqual(["auth", "checkout", "dashboard", "profile", "search", "notifications", "navigation", "files", "api"]);
+      expect(FUNCTIONAL_AREAS).toEqual(["auth", "checkout", "dashboard", "profile", "search", "notifications", "navigation", "files", "api", "database", "schema", "jira", "confluence"]);
     });
   });
 
