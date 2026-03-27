@@ -216,7 +216,6 @@ export class AdminPage {
   }
 
   getServerDeleteButton(name: string): Locator {
-    // Delete button is the LAST button (role="button") in the card actions
-    return this.getServerCard(name).first().getByRole("button").last();
+    return this.getServerCard(name).first().getByRole("button", { name: "Delete server" });
   }
 }

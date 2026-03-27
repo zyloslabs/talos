@@ -1231,7 +1231,7 @@ SQLite-backed data access layer with auto-migrating schema. Tables:
 | `saved_prompts` | Prompt library with stages, preferred tools, categories |
 | `scheduled_jobs` | Cron-scheduled automation jobs |
 | `agent_tasks` | Task queue with status tracking and parent-child DAG |
-| `mcp_servers` | MCP server configurations (stdio/http/sse/docker) |
+| `mcp_servers` | MCP server configurations (stdio/http/sse/docker); v3 migration adds `category TEXT` and `tags_json TEXT` columns |
 | `skills` | Skill definitions with tags and enable/disable |
 
 ### Copilot Wrapper (`src/copilot/copilot-wrapper.ts`)

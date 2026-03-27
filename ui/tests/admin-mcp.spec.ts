@@ -207,11 +207,7 @@ test.describe("Admin MCP Panel — Epic #343", () => {
     });
 
     // AC8: Users can delete a server
-    // FIXME: The icon-only delete button (Trash2) has no accessible name,
-    // making reliable Playwright interaction difficult. The locator targets
-    // the last role=button in the card but the click doesn't trigger the
-    // React mutation handler consistently.
-    test.fixme("should delete a server", async ({ page, request }) => {
+    test("should delete a server", async ({ page, request }) => {
       await test.step("Create a server via API and reload", async () => {
         await request.post("/api/admin/mcp-servers", {
           data: {

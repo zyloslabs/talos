@@ -380,16 +380,17 @@ function ServerCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <Switch checked={server.enabled} onCheckedChange={onToggle} />
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => setExpanded(!expanded)}>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label="Expand server details" onClick={() => setExpanded(!expanded)}>
             <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </Button>
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onEdit}>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label="Edit server" onClick={onEdit}>
             <Pencil className="h-3 w-3" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
             className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+            aria-label="Delete server"
             onClick={onDelete}
           >
             <Trash2 className="h-3 w-3" />

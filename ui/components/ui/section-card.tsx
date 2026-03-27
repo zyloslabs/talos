@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,10 +30,6 @@ export function SectionCard({
 }: SectionCardProps) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const open = isOpen ?? internalOpen;
-
-  useEffect(() => {
-    if (isOpen !== undefined) setInternalOpen(isOpen);
-  }, [isOpen]);
 
   const toggle = () => {
     const next = !open;
