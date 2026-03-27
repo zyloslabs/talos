@@ -7,10 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import {
-  getPrompts, createPrompt, updatePrompt, deletePrompt,
-  type SavedPrompt,
-} from "@/lib/api";
+import { getPrompts, createPrompt, updatePrompt, deletePrompt, type SavedPrompt } from "@/lib/api";
 import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
 import { BookOpen, Plus, Search, Pencil, Trash2, Download, Upload, GitBranch, Variable } from "lucide-react";
 
@@ -30,7 +27,12 @@ export default function LibraryPage() {
   });
 
   const filtered = (prompts as SavedPrompt[] | undefined)?.filter((p) => {
-    if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !p.content.toLowerCase().includes(search.toLowerCase())) return false;
+    if (
+      search &&
+      !p.name.toLowerCase().includes(search.toLowerCase()) &&
+      !p.content.toLowerCase().includes(search.toLowerCase())
+    )
+      return false;
     if (filterCategory && p.category !== filterCategory) return false;
     return true;
   });
@@ -59,10 +61,18 @@ export default function LibraryPage() {
       try {
         const imported = JSON.parse(text) as SavedPrompt[];
         for (const p of imported) {
-          await createPrompt({ name: p.name, content: p.content, category: p.category, stages: p.stages, preferredTools: p.preferredTools });
+          await createPrompt({
+            name: p.name,
+            content: p.content,
+            category: p.category,
+            stages: p.stages,
+            preferredTools: p.preferredTools,
+          });
         }
         qc.invalidateQueries({ queryKey: ["prompts"] });
-      } catch { /* ignore invalid files */ }
+      } catch {
+        /* ignore invalid files */
+      }
     };
     input.click();
   }, [qc]);
@@ -77,18 +87,30 @@ export default function LibraryPage() {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleImport}>
-              <Upload className="h-4 w-4 mr-1" />Import
+              <Upload className="h-4 w-4 mr-1" />
+              Import
             </Button>
             <Button variant="outline" size="sm" onClick={handleExport}>
-              <Download className="h-4 w-4 mr-1" />Export
+              <Download className="h-4 w-4 mr-1" />
+              Export
             </Button>
             <Dialog open={createOpen} onOpenChange={setCreateOpen}>
               <DialogTrigger asChild>
-                <Button><Plus className="h-4 w-4 mr-1" />New Prompt</Button>
+                <Button>
+                  <Plus className="h-4 w-4 mr-1" />
+                  New Prompt
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg">
-                <DialogHeader><DialogTitle>Create Prompt</DialogTitle></DialogHeader>
-                <PromptForm onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setCreateOpen(false); }} />
+                <DialogHeader>
+                  <DialogTitle>Create Prompt</DialogTitle>
+                </DialogHeader>
+                <PromptForm
+                  onSave={() => {
+                    qc.invalidateQueries({ queryKey: ["prompts"] });
+                    setCreateOpen(false);
+                  }}
+                />
               </DialogContent>
             </Dialog>
           </div>
@@ -97,11 +119,23 @@ export default function LibraryPage() {
         <div className="flex gap-2 mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search prompts..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Input
+              placeholder="Search prompts..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <Button variant={!filterCategory ? "default" : "outline"} size="sm" onClick={() => setFilterCategory(null)}>All</Button>
+          <Button variant={!filterCategory ? "default" : "outline"} size="sm" onClick={() => setFilterCategory(null)}>
+            All
+          </Button>
           {categories.map((c) => (
-            <Button key={c} variant={filterCategory === c ? "default" : "outline"} size="sm" onClick={() => setFilterCategory(c as string)}>
+            <Button
+              key={c}
+              variant={filterCategory === c ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFilterCategory(c as string)}
+            >
               {c as string}
             </Button>
           ))}
@@ -114,13 +148,29 @@ export default function LibraryPage() {
                 <div className="flex items-start justify-between">
                   <div>
                     <CardTitle className="text-base">{p.name}</CardTitle>
-                    {p.category && <Badge variant="secondary" className="mt-1">{p.category}</Badge>}
+                    {p.category && (
+                      <Badge variant="secondary" className="mt-1">
+                        {p.category}
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setVariablesOpen(p)} title="Template variables">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => setVariablesOpen(p)}
+                      title="Template variables"
+                    >
                       <Variable className="h-3 w-3" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setPipelineOpen(p)} title="Pipeline stages">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => setPipelineOpen(p)}
+                      title="Pipeline stages"
+                    >
                       <GitBranch className="h-3 w-3" />
                     </Button>
                     <Dialog>
@@ -130,11 +180,26 @@ export default function LibraryPage() {
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="max-w-lg">
-                        <DialogHeader><DialogTitle>Edit Prompt</DialogTitle></DialogHeader>
-                        {editPrompt && <PromptForm prompt={editPrompt} onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setEditPrompt(null); }} />}
+                        <DialogHeader>
+                          <DialogTitle>Edit Prompt</DialogTitle>
+                        </DialogHeader>
+                        {editPrompt && (
+                          <PromptForm
+                            prompt={editPrompt}
+                            onSave={() => {
+                              qc.invalidateQueries({ queryKey: ["prompts"] });
+                              setEditPrompt(null);
+                            }}
+                          />
+                        )}
                       </DialogContent>
                     </Dialog>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteMut.mutate(p.id)}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-destructive"
+                      onClick={() => deleteMut.mutate(p.id)}
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -145,15 +210,23 @@ export default function LibraryPage() {
                 <TemplateVariableBadges content={p.content} />
                 {p.stages && p.stages.length > 0 && (
                   <div className="mt-2 flex gap-1">
-                    <Badge variant="outline" className="text-xs">{p.stages.length} stages</Badge>
+                    <Badge variant="outline" className="text-xs">
+                      {p.stages.length} stages
+                    </Badge>
                   </div>
                 )}
                 {p.preferredTools && p.preferredTools.length > 0 && (
                   <div className="mt-1 flex gap-1 flex-wrap">
                     {p.preferredTools.slice(0, 3).map((t) => (
-                      <Badge key={t} variant="outline" className="text-xs">{t}</Badge>
+                      <Badge key={t} variant="outline" className="text-xs">
+                        {t}
+                      </Badge>
                     ))}
-                    {p.preferredTools.length > 3 && <Badge variant="outline" className="text-xs">+{p.preferredTools.length - 3}</Badge>}
+                    {p.preferredTools.length > 3 && (
+                      <Badge variant="outline" className="text-xs">
+                        +{p.preferredTools.length - 3}
+                      </Badge>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -169,15 +242,27 @@ export default function LibraryPage() {
         {/* Pipeline Builder Dialog (#224) */}
         <Dialog open={!!pipelineOpen} onOpenChange={(open) => !open && setPipelineOpen(null)}>
           <DialogContent className="max-w-2xl">
-            <DialogHeader><DialogTitle>Pipeline Builder — {pipelineOpen?.name}</DialogTitle></DialogHeader>
-            {pipelineOpen && <PipelineBuilder prompt={pipelineOpen} onSave={() => { qc.invalidateQueries({ queryKey: ["prompts"] }); setPipelineOpen(null); }} />}
+            <DialogHeader>
+              <DialogTitle>Pipeline Builder — {pipelineOpen?.name}</DialogTitle>
+            </DialogHeader>
+            {pipelineOpen && (
+              <PipelineBuilder
+                prompt={pipelineOpen}
+                onSave={() => {
+                  qc.invalidateQueries({ queryKey: ["prompts"] });
+                  setPipelineOpen(null);
+                }}
+              />
+            )}
           </DialogContent>
         </Dialog>
 
         {/* Template Variables Dialog (#225) */}
         <Dialog open={!!variablesOpen} onOpenChange={(open) => !open && setVariablesOpen(null)}>
           <DialogContent className="max-w-md">
-            <DialogHeader><DialogTitle>Template Variables — {variablesOpen?.name}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Template Variables — {variablesOpen?.name}</DialogTitle>
+            </DialogHeader>
             {variablesOpen && <TemplateVariablesPanel prompt={variablesOpen} />}
           </DialogContent>
         </Dialog>
@@ -212,15 +297,14 @@ function TemplateVariablesPanel({ prompt }: { prompt: SavedPrompt }) {
   const vars = extractVariables(prompt.content);
   const [values, setValues] = useState<Record<string, string>>({});
 
-  const rendered = vars.reduce(
-    (text, v) => text.replaceAll(`{{${v}}}`, values[v] || `{{${v}}}`),
-    prompt.content,
-  );
+  const rendered = vars.reduce((text, v) => text.replaceAll(`{{${v}}}`, values[v] || `{{${v}}}`), prompt.content);
 
   return (
     <div className="space-y-4">
       {vars.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No template variables found. Use {"{{variable}}"} syntax in your prompt content.</p>
+        <p className="text-sm text-muted-foreground">
+          No template variables found. Use {"{{variable}}"} syntax in your prompt content.
+        </p>
       ) : (
         <>
           <div className="space-y-2">
@@ -255,7 +339,7 @@ interface PipelineStage {
 
 function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () => void }) {
   const [stages, setStages] = useState<PipelineStage[]>(
-    (prompt.stages as PipelineStage[] | undefined) ?? [{ name: "Stage 1", prompt: prompt.content }],
+    (prompt.stages as PipelineStage[] | undefined) ?? [{ name: "Stage 1", prompt: prompt.content }]
   );
 
   const mutation = useMutation({
@@ -272,7 +356,7 @@ function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () =
   };
 
   const updateStage = (index: number, updates: Partial<PipelineStage>) => {
-    setStages((prev) => prev.map((s, i) => i === index ? { ...s, ...updates } : s));
+    setStages((prev) => prev.map((s, i) => (i === index ? { ...s, ...updates } : s)));
   };
 
   return (
@@ -282,7 +366,9 @@ function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () =
           <Card key={i}>
             <CardContent className="p-3 space-y-2">
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-xs">{i + 1}</Badge>
+                <Badge variant="outline" className="text-xs">
+                  {i + 1}
+                </Badge>
                 <Input
                   className="flex-1"
                   value={stage.name}
@@ -290,7 +376,12 @@ function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () =
                   placeholder="Stage name"
                 />
                 {stages.length > 1 && (
-                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeStage(i)}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
+                    onClick={() => removeStage(i)}
+                  >
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 )}
@@ -308,7 +399,8 @@ function PipelineBuilder({ prompt, onSave }: { prompt: SavedPrompt; onSave: () =
 
       <div className="flex items-center justify-between">
         <Button variant="outline" size="sm" onClick={addStage}>
-          <Plus className="h-3 w-3 mr-1" />Add Stage
+          <Plus className="h-3 w-3 mr-1" />
+          Add Stage
         </Button>
         <Button size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
           {mutation.isPending ? "Saving..." : "Save Pipeline"}

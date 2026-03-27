@@ -45,10 +45,7 @@ describe("FailureAnalyzer", () => {
 
   describe("analyze", () => {
     it("should categorize timeout errors", async () => {
-      const run = createFailedRun(
-        "locator.click: Timeout 30000ms exceeded.",
-        "locator('#submit-btn')"
-      );
+      const run = createFailedRun("locator.click: Timeout 30000ms exceeded.", "locator('#submit-btn')");
 
       const analysis = await analyzer.analyze(run);
 
@@ -58,10 +55,7 @@ describe("FailureAnalyzer", () => {
     });
 
     it("should categorize strict mode violations", async () => {
-      const run = createFailedRun(
-        "strict mode violation: locator resolved to 3 elements",
-        "locator('.button')"
-      );
+      const run = createFailedRun("strict mode violation: locator resolved to 3 elements", "locator('.button')");
 
       const analysis = await analyzer.analyze(run);
 
@@ -70,9 +64,7 @@ describe("FailureAnalyzer", () => {
     });
 
     it("should categorize assertion failures", async () => {
-      const run = createFailedRun(
-        "Error: expect(received).toBe(expected)\nExpected: 'Dashboard'\nReceived: 'Login'"
-      );
+      const run = createFailedRun("Error: expect(received).toBe(expected)\nExpected: 'Dashboard'\nReceived: 'Login'");
 
       const analysis = await analyzer.analyze(run);
 
@@ -100,9 +92,7 @@ describe("FailureAnalyzer", () => {
     });
 
     it("should categorize navigation errors", async () => {
-      const run = createFailedRun(
-        "navigation failed: page.goto('https://example.com') failed"
-      );
+      const run = createFailedRun("navigation failed: page.goto('https://example.com') failed");
 
       const analysis = await analyzer.analyze(run);
 
@@ -129,9 +119,7 @@ describe("FailureAnalyzer", () => {
       const analysis = await analyzer.analyze(run);
 
       expect(analysis.affectedElements.length).toBeGreaterThan(0);
-      expect(analysis.affectedElements.some((e) => e.selector.includes("myButton"))).toBe(
-        true
-      );
+      expect(analysis.affectedElements.some((e) => e.selector.includes("myButton"))).toBe(true);
     });
 
     it("should throw for non-failed runs", async () => {
@@ -211,7 +199,7 @@ describe("FailureAnalyzer", () => {
       expect(analysis.category).toBe("timeout");
       // relatedFailures should include at least run1 and/or run2
       expect(analysis.relatedFailures.length).toBeGreaterThan(0);
-      expect(analysis.relatedFailures.some(id => id === run1.id || id === run2.id)).toBe(true);
+      expect(analysis.relatedFailures.some((id) => id === run1.id || id === run2.id)).toBe(true);
     });
 
     it("returns empty relatedFailures when test has been deleted", async () => {
@@ -222,6 +210,41 @@ describe("FailureAnalyzer", () => {
       const analysis = await analyzer.analyze(run);
       // Should still return a valid analysis (just with no related failures)
       expect(analysis.relatedFailures).toEqual([]);
+    });
+  });
+
+  describe("extractSelectorsFromStack — additional branches", () => {
+    it("extracts getByRole selector without name attribute via unknown error", async () => {
+      // Unknown error category → calls extractSelectorsFromStack which matches getByRole
+      const run = createFailedRun("Some completely unrecognized error xyz123", "getByRole('button')");
+      const analysis = await analyzer.analyze(run);
+      expect(analysis.category).toBe("unknown");
+      expect(analysis.affectedElements.some((e) => e.selector.includes("button"))).toBe(true);
+    });
+
+    it("handles timeout without locator in error — empty affectedElements", async () => {
+      const run = createFailedRun("Timeout 30000ms exceeded. Page is not responding.", "");
+      const analysis = await analyzer.analyze(run);
+      expect(analysis.category).toBe("timeout");
+      expect(analysis.affectedElements).toEqual([]);
+    });
+
+    it("handles navigation failure without URL in error", async () => {
+      const run = createFailedRun("navigation failed: net::ERR_CONNECTION_REFUSED", "");
+      const analysis = await analyzer.analyze(run);
+      expect(analysis.category).toBe("network-error");
+    });
+
+    it("handles script-error category in failure stats", () => {
+      // Create a run with a script-error that getFailureStats handles via 'unknown' bucket
+      const run = repo.createTestRun({ testId, triggeredBy: "test" });
+      repo.updateTestRun(run.id, {
+        status: "failed",
+        errorMessage: "SyntaxError: Unexpected identifier in test script",
+        errorStack: "",
+      });
+      const stats = analyzer.getFailureStats(appId);
+      expect(stats.totalFailures).toBeGreaterThan(0);
     });
   });
 });

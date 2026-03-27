@@ -62,9 +62,9 @@ describe("DocumentIngester", () => {
     });
 
     it("throws for unsupported format", async () => {
-      await expect(
-        ingester.ingestDocument("app-1", "content", "csv" as "markdown", baseMeta)
-      ).rejects.toThrow("Unsupported document format");
+      await expect(ingester.ingestDocument("app-1", "content", "csv" as "markdown", baseMeta)).rejects.toThrow(
+        "Unsupported document format"
+      );
     });
   });
 
@@ -243,6 +243,150 @@ describe("DocumentIngester", () => {
       const chunks = mockIndexChunks.mock.calls[0][1];
       expect(chunks.length).toBeGreaterThanOrEqual(1);
       expect(chunks[0].type).toBe("api_spec");
+    });
+
+    it("includes description when present in operation", async () => {
+      const spec = {
+        paths: {
+          "/items": {
+            get: {
+              summary: "List items",
+              description: "Returns a list of all items",
+              operationId: "listItems",
+            },
+          },
+        },
+      };
+      const meta: DocMetadata = { ...baseMeta, docType: "api_spec", fileName: "api.json" };
+      await ingester.ingestOpenAPI("app-1", JSON.stringify(spec), meta);
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].content).toContain("Description: Returns a list of all items");
+    });
+
+    it("handles operation without summary or description", async () => {
+      const spec = {
+        paths: {
+          "/items": {
+            get: {
+              operationId: "listItems",
+              // no summary or description
+            },
+          },
+        },
+      };
+      const meta: DocMetadata = { ...baseMeta, docType: "api_spec", fileName: "api.json" };
+      await ingester.ingestOpenAPI("app-1", JSON.stringify(spec), meta);
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].content).toContain("GET /items");
+      expect(chunks[0].content).not.toContain("Summary:");
+      expect(chunks[0].content).not.toContain("Description:");
+    });
+  });
+
+  // ── ingestSchemaData ────────────────────────────────────────────────────────
+
+  describe("ingestSchemaData", () => {
+    it("creates a schema chunk with table info", async () => {
+      mockIndexChunks.mockResolvedValueOnce({ indexed: 1, skipped: 0, totalTokens: 20 });
+      const result = await ingester.ingestSchemaData(
+        "app-1",
+        "USERS",
+        "id INT, name VARCHAR(100), email VARCHAR(255)",
+        "Primary DB"
+      );
+      expect(result.docId).toBe("schema:app-1:Primary DB:USERS");
+      expect(result.chunksCreated).toBe(1);
+
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].type).toBe("schema");
+      expect(chunks[0].content).toContain("USERS");
+      expect(chunks[0].content).toContain("Primary DB");
+    });
+  });
+
+  // ── ingestAtlassianContent ──────────────────────────────────────────────────
+
+  describe("ingestAtlassianContent", () => {
+    it("ingest Jira issue as user_story chunk", async () => {
+      mockIndexChunks.mockResolvedValueOnce({ indexed: 1, skipped: 0, totalTokens: 30 });
+      const result = await ingester.ingestAtlassianContent(
+        "app-1",
+        "As a user, I want to log in so that I can access my account.",
+        "jira",
+        "PROJ-123",
+        "User Login"
+      );
+      expect(result.docId).toBe("jira:app-1:PROJ-123");
+      expect(result.chunksCreated).toBe(1);
+
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].type).toBe("user_story");
+      expect(chunks[0].content).toContain("JIRA PROJ-123");
+    });
+
+    it("ingest Confluence page as requirement chunk", async () => {
+      mockIndexChunks.mockResolvedValueOnce({ indexed: 1, skipped: 0, totalTokens: 40 });
+      const result = await ingester.ingestAtlassianContent(
+        "app-1",
+        "System architecture and design requirements for the login module.",
+        "confluence",
+        "DOC-456",
+        "Login Module Architecture"
+      );
+      expect(result.docId).toBe("confluence:app-1:DOC-456");
+
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].type).toBe("requirement");
+      expect(chunks[0].content).toContain("CONFLUENCE DOC-456");
+    });
+  });
+
+  // ── chunkTypeForDocType ─────────────────────────────────────────────────────
+
+  describe("functional_spec docType → requirement type", () => {
+    it("maps functional_spec to requirement chunk type", async () => {
+      const meta: DocMetadata = { fileName: "spec.md", docType: "functional_spec" };
+      const content = "# Functional Requirement\nThe system shall process payments.";
+      await ingester.ingestMarkdown("app-1", content, meta);
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].type).toBe("requirement");
+    });
+  });
+
+  // ── parseSimpleYaml edge cases ──────────────────────────────────────────────
+
+  describe("parseSimpleYaml edge cases (via ingestOpenAPI)", () => {
+    it("handles YAML with non-HTTP method keys (ignored)", async () => {
+      const yamlContent = [
+        "openapi: 3.0.0",
+        "paths:",
+        "  /items:",
+        "    get:",
+        "      summary: Get items",
+        "    x-custom:",
+        "      note: not an HTTP method",
+      ].join("\n");
+      const meta: DocMetadata = { ...baseMeta, docType: "api_spec", fileName: "api.yaml" };
+      await ingester.ingestOpenAPI("app-1", yamlContent, meta);
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      // Should only have the 'get' operation, ignoring x-custom
+      expect(chunks.length).toBe(1);
+    });
+
+    it("handles YAML with summary/description/operationId field parsing", async () => {
+      const yamlContent = [
+        "paths:",
+        "  /users:",
+        "    post:",
+        "      summary: Create user",
+        "      description: Creates a new user account",
+        "      operationId: createUser",
+      ].join("\n");
+      const meta: DocMetadata = { ...baseMeta, docType: "api_spec", fileName: "api.yaml" };
+      await ingester.ingestOpenAPI("app-1", yamlContent, meta);
+      const chunks = mockIndexChunks.mock.calls[0][1];
+      expect(chunks[0].content).toContain("Summary: Create user");
+      expect(chunks[0].metadata.operationId).toBe("createUser");
     });
   });
 });

@@ -36,6 +36,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `updateTest` and `explainTest` functions added to `ui/lib/api.ts` (#375).
   - `TestMatrix` code viewer dialog replaced with two-panel layout: Monaco-based `TestCodeViewer` (left) + `TestExplainPanel` (right), mobile-responsive via `flex-col md:flex-row` (#375).
   - `Skeleton` UI component added at `ui/components/ui/skeleton.tsx` (#374).
+=======
+- **Wire Real Talos Pipeline — DiscoveryEngine, RAG, TestGenerator, PlaywrightRunner** (Epic #353): All pipeline engines are now instantiated at startup and wired into orchestration for end-to-end test generation and execution.
+  - `SdkAttachment` type and `attachments?: SdkAttachment[]` option in `CopilotWrapper.chat()` for passing file context into LLM requests (#357).
+  - `getGithubToken()` method on `CopilotWrapper` exposing the authenticated GitHub PAT for use by downstream services (e.g., GitHub Models embeddings) (#357).
+  - GitHub Models REST API embedding provider (`github-models`) in `EmbeddingService` with batch support; `EmbeddingConfig.provider` defaults to `"github-models"` (#358).
+  - `initRag()` server startup function instantiates `RagPipeline`, `DiscoveryEngine`, `PlaywrightRunner`, and `TestGenerator` and wires them into the application engines map (#359).
+  - Orchestration pipeline `discover` step calls `DiscoveryEngine.startDiscovery()` to crawl the application repository (#360).
+  - Orchestration pipeline `index` step passes discovered chunks through `RagPipeline.indexChunks()` (#361).
+  - Orchestration pipeline `generate` step calls `TestGenerator.generate()` (RAG-backed) to produce Playwright test code (#362).
+  - Orchestration pipeline `execute` step calls `PlaywrightRunner.executeTest()` for each generated test and persists results (#363).
+  - `/api/talos/tests/generate` endpoint uses `TestGenerator` when the RAG pipeline is available, with a Copilot-only fallback for environments without GitHub Models (#364).
+  - Integration smoke tests (`orchestration.test.ts`) covering all four pipeline steps with mocked engines, verifying DB writes, Socket.IO events, and fallback paths (#365).
 
 - **Admin Panel Overhaul — MCP Server Management** (Epic #343): Redesigned MCP server management with preset-based provisioning, multi-instance support, and categorized server views.
   - Admin sidebar navigation now uses controlled `SectionCard` with programmatic open/close, replacing hash-based `<a>` links with `<button>` elements and `scrollIntoView` (#344).
