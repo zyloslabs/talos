@@ -25,6 +25,10 @@ type McpPreset = {
   tags?: string[];
   /** If true, user can create multiple instances (e.g. JDBC connections) */
   allowMultiple?: boolean;
+  /** Runtime the host must have installed to run this server */
+  runtime: "node" | "docker" | "java" | "python";
+  /** Link to the server's source / docs */
+  docsUrl?: string;
 };
 
 const MCP_PRESETS: McpPreset[] = [
@@ -33,41 +37,56 @@ const MCP_PRESETS: McpPreset[] = [
     name: "github",
     label: "GitHub (Cloud)",
     description:
-      "GitHub MCP server for github.com repositories. Provides issue, PR, code search, and repo management tools.",
+      "Official GitHub MCP server for github.com repositories. Provides issue, PR, code search, and repo management tools. (Replaces deprecated @modelcontextprotocol/server-github as of April 2025.)",
     category: "github",
+    // Official server is a Go static binary, distributed as a Docker image
+    runtime: "docker",
     type: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github"],
+    command: "docker",
+    args: ["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", "ghcr.io/github/github-mcp-server"],
     env: { GITHUB_PERSONAL_ACCESS_TOKEN: "" },
     envPlaceholders: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_... or github_pat_..." },
     tags: ["github", "cloud", "issues", "prs"],
+    docsUrl: "https://github.com/github/github-mcp-server",
   },
   {
     name: "github-enterprise",
     label: "GitHub Enterprise",
     description:
-      "GitHub MCP server for GitHub Enterprise Server (GHE) or EMU. Connects to your on-prem or enterprise-managed instance.",
+      "Official GitHub MCP server for GitHub Enterprise Server (GHE) or EMU. Set GITHUB_HOST to your enterprise hostname (without https://).",
     category: "github",
+    runtime: "docker",
     type: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-github"],
-    env: { GITHUB_PERSONAL_ACCESS_TOKEN: "", GITHUB_API_URL: "" },
+    command: "docker",
+    args: [
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "-e",
+      "GITHUB_HOST",
+      "ghcr.io/github/github-mcp-server",
+    ],
+    env: { GITHUB_PERSONAL_ACCESS_TOKEN: "", GITHUB_HOST: "" },
     envPlaceholders: {
       GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_... or github_pat_...",
-      GITHUB_API_URL: "https://git.yourcompany.com/api/v3",
+      GITHUB_HOST: "git.yourcompany.com",
     },
     tags: ["github", "enterprise", "emu", "ghe"],
+    docsUrl: "https://github.com/github/github-mcp-server",
   },
   // ── JDBC / Database ──
   {
     name: "jdbc",
     label: "JDBC Database",
     description:
-      "Java JDBC MCP server for Oracle, PostgreSQL, MySQL, SQL Server, or other JDBC-compatible databases. Supports multiple connections.",
+      "Connect to Oracle, PostgreSQL, MySQL, SQL Server, or any JDBC database via Docker. Supports multiple connections — create one server per database.",
     category: "jdbc",
+    runtime: "docker",
     type: "stdio",
-    command: "java",
-    args: ["-jar", "mcp-jdbc-server.jar"],
+    command: "docker",
+    args: ["run", "--rm", "-i", "-e", "JDBC_URL", "-e", "JDBC_USER", "-e", "JDBC_PASSWORD", "guang1/jdbc-mcp:latest"],
     env: { JDBC_URL: "", JDBC_USER: "", JDBC_PASSWORD: "" },
     envPlaceholders: {
       JDBC_URL: "jdbc:oracle:thin:@host:1521:SID",
@@ -76,16 +95,30 @@ const MCP_PRESETS: McpPreset[] = [
     },
     tags: ["database", "jdbc", "oracle", "postgresql", "mysql"],
     allowMultiple: true,
+    docsUrl: "https://hub.docker.com/r/guang1/jdbc-mcp",
   },
   // ── Cloud / DevOps ──
   {
     name: "aws-api",
     label: "AWS API",
-    description: "AWS MCP server for interacting with AWS services via API.",
+    description:
+      "Official AWS API MCP server for interacting with AWS services. Run via Docker to avoid a local Python install.",
     category: "cloud",
+    runtime: "docker",
     type: "stdio",
-    command: "npx",
-    args: ["-y", "@aws/mcp-server-aws-api"],
+    command: "docker",
+    args: [
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "AWS_REGION",
+      "-e",
+      "AWS_ACCESS_KEY_ID",
+      "-e",
+      "AWS_SECRET_ACCESS_KEY",
+      "mcp/aws-api-mcp-server",
+    ],
     env: { AWS_REGION: "", AWS_ACCESS_KEY_ID: "", AWS_SECRET_ACCESS_KEY: "" },
     envPlaceholders: {
       AWS_REGION: "us-east-1",
@@ -93,42 +126,77 @@ const MCP_PRESETS: McpPreset[] = [
       AWS_SECRET_ACCESS_KEY: "secret",
     },
     tags: ["aws", "cloud"],
+    docsUrl: "https://hub.docker.com/r/mcp/aws-api-mcp-server",
   },
   {
     name: "docker-mcp",
     label: "Docker",
-    description: "Docker MCP server for container management.",
+    description:
+      "Docker MCP server for container management. Mounts the Docker socket to manage containers on the host.",
     category: "devtools",
+    runtime: "docker",
     type: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-docker"],
+    command: "docker",
+    args: ["run", "-i", "--rm", "-v", "/var/run/docker.sock:/var/run/docker.sock", "mcp/docker"],
     tags: ["docker", "containers"],
+    docsUrl: "https://hub.docker.com/r/mcp/docker",
   },
   // ── Collaboration ──
   {
     name: "atlassian",
     label: "Atlassian (Jira/Confluence)",
-    description: "MCP server for Jira issues and Confluence pages. Supports Cloud and Data Center.",
+    description:
+      "Jira and Confluence MCP server for Cloud and Data Center. Provide credentials for each product you use.",
     category: "collaboration",
+    runtime: "docker",
     type: "stdio",
-    command: "npx",
-    args: ["-y", "mcp-atlassian"],
-    env: { JIRA_URL: "", JIRA_USERNAME: "", JIRA_API_TOKEN: "" },
+    command: "docker",
+    args: [
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "CONFLUENCE_URL",
+      "-e",
+      "CONFLUENCE_USERNAME",
+      "-e",
+      "CONFLUENCE_API_TOKEN",
+      "-e",
+      "JIRA_URL",
+      "-e",
+      "JIRA_USERNAME",
+      "-e",
+      "JIRA_API_TOKEN",
+      "mcp/atlassian",
+    ],
+    env: {
+      CONFLUENCE_URL: "",
+      CONFLUENCE_USERNAME: "",
+      CONFLUENCE_API_TOKEN: "",
+      JIRA_URL: "",
+      JIRA_USERNAME: "",
+      JIRA_API_TOKEN: "",
+    },
     envPlaceholders: {
+      CONFLUENCE_URL: "https://yourorg.atlassian.net",
+      CONFLUENCE_USERNAME: "user@company.com",
+      CONFLUENCE_API_TOKEN: "your-api-token",
       JIRA_URL: "https://yourorg.atlassian.net",
       JIRA_USERNAME: "user@company.com",
       JIRA_API_TOKEN: "your-api-token",
     },
     tags: ["jira", "confluence", "atlassian"],
+    docsUrl: "https://hub.docker.com/r/mcp/atlassian",
   },
   {
     name: "salesforce",
     label: "Salesforce",
     description: "Salesforce MCP server for CRM data access via SOQL and REST API.",
     category: "cloud",
+    runtime: "node",
     type: "stdio",
     command: "npx",
-    args: ["-y", "@anthropic/mcp-server-salesforce"],
+    args: ["-y", "@salesforce/mcp"],
     env: { SF_INSTANCE_URL: "", SF_ACCESS_TOKEN: "" },
     envPlaceholders: {
       SF_INSTANCE_URL: "https://yourorg.my.salesforce.com",
@@ -136,6 +204,7 @@ const MCP_PRESETS: McpPreset[] = [
     },
     tags: ["salesforce", "crm"],
     allowMultiple: true,
+    docsUrl: "https://www.npmjs.com/package/@salesforce/mcp",
   },
   // ── Dev Tools ──
   {
@@ -143,20 +212,24 @@ const MCP_PRESETS: McpPreset[] = [
     label: "Context7 (Library Docs)",
     description: "Query up-to-date library and framework documentation via Context7.",
     category: "devtools",
+    runtime: "node",
     type: "stdio",
     command: "npx",
-    args: ["-y", "@context7/mcp-server"],
+    args: ["-y", "@upstash/context7-mcp"],
     tags: ["docs", "libraries"],
+    docsUrl: "https://context7.com/docs/mcp",
   },
   {
     name: "playwright",
     label: "Playwright (Browser)",
-    description: "Browser automation and testing via Playwright MCP server.",
+    description: "Browser automation and testing via the official Microsoft Playwright MCP server.",
     category: "devtools",
+    runtime: "node",
     type: "stdio",
     command: "npx",
-    args: ["-y", "@anthropic/mcp-server-playwright"],
+    args: ["-y", "@playwright/mcp@latest"],
     tags: ["browser", "testing", "playwright"],
+    docsUrl: "https://github.com/microsoft/playwright-mcp",
   },
 ];
 
@@ -174,6 +247,20 @@ const CATEGORY_LABELS: Record<string, string> = {
   cloud: "Cloud & SaaS",
   devtools: "Developer Tools",
   collaboration: "Collaboration",
+};
+
+const RUNTIME_LABELS: Record<string, string> = {
+  node: "Node.js",
+  docker: "Docker",
+  java: "Java",
+  python: "Python",
+};
+
+const RUNTIME_COLORS: Record<string, string> = {
+  node: "bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20",
+  docker: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20",
+  java: "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20",
+  python: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20",
 };
 
 // ── Env Editor ────────────────────────────────────────────────────────────────
@@ -278,7 +365,14 @@ function AddFromPreset({
                       onClick={() => selectPreset(preset)}
                       className="flex flex-col gap-0.5 p-3 rounded-md border text-left hover:bg-muted/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      <span className="text-sm font-medium">{preset.label}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium">{preset.label}</span>
+                        <span
+                          className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${RUNTIME_COLORS[preset.runtime] ?? ""}`}
+                        >
+                          {RUNTIME_LABELS[preset.runtime] ?? preset.runtime}
+                        </span>
+                      </div>
                       <span className="text-xs text-muted-foreground line-clamp-2">{preset.description}</span>
                       {alreadyAdded && (
                         <Badge variant="outline" className="text-xs w-fit mt-1">
@@ -311,6 +405,35 @@ function AddFromPreset({
         <Button size="sm" variant="ghost" onClick={() => setSelectedPreset(null)}>
           Back
         </Button>
+      </div>
+
+      {/* Runtime prerequisite notice */}
+      <div
+        className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${RUNTIME_COLORS[selectedPreset.runtime] ?? "bg-muted/50"}`}
+      >
+        <span className="font-semibold shrink-0">
+          Requires {RUNTIME_LABELS[selectedPreset.runtime] ?? selectedPreset.runtime}
+        </span>
+        <span className="text-muted-foreground">
+          {selectedPreset.runtime === "docker" && "Docker must be installed and running on the host that runs Talos."}
+          {selectedPreset.runtime === "node" && "Node.js ≥18 and npx must be available on the host PATH."}
+          {selectedPreset.runtime === "java" && "A Java Runtime (JRE ≥11) must be installed on the host."}
+          {selectedPreset.runtime === "python" && "Python ≥3.9 and uvx/pip must be available on the host PATH."}
+          {selectedPreset.docsUrl && (
+            <>
+              {" "}
+              —{" "}
+              <a
+                href={selectedPreset.docsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline hover:no-underline"
+              >
+                docs
+              </a>
+            </>
+          )}
+        </span>
       </div>
       <div>
         <label className="text-sm font-medium block mb-1">Server Name</label>
@@ -380,7 +503,13 @@ function ServerCard({
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <Switch checked={server.enabled} onCheckedChange={onToggle} />
-          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label="Expand server details" onClick={() => setExpanded(!expanded)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 p-0"
+            aria-label="Expand server details"
+            onClick={() => setExpanded(!expanded)}
+          >
             <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </Button>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label="Edit server" onClick={onEdit}>
