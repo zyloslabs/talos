@@ -155,13 +155,13 @@ export class TestGenerator {
             code: lastCode,
             validation,
             prompt,
-            error: `Validation failed after ${attempts} attempts: ${validation.errors.map(e => e.message).join(", ")}`,
+            error: `Validation failed after ${attempts} attempts: ${validation.errors.map((e) => e.message).join(", ")}`,
             attempts,
           };
         }
       } catch (error) {
         lastError = error instanceof Error ? error.message : String(error);
-        
+
         if (attempts > maxRetries) {
           return {
             success: false,
@@ -206,11 +206,7 @@ export class TestGenerator {
     );
 
     // Build enhancement prompt
-    const prompt = await this.promptBuilder.buildEnhancementPrompt(
-      test,
-      request,
-      relevantCode
-    );
+    const prompt = await this.promptBuilder.buildEnhancementPrompt(test, request, relevantCode);
 
     try {
       const generatedCode = await this.generateWithLLM(prompt.systemPrompt, prompt.userPrompt);
@@ -223,7 +219,7 @@ export class TestGenerator {
           code,
           validation,
           prompt,
-          error: `Validation failed: ${validation.errors.map(e => e.message).join(", ")}`,
+          error: `Validation failed: ${validation.errors.map((e) => e.message).join(", ")}`,
           attempts: 1,
         };
       }
@@ -261,11 +257,7 @@ export class TestGenerator {
   /**
    * Generate a Page Object Model class.
    */
-  async generatePageObject(
-    applicationId: string,
-    pageName: string,
-    pageUrl: string
-  ): Promise<GenerationResult> {
+  async generatePageObject(applicationId: string, pageName: string, pageUrl: string): Promise<GenerationResult> {
     // Get relevant code
     const relevantCode = await this.promptBuilder.getRelevantCode(
       applicationId,
@@ -287,9 +279,7 @@ export class TestGenerator {
         validation,
         prompt,
         attempts: 1,
-        error: validation.isValid
-          ? undefined
-          : validation.errors.map(e => e.message).join(", "),
+        error: validation.isValid ? undefined : validation.errors.map((e) => e.message).join(", "),
       };
     } catch (error) {
       return {
@@ -325,7 +315,7 @@ export class TestGenerator {
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, "")
       .replace(/\s+/g, "-");
-    
+
     return `test-${sanitized}`;
   }
 

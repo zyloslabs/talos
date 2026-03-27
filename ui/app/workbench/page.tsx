@@ -8,16 +8,47 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { getApplications, startOrchestration, getOrchestrationStatus, type TalosApplication, type OrchestrateResult } from "@/lib/api";
 import {
-  Wand2, Play, CheckCircle2, XCircle, Loader2, Settings2,
-  Search, Database, Sparkles, TestTube2, BarChart3, ChevronRight,
+  getApplications,
+  startOrchestration,
+  getOrchestrationStatus,
+  type TalosApplication,
+  type OrchestrateResult,
+} from "@/lib/api";
+import {
+  Wand2,
+  Play,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Settings2,
+  Search,
+  Database,
+  Sparkles,
+  TestTube2,
+  BarChart3,
+  ChevronRight,
 } from "lucide-react";
 
 const STEPS = [
-  { id: "discover", label: "Discover", icon: Search, description: "Crawl application and discover pages, forms, and flows" },
-  { id: "index", label: "Index", icon: Database, description: "Index discovered content into the knowledge base for RAG" },
-  { id: "generate", label: "Generate", icon: Sparkles, description: "AI-generate test cases based on discovered content" },
+  {
+    id: "discover",
+    label: "Discover",
+    icon: Search,
+    description: "Crawl application and discover pages, forms, and flows",
+  },
+  {
+    id: "index",
+    label: "Index",
+    icon: Database,
+    description: "Index discovered content into the knowledge base for RAG",
+  },
+  {
+    id: "generate",
+    label: "Generate",
+    icon: Sparkles,
+    description: "AI-generate test cases based on discovered content",
+  },
   { id: "execute", label: "Execute", icon: TestTube2, description: "Run generated tests against the application" },
 ] as const;
 
@@ -30,7 +61,13 @@ function stepToIndex(step: WizardStep): number {
 
 export default function WorkbenchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" /></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      }
+    >
       <WorkbenchContent />
     </Suspense>
   );
@@ -59,13 +96,16 @@ function WorkbenchContent() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Sync wizard step to URL param
-  const setWizardStep = useCallback((step: WizardStep) => {
-    setWizardStepRaw(step);
-    const stepNum = stepToIndex(step) + 1;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("step", String(stepNum));
-    router.replace(`/workbench?${params.toString()}`);
-  }, [searchParams, router]);
+  const setWizardStep = useCallback(
+    (step: WizardStep) => {
+      setWizardStepRaw(step);
+      const stepNum = stepToIndex(step) + 1;
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("step", String(stepNum));
+      router.replace(`/workbench?${params.toString()}`);
+    },
+    [searchParams, router]
+  );
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
   const { subscribe } = useSocket();
@@ -77,11 +117,12 @@ function WorkbenchContent() {
   }, []);
 
   const orchestrateMut = useMutation({
-    mutationFn: () => startOrchestration({
-      applicationId: selectedApp!.id,
-      steps: selectedSteps,
-      config: stepConfigs,
-    }),
+    mutationFn: () =>
+      startOrchestration({
+        applicationId: selectedApp!.id,
+        steps: selectedSteps,
+        config: stepConfigs,
+      }),
     onSuccess: (data) => {
       setResult(data);
       // Subscribe to live step events
@@ -92,7 +133,7 @@ function WorkbenchContent() {
       });
       subscribe<{ runId: string; status: string }>("orchestration:completed", (event) => {
         if (event.runId === data.runId) {
-          setResult((prev) => prev ? { ...prev, status: "completed" } : prev);
+          setResult((prev) => (prev ? { ...prev, status: "completed" } : prev));
         }
       });
       setWizardStep("running");
@@ -117,9 +158,7 @@ function WorkbenchContent() {
   });
 
   const toggleStep = (stepId: string) => {
-    setSelectedSteps((prev) =>
-      prev.includes(stepId) ? prev.filter((s) => s !== stepId) : [...prev, stepId],
-    );
+    setSelectedSteps((prev) => (prev.includes(stepId) ? prev.filter((s) => s !== stepId) : [...prev, stepId]));
   };
 
   const handleReset = () => {
@@ -138,10 +177,14 @@ function WorkbenchContent() {
   // Step validation: can only advance forward when criteria are met
   const canAdvanceTo = (target: WizardStep): boolean => {
     switch (target) {
-      case "configure": return selectedApp !== null;
-      case "running": return selectedApp !== null && selectedSteps.length > 0;
-      case "results": return result !== null;
-      default: return true;
+      case "configure":
+        return selectedApp !== null;
+      case "running":
+        return selectedApp !== null && selectedSteps.length > 0;
+      case "results":
+        return result !== null;
+      default:
+        return true;
     }
   };
 
@@ -154,7 +197,9 @@ function WorkbenchContent() {
             <h1 className="text-2xl font-bold">Test Workbench</h1>
           </div>
           {wizardStep !== "select-app" && (
-            <Button variant="outline" size="sm" onClick={handleReset}>Start Over</Button>
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              Start Over
+            </Button>
           )}
         </div>
 
@@ -162,14 +207,25 @@ function WorkbenchContent() {
         <div className="flex items-center gap-2 mb-8">
           {(["select-app", "configure", "running", "results"] as const).map((step, i) => (
             <div key={step} className="flex items-center gap-2">
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                wizardStep === step ? "bg-primary text-primary-foreground" :
-                (["select-app", "configure", "running", "results"].indexOf(wizardStep) > i) ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              }`}>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                  wizardStep === step
+                    ? "bg-primary text-primary-foreground"
+                    : ["select-app", "configure", "running", "results"].indexOf(wizardStep) > i
+                      ? "bg-primary/20 text-primary"
+                      : "bg-muted text-muted-foreground"
+                }`}
+              >
                 {i + 1}
               </div>
               <span className={`text-sm ${wizardStep === step ? "font-medium" : "text-muted-foreground"}`}>
-                {step === "select-app" ? "Select App" : step === "configure" ? "Configure" : step === "running" ? "Running" : "Results"}
+                {step === "select-app"
+                  ? "Select App"
+                  : step === "configure"
+                    ? "Configure"
+                    : step === "running"
+                      ? "Running"
+                      : "Results"}
               </span>
               {i < 3 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             </div>
@@ -183,7 +239,10 @@ function WorkbenchContent() {
               <Card
                 key={app.id}
                 className={`cursor-pointer transition-all hover:ring-2 hover:ring-primary ${selectedApp?.id === app.id ? "ring-2 ring-primary" : ""}`}
-                onClick={() => { setSelectedApp(app); setWizardStep("configure"); }}
+                onClick={() => {
+                  setSelectedApp(app);
+                  setWizardStep("configure");
+                }}
               >
                 <CardHeader>
                   <CardTitle className="text-base">{app.name}</CardTitle>
@@ -239,7 +298,12 @@ function WorkbenchContent() {
                                 className="h-7 text-xs"
                                 placeholder="Max pages to crawl (default: 50)"
                                 value={stepConfigs.discover?.maxPages ?? ""}
-                                onChange={(e) => setStepConfigs((prev) => ({ ...prev, discover: { ...prev.discover, maxPages: e.target.value } }))}
+                                onChange={(e) =>
+                                  setStepConfigs((prev) => ({
+                                    ...prev,
+                                    discover: { ...prev.discover, maxPages: e.target.value },
+                                  }))
+                                }
                               />
                             )}
                             {step.id === "generate" && (
@@ -247,7 +311,12 @@ function WorkbenchContent() {
                                 className="h-7 text-xs"
                                 placeholder="Test types: e2e, smoke, accessibility (comma-separated)"
                                 value={stepConfigs.generate?.testTypes ?? ""}
-                                onChange={(e) => setStepConfigs((prev) => ({ ...prev, generate: { ...prev.generate, testTypes: e.target.value } }))}
+                                onChange={(e) =>
+                                  setStepConfigs((prev) => ({
+                                    ...prev,
+                                    generate: { ...prev.generate, testTypes: e.target.value },
+                                  }))
+                                }
                               />
                             )}
                             {step.id === "execute" && (
@@ -255,7 +324,12 @@ function WorkbenchContent() {
                                 className="h-7 text-xs"
                                 placeholder="Browser: chromium, firefox, webkit (default: chromium)"
                                 value={stepConfigs.execute?.browser ?? ""}
-                                onChange={(e) => setStepConfigs((prev) => ({ ...prev, execute: { ...prev.execute, browser: e.target.value } }))}
+                                onChange={(e) =>
+                                  setStepConfigs((prev) => ({
+                                    ...prev,
+                                    execute: { ...prev.execute, browser: e.target.value },
+                                  }))
+                                }
                               />
                             )}
                           </div>
@@ -268,8 +342,21 @@ function WorkbenchContent() {
             })}
 
             <div className="flex justify-end pt-2">
-              <Button onClick={() => orchestrateMut.mutate()} disabled={selectedSteps.length === 0 || orchestrateMut.isPending}>
-                {orchestrateMut.isPending ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Starting...</> : <><Play className="h-4 w-4 mr-1" />Start Pipeline</>}
+              <Button
+                onClick={() => orchestrateMut.mutate()}
+                disabled={selectedSteps.length === 0 || orchestrateMut.isPending}
+              >
+                {orchestrateMut.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-1" />
+                    Start Pipeline
+                  </>
+                )}
               </Button>
             </div>
           </div>
@@ -296,9 +383,24 @@ function WorkbenchContent() {
                     <Icon className="h-4 w-4" />
                     <span className="text-sm flex-1">{stepDef?.label ?? stepId}</span>
                     {status === "pending" && <Badge variant="outline">Pending</Badge>}
-                    {status === "running" && <Badge variant="secondary"><Loader2 className="h-3 w-3 animate-spin mr-1" />Running</Badge>}
-                    {status === "completed" && <Badge variant="default" className="bg-green-600"><CheckCircle2 className="h-3 w-3 mr-1" />Done</Badge>}
-                    {status === "failed" && <Badge variant="destructive"><XCircle className="h-3 w-3 mr-1" />Failed</Badge>}
+                    {status === "running" && (
+                      <Badge variant="secondary">
+                        <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        Running
+                      </Badge>
+                    )}
+                    {status === "completed" && (
+                      <Badge variant="default" className="bg-green-600">
+                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                        Done
+                      </Badge>
+                    )}
+                    {status === "failed" && (
+                      <Badge variant="destructive">
+                        <XCircle className="h-3 w-3 mr-1" />
+                        Failed
+                      </Badge>
+                    )}
                   </div>
                 );
               })}
@@ -354,7 +456,15 @@ function WorkbenchContent() {
                       <div key={stepId} className="flex items-center gap-3 p-2 rounded border">
                         <Icon className="h-4 w-4" />
                         <span className="text-sm flex-1 font-medium">{stepDef?.label ?? stepId}</span>
-                        <Badge variant={stepResult?.status === "completed" ? "default" : stepResult?.status === "failed" ? "destructive" : "outline"}>
+                        <Badge
+                          variant={
+                            stepResult?.status === "completed"
+                              ? "default"
+                              : stepResult?.status === "failed"
+                                ? "destructive"
+                                : "outline"
+                          }
+                        >
                           {stepResult?.status ?? "skipped"}
                         </Badge>
                       </div>
@@ -365,8 +475,12 @@ function WorkbenchContent() {
             </Card>
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleReset}>New Pipeline</Button>
-              <Button variant="outline" onClick={() => setWizardStep("configure")}>Re-run with Changes</Button>
+              <Button variant="outline" onClick={handleReset}>
+                New Pipeline
+              </Button>
+              <Button variant="outline" onClick={() => setWizardStep("configure")}>
+                Re-run with Changes
+              </Button>
             </div>
           </div>
         )}

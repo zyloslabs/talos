@@ -115,10 +115,7 @@ export class CriteriaGenerator {
   /**
    * Generate acceptance criteria from requirements in the knowledge base.
    */
-  async generateCriteria(
-    appId: string,
-    options: GenerationOptions = {}
-  ): Promise<GenerationResult> {
+  async generateCriteria(appId: string, options: GenerationOptions = {}): Promise<GenerationResult> {
     const maxCriteria = options.maxCriteria ?? 20;
 
     // Retrieve relevant requirement chunks via RAG
@@ -194,10 +191,7 @@ Generate up to ${maxCriteria} acceptance criteria from the above context. Respon
   /**
    * Generate a single acceptance criterion from a natural language description.
    */
-  async suggestCriteria(
-    description: string,
-    appId: string
-  ): Promise<TalosAcceptanceCriteria> {
+  async suggestCriteria(description: string, appId: string): Promise<TalosAcceptanceCriteria> {
     const prompt = `${SYSTEM_PROMPT}
 
 ${FEW_SHOT_EXAMPLE}
@@ -261,9 +255,7 @@ Generate exactly 1 acceptance criterion for the above request. Respond with ONLY
       }
 
       // Validate each criterion structure
-      const valid = parsed.criteria.filter(
-        (c) => typeof c.title === "string" && c.title.length > 0
-      );
+      const valid = parsed.criteria.filter((c) => typeof c.title === "string" && c.title.length > 0);
 
       return { criteria: valid };
     } catch {

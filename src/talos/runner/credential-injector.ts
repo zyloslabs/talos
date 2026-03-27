@@ -57,12 +57,9 @@ export class CredentialInjector {
   /**
    * Get resolved credentials for an application's vault role.
    */
-  async getCredentials(
-    applicationId: string,
-    roleType: TalosVaultRoleType
-  ): Promise<ResolvedCredentials | null> {
+  async getCredentials(applicationId: string, roleType: TalosVaultRoleType): Promise<ResolvedCredentials | null> {
     const cacheKey = `${applicationId}:${roleType}`;
-    
+
     // Check cache
     const cached = this.credentialCache.get(cacheKey);
     if (cached) return cached;
@@ -73,7 +70,7 @@ export class CredentialInjector {
 
     // Resolve credentials
     const credentials = await this.resolveRole(role);
-    
+
     // Cache and return
     this.credentialCache.set(cacheKey, credentials);
     return credentials;

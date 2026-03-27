@@ -188,7 +188,10 @@ export class VectorStore {
     });
 
     // Step 2: Keyword boosting
-    const keywords = queryText.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const keywords = queryText
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 2);
     const scored = vectorResults.map((r) => {
       const contentLower = r.content.toLowerCase();
       let keywordHits = 0;
@@ -202,7 +205,8 @@ export class VectorStore {
     // Step 3: Metadata filtering
     const filtered = scored.filter((r) => {
       if (options.types && options.types.length > 0 && !options.types.includes(r.type)) return false;
-      if (options.minConfidence !== undefined && (r.confidence === undefined || r.confidence < options.minConfidence)) return false;
+      if (options.minConfidence !== undefined && (r.confidence === undefined || r.confidence < options.minConfidence))
+        return false;
       if (options.tags && options.tags.length > 0) {
         const itemTags = r.tags ?? [];
         if (!options.tags.some((t) => itemTags.includes(t))) return false;
@@ -228,16 +232,18 @@ export class VectorStore {
   private async initLanceDB(): Promise<void> {
     // Dynamic import for LanceDB
     const lancedb = await import("@lancedb/lancedb");
-    
+
     // Expand path
     const dbPath = this.config.path.replace("~", process.env.HOME ?? "");
-    
+
     // Connect to database
     this.db = await lancedb.connect(dbPath);
 
     // Create or open table
     try {
-      this.table = await (this.db as { openTable: (name: string) => Promise<unknown> }).openTable(this.config.collectionName);
+      this.table = await (this.db as { openTable: (name: string) => Promise<unknown> }).openTable(
+        this.config.collectionName
+      );
     } catch {
       // Table doesn't exist, will be created on first add
       this.table = null;
@@ -266,8 +272,10 @@ export class VectorStore {
 
     if (!this.table) {
       // Create table with first batch
-      this.table = await (this.db as { createTable: (name: string, data: unknown[]) => Promise<unknown> })
-        .createTable(this.config.collectionName, data);
+      this.table = await (this.db as { createTable: (name: string, data: unknown[]) => Promise<unknown> }).createTable(
+        this.config.collectionName,
+        data
+      );
     } else {
       // Add to existing table
       await (this.table as { add: (data: unknown[]) => Promise<void> }).add(data);
@@ -287,16 +295,20 @@ export class VectorStore {
     const limit = options.limit ?? 10;
 
     // Build query
-    const query = (this.table as { 
-      search: (vector: number[]) => { 
-        limit: (n: number) => { 
-          where: (condition: string) => {
+    const query = (
+      this.table as {
+        search: (vector: number[]) => {
+          limit: (n: number) => {
+            where: (condition: string) => {
+              toArray: () => Promise<unknown[]>;
+            };
             toArray: () => Promise<unknown[]>;
           };
-          toArray: () => Promise<unknown[]>;
         };
-      };
-    }).search(queryVector).limit(limit);
+      }
+    )
+      .search(queryVector)
+      .limit(limit);
 
     // Add filter for application
     let filterCondition = `application_id = '${applicationId}'`;
@@ -304,7 +316,7 @@ export class VectorStore {
       filterCondition += ` AND type = '${options.type}'`;
     }
 
-    const results = await query.where(filterCondition).toArray() as Array<{
+    const results = (await query.where(filterCondition).toArray()) as Array<{
       id: string;
       content: string;
       file_path: string;
@@ -342,8 +354,9 @@ export class VectorStore {
 
     validateFilterValue(applicationId, "applicationId");
     const countBefore = await this.countLanceDB(applicationId);
-    await (this.table as { delete: (condition: string) => Promise<void> })
-      .delete(`application_id = '${applicationId}'`);
+    await (this.table as { delete: (condition: string) => Promise<void> }).delete(
+      `application_id = '${applicationId}'`
+    );
     return countBefore;
   }
 
@@ -351,13 +364,18 @@ export class VectorStore {
     if (!this.table) return 0;
 
     validateFilterValue(applicationId, "applicationId");
-    const results = await (this.table as { 
-      filter: (condition: string) => { 
-        select: (columns: string[]) => {
-          toArray: () => Promise<unknown[]>;
+    const results = await (
+      this.table as {
+        filter: (condition: string) => {
+          select: (columns: string[]) => {
+            toArray: () => Promise<unknown[]>;
+          };
         };
-      };
-    }).filter(`application_id = '${applicationId}'`).select(["id"]).toArray();
+      }
+    )
+      .filter(`application_id = '${applicationId}'`)
+      .select(["id"])
+      .toArray();
 
     return results.length;
   }
@@ -367,15 +385,18 @@ export class VectorStore {
 
     validateFilterValue(applicationId, "applicationId");
     validateFilterValue(contentHash, "contentHash");
-    const results = await (this.table as {
-      filter: (condition: string) => {
-        select: (columns: string[]) => {
-          limit: (n: number) => {
-            toArray: () => Promise<unknown[]>;
+    const results = await (
+      this.table as {
+        filter: (condition: string) => {
+          select: (columns: string[]) => {
+            limit: (n: number) => {
+              toArray: () => Promise<unknown[]>;
+            };
           };
         };
-      };
-    }).filter(`application_id = '${applicationId}' AND content_hash = '${contentHash}'`)
+      }
+    )
+      .filter(`application_id = '${applicationId}' AND content_hash = '${contentHash}'`)
       .select(["id"])
       .limit(1)
       .toArray();

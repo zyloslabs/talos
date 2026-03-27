@@ -53,7 +53,10 @@ export class RagPipeline {
   /**
    * Index chunks from discovery into the vector store.
    */
-  async indexChunks(applicationId: string, chunks: ChunkResult[]): Promise<{
+  async indexChunks(
+    applicationId: string,
+    chunks: ChunkResult[]
+  ): Promise<{
     indexed: number;
     skipped: number;
     totalTokens: number;
@@ -115,15 +118,11 @@ export class RagPipeline {
     const queryEmbedding = await this.embeddingService.embed(query);
 
     // Search vector store
-    const chunks = await this.vectorStore.search(
-      queryEmbedding.embedding,
-      applicationId,
-      {
-        limit: options.limit ?? 10,
-        minScore: options.minScore ?? 0.5,
-        type: options.type,
-      }
-    );
+    const chunks = await this.vectorStore.search(queryEmbedding.embedding, applicationId, {
+      limit: options.limit ?? 10,
+      minScore: options.minScore ?? 0.5,
+      type: options.type,
+    });
 
     return {
       chunks,
@@ -135,11 +134,7 @@ export class RagPipeline {
   /**
    * Semantic deduplication - find chunks similar to given content.
    */
-  async findSimilar(
-    applicationId: string,
-    content: string,
-    threshold = 0.95
-  ): Promise<VectorSearchResult[]> {
+  async findSimilar(applicationId: string, content: string, threshold = 0.95): Promise<VectorSearchResult[]> {
     const embedding = await this.embeddingService.embed(content);
 
     return this.vectorStore.search(embedding.embedding, applicationId, {
@@ -175,12 +170,7 @@ export class RagPipeline {
   ): Promise<RagContext> {
     const queryEmbedding = await this.embeddingService.embed(query);
 
-    const chunks = await this.vectorStore.hybridSearch(
-      applicationId,
-      queryEmbedding.embedding,
-      query,
-      filters
-    );
+    const chunks = await this.vectorStore.hybridSearch(applicationId, queryEmbedding.embedding, query, filters);
 
     return {
       chunks,

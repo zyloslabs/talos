@@ -189,7 +189,7 @@ export class PackageBuilder {
     for (const test of tests) {
       const testFile = this.buildTestFile(test, options);
       files.push(testFile.file);
-      
+
       if (options.sanitizeCredentials !== false) {
         envReplacements.push(...testFile.replacements);
       }
@@ -237,10 +237,7 @@ export class PackageBuilder {
     const files: PackageFile[] = [];
 
     // playwright.config.ts
-    const playwrightConfig = PLAYWRIGHT_CONFIG_TEMPLATE.replace(
-      "{{BASE_URL}}",
-      app.baseUrl ?? "http://localhost:3000"
-    );
+    const playwrightConfig = PLAYWRIGHT_CONFIG_TEMPLATE.replace("{{BASE_URL}}", app.baseUrl ?? "http://localhost:3000");
     files.push({
       path: "playwright.config.ts",
       content: playwrightConfig,
@@ -248,8 +245,7 @@ export class PackageBuilder {
     });
 
     // package.json
-    const packageJson = PACKAGE_JSON_TEMPLATE
-      .replace(/\{\{NAME\}\}/g, this.slugify(app.name));
+    const packageJson = PACKAGE_JSON_TEMPLATE.replace(/\{\{NAME\}\}/g, this.slugify(app.name));
     files.push({
       path: "package.json",
       content: packageJson,
@@ -324,7 +320,10 @@ playwright-report/
     return `import { test, expect } from '@playwright/test';
 
 test('${testName}', async ({ page }) => {
-${code.split("\n").map(line => `  ${line}`).join("\n")}
+${code
+  .split("\n")
+  .map((line) => `  ${line}`)
+  .join("\n")}
 });
 `;
   }
@@ -366,10 +365,7 @@ export { expect } from '@playwright/test';
   /**
    * Build page object files.
    */
-  private buildPageObjects(
-    _app: TalosApplication,
-    tests: TalosTest[]
-  ): PackageFile[] {
+  private buildPageObjects(_app: TalosApplication, tests: TalosTest[]): PackageFile[] {
     const files: PackageFile[] = [];
 
     // Analyze tests to extract potential page objects
@@ -419,7 +415,7 @@ export class BasePage {
       for (const match of gotoMatches) {
         const url = match[1];
         const pageName = this.urlToPageName(url);
-        
+
         if (!pages.has(pageName)) {
           pages.set(pageName, []);
         }
@@ -439,7 +435,7 @@ export class BasePage {
    */
   private buildPageObjectClass(pageName: string, _selectors: string[]): string {
     const className = this.toPascalCase(pageName) + "Page";
-    
+
     return `import { Page, Locator } from '@playwright/test';
 import { BasePage } from './base.page';
 
@@ -463,16 +459,13 @@ export class ${className} extends BasePage {
    * Build README file.
    */
   private buildReadme(app: TalosApplication, tests: TalosTest[]): PackageFile {
-    const testStructure = tests
-      .map(t => `├── ${this.slugify(t.name)}.spec.ts`)
-      .join("\n");
+    const testStructure = tests.map((t) => `├── ${this.slugify(t.name)}.spec.ts`).join("\n");
 
     const testList = tests
-      .map(t => `- **${t.name}**: ${(t.metadata as Record<string, string>)?.generatedFrom ?? "N/A"}`)
+      .map((t) => `- **${t.name}**: ${(t.metadata as Record<string, string>)?.generatedFrom ?? "N/A"}`)
       .join("\n");
 
-    const content = README_TEMPLATE
-      .replace(/\{\{NAME\}\}/g, app.name)
+    const content = README_TEMPLATE.replace(/\{\{NAME\}\}/g, app.name)
       .replace("{{DATE}}", new Date().toISOString().split("T")[0])
       .replace("{{TEST_STRUCTURE}}", testStructure)
       .replace("{{TEST_LIST}}", testList);
@@ -509,7 +502,7 @@ export class ${className} extends BasePage {
   private toPascalCase(str: string): string {
     return str
       .split(/[-_\s]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join("");
   }
 }

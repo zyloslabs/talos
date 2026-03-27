@@ -105,12 +105,7 @@ export class FileChunker {
   /**
    * Structural chunking - split by functions/classes.
    */
-  private structuralChunk(
-    content: string,
-    filePath: string,
-    language: string,
-    type: TalosChunkType
-  ): ChunkResult[] {
+  private structuralChunk(content: string, filePath: string, language: string, type: TalosChunkType): ChunkResult[] {
     const lines = content.split("\n");
     const chunks: ChunkResult[] = [];
     let currentSymbol: {
@@ -150,14 +145,13 @@ export class FileChunker {
       if (symbolName && symbolType && (!currentSymbol || indentLevel <= currentSymbol.indentLevel)) {
         // Save previous symbol if exists
         if (currentSymbol && currentContent.length > 0) {
-          chunks.push(this.createChunk(
-            currentContent.join("\n"),
-            filePath,
-            currentSymbol.startLine,
-            i,
-            type,
-            { language, symbolName: currentSymbol.name, symbolType: currentSymbol.symbolType }
-          ));
+          chunks.push(
+            this.createChunk(currentContent.join("\n"), filePath, currentSymbol.startLine, i, type, {
+              language,
+              symbolName: currentSymbol.name,
+              symbolType: currentSymbol.symbolType,
+            })
+          );
         }
 
         currentSymbol = {
@@ -181,14 +175,13 @@ export class FileChunker {
           if (nextNonEmpty < lines.length) {
             const nextIndent = lines[nextNonEmpty].length - lines[nextNonEmpty].trimStart().length;
             if (nextIndent <= currentSymbol.indentLevel) {
-              chunks.push(this.createChunk(
-                currentContent.join("\n"),
-                filePath,
-                currentSymbol.startLine,
-                i + 1,
-                type,
-                { language, symbolName: currentSymbol.name, symbolType: currentSymbol.symbolType }
-              ));
+              chunks.push(
+                this.createChunk(currentContent.join("\n"), filePath, currentSymbol.startLine, i + 1, type, {
+                  language,
+                  symbolName: currentSymbol.name,
+                  symbolType: currentSymbol.symbolType,
+                })
+              );
               currentSymbol = null;
               currentContent = [];
             }
@@ -199,14 +192,13 @@ export class FileChunker {
 
     // Handle remaining content
     if (currentSymbol && currentContent.length > 0) {
-      chunks.push(this.createChunk(
-        currentContent.join("\n"),
-        filePath,
-        currentSymbol.startLine,
-        lines.length,
-        type,
-        { language, symbolName: currentSymbol.name, symbolType: currentSymbol.symbolType }
-      ));
+      chunks.push(
+        this.createChunk(currentContent.join("\n"), filePath, currentSymbol.startLine, lines.length, type, {
+          language,
+          symbolName: currentSymbol.name,
+          symbolType: currentSymbol.symbolType,
+        })
+      );
     }
 
     // If no structural chunks found, return the whole file as one chunk if small enough
@@ -234,14 +226,11 @@ export class FileChunker {
       currentLength += line.length + 1; // +1 for newline
 
       if (currentLength >= this.chunkSize) {
-        chunks.push(this.createChunk(
-          currentChunk.join("\n"),
-          filePath,
-          startLine,
-          i + 1,
-          type,
-          { language: this.detectLanguage(filePath) }
-        ));
+        chunks.push(
+          this.createChunk(currentChunk.join("\n"), filePath, startLine, i + 1, type, {
+            language: this.detectLanguage(filePath),
+          })
+        );
 
         // Calculate overlap in lines
         const overlapLines = Math.ceil(this.chunkOverlap / (currentLength / currentChunk.length));
@@ -255,14 +244,11 @@ export class FileChunker {
 
     // Add remaining content
     if (currentChunk.length > 0) {
-      chunks.push(this.createChunk(
-        currentChunk.join("\n"),
-        filePath,
-        startLine,
-        lines.length,
-        type,
-        { language: this.detectLanguage(filePath) }
-      ));
+      chunks.push(
+        this.createChunk(currentChunk.join("\n"), filePath, startLine, lines.length, type, {
+          language: this.detectLanguage(filePath),
+        })
+      );
     }
 
     return chunks;
@@ -292,7 +278,7 @@ export class FileChunker {
     let hash = 0;
     for (let i = 0; i < content.length; i++) {
       const char = content.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
     return Math.abs(hash).toString(16).padStart(8, "0");
@@ -328,7 +314,12 @@ export class FileChunker {
     if (lowerPath.includes("readme") || lowerPath.includes("doc") || lowerPath.endsWith(".md")) {
       return "documentation";
     }
-    if (lowerPath.includes("config") || lowerPath.includes("settings") || lowerPath.endsWith(".json") || lowerPath.endsWith(".yaml")) {
+    if (
+      lowerPath.includes("config") ||
+      lowerPath.includes("settings") ||
+      lowerPath.endsWith(".json") ||
+      lowerPath.endsWith(".yaml")
+    ) {
       return "config";
     }
     if (lowerPath.includes("schema") || lowerPath.includes("types") || lowerPath.includes("interface")) {
@@ -354,10 +345,7 @@ export type SlidingWindowOptions = {
 /**
  * Create sliding window chunks from content.
  */
-export function createSlidingWindowChunks(
-  content: string,
-  options: SlidingWindowOptions
-): TalosChunk[] {
+export function createSlidingWindowChunks(content: string, options: SlidingWindowOptions): TalosChunk[] {
   const { filePath, applicationId, chunkSize = 1000, chunkOverlap = 200 } = options;
 
   if (!content || content.trim() === "") {
@@ -428,10 +416,7 @@ export type StructuralChunkOptions = {
 /**
  * Create structural chunks (by function/class) from content.
  */
-export function createStructuralChunks(
-  content: string,
-  options: StructuralChunkOptions
-): TalosChunk[] {
+export function createStructuralChunks(content: string, options: StructuralChunkOptions): TalosChunk[] {
   const { filePath, applicationId, chunkSize = 2000 } = options;
 
   if (!content || content.trim() === "") {
@@ -450,7 +435,7 @@ function hashContent(content: string): string {
   let hash = 0;
   for (let i = 0; i < content.length; i++) {
     const char = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).padStart(8, "0");

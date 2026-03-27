@@ -49,21 +49,13 @@ describe("EphemeralStore", () => {
     it("appends .md extension if missing", async () => {
       const { writeFile: wf } = await import("node:fs/promises");
       await store.saveMd("report", "# Hello");
-      expect(wf).toHaveBeenCalledWith(
-        expect.stringContaining("report.md"),
-        "# Hello",
-        "utf-8",
-      );
+      expect(wf).toHaveBeenCalledWith(expect.stringContaining("report.md"), "# Hello", "utf-8");
     });
 
     it("does not double .md extension", async () => {
       const { writeFile: wf } = await import("node:fs/promises");
       await store.saveMd("report.md", "# Hello");
-      expect(wf).toHaveBeenCalledWith(
-        expect.stringContaining("report.md"),
-        "# Hello",
-        "utf-8",
-      );
+      expect(wf).toHaveBeenCalledWith(expect.stringContaining("report.md"), "# Hello", "utf-8");
       // Should NOT contain ".md.md"
       const path = (wf as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
       expect(path).not.toContain(".md.md");
@@ -96,6 +88,71 @@ describe("EphemeralStore", () => {
   describe("getDocsDir", () => {
     it("returns resolved path", () => {
       expect(store.getDocsDir()).toContain("test-docs");
+    });
+  });
+
+  describe("cleanupOlderThan", () => {
+    it("deletes files older than threshold", async () => {
+      const { readdir: readdirFn, rm: rmFn, stat: statFn } = await import("node:fs/promises");
+      const oldTime = Date.now() - 120_000; // 2 minutes ago
+      (readdirFn as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["old.md", "new.md"]);
+      (statFn as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce({ mtimeMs: oldTime }) // old.md
+        .mockResolvedValueOnce({ mtimeMs: Date.now() }); // new.md
+      const deleted = await store.cleanupOlderThan(60_000); // 60s threshold
+      expect(deleted).toBe(1);
+      expect(rmFn).toHaveBeenCalledWith(expect.stringContaining("old.md"), { force: true });
+    });
+
+    it("returns 0 when no files exceed threshold", async () => {
+      const { readdir: readdirFn } = await import("node:fs/promises");
+      (readdirFn as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      const deleted = await store.cleanupOlderThan(60_000);
+      expect(deleted).toBe(0);
+    });
+  });
+
+  describe("destroy", () => {
+    it("removes docs directory", async () => {
+      const { rm: rmFn } = await import("node:fs/promises");
+      await store.destroy();
+      expect(rmFn).toHaveBeenCalledWith(expect.any(String), { recursive: true, force: true });
+    });
+
+    it("silently handles rm failure in destroy", async () => {
+      const { rm: rmFn } = await import("node:fs/promises");
+      (rmFn as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("permission denied"));
+      await expect(store.destroy()).resolves.toBeUndefined();
+    });
+  });
+
+  describe("listFiles — catch branch", () => {
+    it("returns empty array when readdir throws", async () => {
+      const { readdir: readdirFn } = await import("node:fs/promises");
+      (readdirFn as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("ENOENT: dir not found"));
+      const result = await store.listFiles();
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe("listFilesWithAge", () => {
+    it("returns file list with ages", async () => {
+      const { readdir: readdirFn, stat: statFn } = await import("node:fs/promises");
+      const ts = Date.now() - 5000;
+      (readdirFn as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["doc.md"]);
+      (statFn as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ mtimeMs: ts });
+      const files = await store.listFilesWithAge();
+      expect(files.length).toBe(1);
+      expect(files[0].name).toBe("doc.md");
+      expect(files[0].ageMs).toBeGreaterThanOrEqual(5000);
+    });
+
+    it("handles per-file stat error gracefully", async () => {
+      const { readdir: readdirFn, stat: statFn } = await import("node:fs/promises");
+      (readdirFn as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["broken.md"]);
+      (statFn as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("stat failed"));
+      const files = await store.listFilesWithAge();
+      expect(files[0].ageMs).toBe(0);
     });
   });
 });

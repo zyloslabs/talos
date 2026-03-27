@@ -90,10 +90,7 @@ export class ExportEngine {
   /**
    * Export as a ZIP archive.
    */
-  private async exportAsZip(
-    app: TalosApplication,
-    options: ExportOptions
-  ): Promise<ExportResult> {
+  private async exportAsZip(app: TalosApplication, options: ExportOptions): Promise<ExportResult> {
     const package_ = this.packageBuilder.build(app.id, {
       ...options,
       sanitizeCredentials: options.sanitize !== false,
@@ -117,7 +114,7 @@ export class ExportEngine {
       success: true,
       export: exportRecord,
       outputPath,
-      files: package_.files.map(f => f.path),
+      files: package_.files.map((f) => f.path),
       size: zipContent.length,
     };
   }
@@ -125,10 +122,7 @@ export class ExportEngine {
   /**
    * Export as a directory with all files.
    */
-  private async exportAsDirectory(
-    app: TalosApplication,
-    options: ExportOptions
-  ): Promise<ExportResult> {
+  private async exportAsDirectory(app: TalosApplication, options: ExportOptions): Promise<ExportResult> {
     const package_ = this.packageBuilder.build(app.id, {
       ...options,
       sanitizeCredentials: options.sanitize !== false,
@@ -155,7 +149,7 @@ export class ExportEngine {
       success: true,
       export: exportRecord,
       outputPath,
-      files: package_.files.map(f => path.join(outputPath, f.path)),
+      files: package_.files.map((f) => path.join(outputPath, f.path)),
       size: package_.totalSize,
     };
   }
@@ -163,15 +157,12 @@ export class ExportEngine {
   /**
    * Export as a single file with all tests concatenated.
    */
-  private async exportAsSingleFile(
-    app: TalosApplication,
-    options: ExportOptions
-  ): Promise<ExportResult> {
+  private async exportAsSingleFile(app: TalosApplication, options: ExportOptions): Promise<ExportResult> {
     let tests = this.repository.getTestsByApplication(app.id);
-    
+
     // Filter to specific tests if requested
     if (options.tests?.length) {
-      tests = tests.filter(t => options.tests!.includes(t.id));
+      tests = tests.filter((t) => options.tests!.includes(t.id));
     }
 
     // Build single file content
@@ -224,15 +215,12 @@ export class ExportEngine {
   /**
    * Export as JSON for API consumption.
    */
-  private async exportAsJson(
-    app: TalosApplication,
-    options: ExportOptions
-  ): Promise<ExportResult> {
+  private async exportAsJson(app: TalosApplication, options: ExportOptions): Promise<ExportResult> {
     let tests = this.repository.getTestsByApplication(app.id);
-    
+
     // Filter to specific tests if requested
     if (options.tests?.length) {
-      tests = tests.filter(t => options.tests!.includes(t.id));
+      tests = tests.filter((t) => options.tests!.includes(t.id));
     }
 
     const exportData = {
@@ -242,9 +230,9 @@ export class ExportEngine {
         repoUrl: app.repositoryUrl,
         baseUrl: app.baseUrl,
       },
-      tests: tests.map(t => {
+      tests: tests.map((t) => {
         let code = t.code;
-        
+
         if (options.sanitize !== false) {
           const result = this.sanitizer.sanitize(code);
           code = result.sanitizedCode;
@@ -288,7 +276,10 @@ export class ExportEngine {
   /**
    * Import tests from a JSON export.
    */
-  async import(applicationId: string, jsonPath: string): Promise<{
+  async import(
+    applicationId: string,
+    jsonPath: string
+  ): Promise<{
     success: boolean;
     imported: number;
     errors: string[];
@@ -341,12 +332,12 @@ export class ExportEngine {
     // This is a placeholder - in production, use archiver or similar
     // For now, create a simple concatenated format
     const manifest = {
-      files: package_.files.map(f => ({ path: f.path, size: f.content.length })),
+      files: package_.files.map((f) => ({ path: f.path, size: f.content.length })),
       created: new Date().toISOString(),
     };
 
     const parts: Buffer[] = [];
-    
+
     // Add manifest
     const manifestJson = JSON.stringify(manifest);
     parts.push(Buffer.from(`MANIFEST:${manifestJson.length}\n${manifestJson}`));
@@ -383,14 +374,16 @@ export class ExportEngine {
   /**
    * List previous exports.
    */
-  async listExports(): Promise<Array<{
-    path: string;
-    name: string;
-    size: number;
-    createdAt: Date;
-  }>> {
+  async listExports(): Promise<
+    Array<{
+      path: string;
+      name: string;
+      size: number;
+      createdAt: Date;
+    }>
+  > {
     const basePath = this.config.outputDir.replace("~", process.env.HOME ?? "");
-    
+
     try {
       await fs.mkdir(basePath, { recursive: true });
       const entries = await fs.readdir(basePath, { withFileTypes: true });
@@ -404,7 +397,7 @@ export class ExportEngine {
       for (const entry of entries) {
         const fullPath = path.join(basePath, entry.name);
         const stats = await fs.stat(fullPath);
-        
+
         exports.push({
           path: fullPath,
           name: entry.name,
@@ -425,13 +418,13 @@ export class ExportEngine {
   async deleteExport(outputPath: string): Promise<boolean> {
     try {
       const stats = await fs.stat(outputPath);
-      
+
       if (stats.isDirectory()) {
         await fs.rm(outputPath, { recursive: true });
       } else {
         await fs.unlink(outputPath);
       }
-      
+
       return true;
     } catch {
       return false;

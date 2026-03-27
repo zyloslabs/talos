@@ -109,13 +109,35 @@ describe("CriteriaGenerator", () => {
 
     it("should handle markdown-wrapped JSON response", async () => {
       const chunks = [
-        { id: "c1", content: "Req text", filePath: "f.md", startLine: 1, endLine: 2, type: "requirement" as const, score: 0.8, metadata: {} },
+        {
+          id: "c1",
+          content: "Req text",
+          filePath: "f.md",
+          startLine: 1,
+          endLine: 2,
+          type: "requirement" as const,
+          score: 0.8,
+          metadata: {},
+        },
       ];
       const rag = createMockRagPipeline(chunks);
 
-      const llmResponse = "```json\n" + JSON.stringify({
-        criteria: [{ title: "Wrapped", description: "desc", scenarios: [], preconditions: [], dataRequirements: [], nfrTags: [], confidence: 0.7 }],
-      }) + "\n```";
+      const llmResponse =
+        "```json\n" +
+        JSON.stringify({
+          criteria: [
+            {
+              title: "Wrapped",
+              description: "desc",
+              scenarios: [],
+              preconditions: [],
+              dataRequirements: [],
+              nfrTags: [],
+              confidence: 0.7,
+            },
+          ],
+        }) +
+        "\n```";
 
       const generator = new CriteriaGenerator({
         ragPipeline: rag,
@@ -129,7 +151,16 @@ describe("CriteriaGenerator", () => {
 
     it("should handle invalid LLM response gracefully", async () => {
       const chunks = [
-        { id: "c1", content: "Req text", filePath: "f.md", startLine: 1, endLine: 2, type: "requirement" as const, score: 0.8, metadata: {} },
+        {
+          id: "c1",
+          content: "Req text",
+          filePath: "f.md",
+          startLine: 1,
+          endLine: 2,
+          type: "requirement" as const,
+          score: 0.8,
+          metadata: {},
+        },
       ];
       const rag = createMockRagPipeline(chunks);
 
@@ -146,7 +177,16 @@ describe("CriteriaGenerator", () => {
 
     it("should respect maxCriteria option", async () => {
       const chunks = [
-        { id: "c1", content: "Req", filePath: "f.md", startLine: 1, endLine: 2, type: "requirement" as const, score: 0.8, metadata: {} },
+        {
+          id: "c1",
+          content: "Req",
+          filePath: "f.md",
+          startLine: 1,
+          endLine: 2,
+          type: "requirement" as const,
+          score: 0.8,
+          metadata: {},
+        },
       ];
       const rag = createMockRagPipeline(chunks);
 
@@ -172,14 +212,39 @@ describe("CriteriaGenerator", () => {
 
     it("should clamp confidence to 0-1 range", async () => {
       const chunks = [
-        { id: "c1", content: "Req", filePath: "f.md", startLine: 1, endLine: 2, type: "requirement" as const, score: 0.8, metadata: {} },
+        {
+          id: "c1",
+          content: "Req",
+          filePath: "f.md",
+          startLine: 1,
+          endLine: 2,
+          type: "requirement" as const,
+          score: 0.8,
+          metadata: {},
+        },
       ];
       const rag = createMockRagPipeline(chunks);
 
       const llmResponse = JSON.stringify({
         criteria: [
-          { title: "High", description: "d", scenarios: [], preconditions: [], dataRequirements: [], nfrTags: [], confidence: 1.5 },
-          { title: "Low", description: "d", scenarios: [], preconditions: [], dataRequirements: [], nfrTags: [], confidence: -0.3 },
+          {
+            title: "High",
+            description: "d",
+            scenarios: [],
+            preconditions: [],
+            dataRequirements: [],
+            nfrTags: [],
+            confidence: 1.5,
+          },
+          {
+            title: "Low",
+            description: "d",
+            scenarios: [],
+            preconditions: [],
+            dataRequirements: [],
+            nfrTags: [],
+            confidence: -0.3,
+          },
         ],
       });
 
@@ -215,14 +280,39 @@ describe("CriteriaGenerator", () => {
 
     it("should filter out criteria without valid title", async () => {
       const chunks = [
-        { id: "c1", content: "Req", filePath: "f.md", startLine: 1, endLine: 2, type: "requirement" as const, score: 0.8, metadata: {} },
+        {
+          id: "c1",
+          content: "Req",
+          filePath: "f.md",
+          startLine: 1,
+          endLine: 2,
+          type: "requirement" as const,
+          score: 0.8,
+          metadata: {},
+        },
       ];
       const rag = createMockRagPipeline(chunks);
 
       const llmResponse = JSON.stringify({
         criteria: [
-          { title: "Valid", description: "d", scenarios: [], preconditions: [], dataRequirements: [], nfrTags: [], confidence: 0.8 },
-          { title: "", description: "no title", scenarios: [], preconditions: [], dataRequirements: [], nfrTags: [], confidence: 0.5 },
+          {
+            title: "Valid",
+            description: "d",
+            scenarios: [],
+            preconditions: [],
+            dataRequirements: [],
+            nfrTags: [],
+            confidence: 0.8,
+          },
+          {
+            title: "",
+            description: "no title",
+            scenarios: [],
+            preconditions: [],
+            dataRequirements: [],
+            nfrTags: [],
+            confidence: 0.5,
+          },
         ],
       });
 
@@ -241,15 +331,17 @@ describe("CriteriaGenerator", () => {
     it("should generate a single criterion from description", async () => {
       const rag = createMockRagPipeline();
       const llmResponse = JSON.stringify({
-        criteria: [{
-          title: "Suggested criterion",
-          description: "Based on user description",
-          scenarios: [{ given: "state", when: "action", then: "result" }],
-          preconditions: ["pre"],
-          dataRequirements: ["data"],
-          nfrTags: ["usability"],
-          confidence: 0.75,
-        }],
+        criteria: [
+          {
+            title: "Suggested criterion",
+            description: "Based on user description",
+            scenarios: [{ given: "state", when: "action", then: "result" }],
+            preconditions: ["pre"],
+            dataRequirements: ["data"],
+            nfrTags: ["usability"],
+            confidence: 0.75,
+          },
+        ],
       });
 
       const generator = new CriteriaGenerator({

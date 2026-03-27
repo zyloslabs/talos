@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { parseFile, parseDocx, parsePdf, parseXlsx, parsePptx, htmlToMarkdown, cleanPdfText, parseMergeRef, expandMergedCells, rowsToMarkdownTable } from "./file-parser.js";
+import {
+  parseFile,
+  parseDocx,
+  parsePdf,
+  parseXlsx,
+  parsePptx,
+  htmlToMarkdown,
+  cleanPdfText,
+  parseMergeRef,
+  expandMergedCells,
+  rowsToMarkdownTable,
+} from "./file-parser.js";
 import { ParseError } from "./types.js";
 
 // Mock external dependencies
@@ -74,7 +85,7 @@ describe("file-parser", () => {
     it("throws ParseError for unsupported types", async () => {
       await expect(
         // @ts-expect-error — testing runtime behavior
-        parseFile(Buffer.from("test"), "txt"),
+        parseFile(Buffer.from("test"), "txt")
       ).rejects.toThrow(ParseError);
     });
   });
@@ -225,6 +236,171 @@ describe("file-parser", () => {
 
     it("handles empty rows array", () => {
       expect(rowsToMarkdownTable([])).toBe("");
+    });
+
+    it("pads rows with different column counts", () => {
+      const rows = [["A", "B", "C"], ["X"]];
+      const table = rowsToMarkdownTable(rows);
+      expect(table).toContain("| A | B | C |");
+      expect(table).toContain("| X |  |  |");
+    });
+  });
+
+  describe("parsePptx — extended node types", () => {
+    it("handles list-type nodes", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        content: [{ type: "list", text: "List item one" }],
+      });
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toContain("- List item one");
+    });
+
+    it("handles table-type nodes", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        content: [
+          {
+            type: "table",
+            children: [
+              {
+                type: "row",
+                children: [
+                  { type: "cell", text: "H1" },
+                  { type: "cell", text: "H2" },
+                ],
+              },
+              {
+                type: "row",
+                children: [
+                  { type: "cell", text: "D1" },
+                  { type: "cell", text: "D2" },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toContain("H1");
+      expect(result).toContain("D2");
+    });
+
+    it("returns empty presentation message when no content", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ content: [] });
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toBe("*Empty presentation*");
+    });
+
+    it("handles paragraph/text nodes via else-if branch", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        content: [{ type: "paragraph", text: "  raw paragraph text  " }],
+      });
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toContain("raw paragraph text");
+    });
+
+    it("handles table nodes with no rows (skips mdTable path)", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        content: [{ type: "table", children: [] }],
+      });
+      // Should not crash — table with no valid rows produces empty sections
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toBe("*Empty presentation*");
+    });
+
+    it("handles heading without metadata level", async () => {
+      const officeparser = await import("officeparser");
+      (officeparser.default.parseOffice as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        content: [{ type: "heading", text: "No level heading", metadata: null }],
+      });
+      const result = await parsePptx(Buffer.from("test"));
+      expect(result).toContain("## No level heading");
+    });
+  });
+
+  describe("expandMergedCells — extended", () => {
+    it("creates missing rows when needed", () => {
+      const rows: string[][] = [["A"]];
+      // Merge extends beyond existing rows
+      const merges = [{ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }];
+      const expanded = expandMergedCells(rows, merges);
+      expect(expanded[2][0]).toBe("A");
+    });
+
+    it("handles no merges", () => {
+      const rows = [
+        ["A", "B"],
+        ["C", "D"],
+      ];
+      const expanded = expandMergedCells(rows, []);
+      expect(expanded).toEqual([
+        ["A", "B"],
+        ["C", "D"],
+      ]);
+    });
+  });
+
+  describe("cleanPdfText — extended", () => {
+    it("converts short all-caps lines (<= 3 chars) without converting to heading", () => {
+      // 3 chars or fewer — should NOT become a heading
+      const result = cleanPdfText("AB");
+      expect(result).not.toContain("##");
+    });
+
+    it("converts very long all-caps lines (>= 100 chars) without converting to heading", () => {
+      const longLine = "A".repeat(100) + " " + "B".repeat(100);
+      const result = cleanPdfText(longLine);
+      // Long line exceeds 100 chars — should NOT become a heading
+      expect(result).not.toContain("##");
+    });
+
+    it("converts eligible all-caps line to heading", () => {
+      const result = cleanPdfText("SECTION TITLE");
+      expect(result).toContain("## SECTION TITLE");
+    });
+
+    it("handles CRLF line endings", () => {
+      const result = cleanPdfText("line1\r\nline2\rline3");
+      expect(result).toContain("line1");
+      expect(result).toContain("line2");
+      expect(result).toContain("line3");
+    });
+  });
+
+  describe("htmlToMarkdown — extended", () => {
+    it("converts tables to markdown", () => {
+      const html = "<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>";
+      const result = htmlToMarkdown(html);
+      expect(result).toContain("Name");
+      expect(result).toContain("Alice");
+    });
+
+    it("handles multiple heading levels", () => {
+      expect(htmlToMarkdown("<h4>h4</h4>")).toContain("#### h4");
+      expect(htmlToMarkdown("<h5>h5</h5>")).toContain("##### h5");
+      expect(htmlToMarkdown("<h6>h6</h6>")).toContain("###### h6");
+    });
+
+    it("decodes HTML entities", () => {
+      const result = htmlToMarkdown("&amp; &#39; &quot;");
+      expect(result).toContain("&");
+      expect(result).toContain("'");
+      expect(result).toContain('"');
+    });
+
+    it("handles <b> and <i> tags", () => {
+      expect(htmlToMarkdown("<b>bold</b>")).toContain("**bold**");
+      expect(htmlToMarkdown("<i>italic</i>")).toContain("*italic*");
+    });
+
+    it("handles <br> tags", () => {
+      const result = htmlToMarkdown("line1<br>line2");
+      expect(result).toContain("line1");
+      expect(result).toContain("line2");
     });
   });
 });
