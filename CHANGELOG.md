@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Admin Panel Overhaul — MCP Server Management** (Epic #343): Redesigned MCP server management with preset-based provisioning, multi-instance support, and categorized server views.
+  - Admin sidebar navigation now uses controlled `SectionCard` with programmatic open/close, replacing hash-based `<a>` links with `<button>` elements and `scrollIntoView` (#344).
+  - New `McpPanel` component (`ui/components/talos/mcp-panel.tsx`) extracted from inline admin code with 9 built-in MCP presets: GitHub Cloud, GitHub Enterprise, JDBC, AWS API, Docker, Atlassian, Salesforce, Context7, and Playwright (#345).
+  - Multi-instance support for JDBC and Salesforce presets with auto-generated unique names and per-instance credential editing (#346).
+  - Backend `mcp_servers` schema extended with `category TEXT` and `tags_json TEXT` columns; v3 migration adds columns to existing tables without data loss (#347).
+  - `McpServerConfig`, `CreateMcpServerInput`, `StoredMcpServer`, and UI `McpServer` types extended with `category` and `tags` fields (#347, #348).
+  - Server cards grouped by category (GitHub, JDBC, Cloud, DevTools, Collaboration) with inline enable/disable toggle, expand/collapse details, and environment variable editing (#345, #346).
+  - Unit tests for category/tags CRUD and v3 migration covering creation defaults, update preservation, and legacy database migration (#349).
+
 - **JDBC Database Data Sources & Atlassian Integration** (Epic #328): Connect to external databases and Atlassian tools as supplementary context sources for test generation.
   - JDBC data source config schema (`jdbcDataSourceConfigSchema`) and Atlassian config schema (`atlassianConfigSchema`) with Zod validation (#329).
   - `TalosDataSource` and `TalosAtlassianConfig` domain types with full Create/Update input and SQLite stored row types (#329).

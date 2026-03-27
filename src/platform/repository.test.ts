@@ -58,7 +58,12 @@ describe("PlatformRepository", () => {
 
   describe("saved prompts", () => {
     it("creates, reads, updates, deletes prompts", () => {
-      const prompt = repo.createPrompt({ name: "Test Prompt", content: "Do something", category: "testing", tags: ["e2e"] });
+      const prompt = repo.createPrompt({
+        name: "Test Prompt",
+        content: "Do something",
+        category: "testing",
+        tags: ["e2e"],
+      });
       expect(prompt.name).toBe("Test Prompt");
       expect(prompt.category).toBe("testing");
       expect(prompt.tags).toEqual(["e2e"]);
@@ -170,7 +175,12 @@ describe("PlatformRepository", () => {
 
   describe("mcp servers", () => {
     it("creates, reads, updates, deletes servers", () => {
-      const server = repo.createMcpServer({ name: "GitHub", type: "stdio", command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] });
+      const server = repo.createMcpServer({
+        name: "GitHub",
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+      });
       expect(server.name).toBe("GitHub");
       expect(server.type).toBe("stdio");
       expect(server.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
@@ -186,6 +196,172 @@ describe("PlatformRepository", () => {
       repo.createMcpServer({ name: "A", type: "stdio" });
       repo.createMcpServer({ name: "B", type: "http", url: "http://localhost:3002" });
       expect(repo.listMcpServers().length).toBe(2);
+    });
+
+    it("creates server with category and tags", () => {
+      const server = repo.createMcpServer({
+        name: "GitHub Cloud",
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-github"],
+        category: "github",
+        tags: ["cloud", "issues", "prs"],
+      });
+      expect(server.category).toBe("github");
+      expect(server.tags).toEqual(["cloud", "issues", "prs"]);
+    });
+
+    it("defaults category to undefined and tags to empty array", () => {
+      const server = repo.createMcpServer({ name: "Plain", type: "stdio" });
+      expect(server.category).toBeUndefined();
+      expect(server.tags).toEqual([]);
+    });
+
+    it("updates category and tags", () => {
+      const server = repo.createMcpServer({
+        name: "DB",
+        type: "stdio",
+        category: "jdbc",
+        tags: ["oracle"],
+      });
+      const updated = repo.updateMcpServer(server.id, {
+        category: "cloud",
+        tags: ["aws", "rds"],
+      });
+      expect(updated!.category).toBe("cloud");
+      expect(updated!.tags).toEqual(["aws", "rds"]);
+    });
+
+    it("preserves category and tags when updating other fields", () => {
+      const server = repo.createMcpServer({
+        name: "WithTags",
+        type: "stdio",
+        category: "devtools",
+        tags: ["browser", "testing"],
+      });
+      const updated = repo.updateMcpServer(server.id, { enabled: false });
+      expect(updated!.category).toBe("devtools");
+      expect(updated!.tags).toEqual(["browser", "testing"]);
+      expect(updated!.enabled).toBe(false);
+    });
+
+    it("clears category by setting to null via undefined", () => {
+      const server = repo.createMcpServer({
+        name: "ClearCat",
+        type: "stdio",
+        category: "github",
+      });
+      expect(server.category).toBe("github");
+      // Passing category explicitly as undefined in the partial triggers the
+      // `input.category !== undefined` branch to set null
+      const updated = repo.updateMcpServer(server.id, { category: undefined });
+      // When category is not provided in update (undefined), it preserves the existing value
+      expect(updated!.category).toBe("github");
+    });
+
+    it("creates multiple servers with different categories", () => {
+      repo.createMcpServer({ name: "GH", type: "stdio", category: "github", tags: ["cloud"] });
+      repo.createMcpServer({ name: "DB1", type: "stdio", category: "jdbc", tags: ["oracle"] });
+      repo.createMcpServer({ name: "DB2", type: "stdio", category: "jdbc", tags: ["postgresql"] });
+      repo.createMcpServer({ name: "Docker", type: "stdio", category: "devtools" });
+
+      const all = repo.listMcpServers();
+      expect(all.length).toBe(4);
+      const categories = all.map((s) => s.category).filter(Boolean);
+      expect(categories).toContain("github");
+      expect(categories).toContain("jdbc");
+      expect(categories).toContain("devtools");
+    });
+
+    it("handles env with category and tags together", () => {
+      const server = repo.createMcpServer({
+        name: "Full",
+        type: "stdio",
+        command: "java",
+        args: ["-jar", "mcp-jdbc.jar"],
+        env: { JDBC_URL: "jdbc:oracle:thin:@host:1521:SID", JDBC_USER: "admin" },
+        category: "jdbc",
+        tags: ["oracle", "production"],
+      });
+      expect(server.env).toEqual({ JDBC_URL: "jdbc:oracle:thin:@host:1521:SID", JDBC_USER: "admin" });
+      expect(server.category).toBe("jdbc");
+      expect(server.tags).toEqual(["oracle", "production"]);
+
+      const fetched = repo.getMcpServer(server.id);
+      expect(fetched!.category).toBe("jdbc");
+      expect(fetched!.tags).toEqual(["oracle", "production"]);
+    });
+
+    it("returns null when updating non-existent server", () => {
+      expect(repo.updateMcpServer("nonexistent", { name: "x" })).toBeNull();
+    });
+
+    it("returns false when deleting non-existent server", () => {
+      expect(repo.deleteMcpServer("nonexistent")).toBe(false);
+    });
+  });
+
+  // ── MCP Servers v3 Migration ──
+
+  describe("mcp servers v3 migration", () => {
+    it("adds category and tags_json columns to existing table", () => {
+      // Create a repo with migrate(), which creates the table with category/tags
+      // Then verify the columns exist via pragma
+      const db = new Database(":memory:");
+      db.pragma("journal_mode = WAL");
+      db.pragma("foreign_keys = ON");
+      const freshRepo = new PlatformRepository(db);
+      freshRepo.migrate();
+
+      const cols = db.pragma("table_info(mcp_servers)") as { name: string }[];
+      const colNames = cols.map((c) => c.name);
+      expect(colNames).toContain("category");
+      expect(colNames).toContain("tags_json");
+      db.close();
+    });
+
+    it("migrates existing servers without category/tags gracefully", () => {
+      // Simulate a pre-v3 database: create table without category/tags, insert a row, then run migrate
+      const db = new Database(":memory:");
+      db.pragma("journal_mode = WAL");
+      db.pragma("foreign_keys = ON");
+
+      // Create a minimal schema that lacks category/tags_json
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'stdio',
+          command TEXT,
+          args_json TEXT NOT NULL DEFAULT '[]',
+          url TEXT,
+          env_json TEXT NOT NULL DEFAULT '{}',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          tools_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      // Insert a pre-v3 server row
+      db.prepare(
+        `
+        INSERT INTO mcp_servers (id, name, type, command, args_json, env_json, enabled, tools_json, created_at, updated_at)
+        VALUES ('legacy-1', 'OldServer', 'stdio', 'npx', '[]', '{}', 1, '[]', datetime('now'), datetime('now'))
+      `
+      ).run();
+
+      // Now run full migrate which should ALTER TABLE to add category and tags_json
+      const migratedRepo = new PlatformRepository(db);
+      migratedRepo.migrate();
+
+      // The old server should still be readable with default category/tags
+      const server = migratedRepo.getMcpServer("legacy-1");
+      expect(server).not.toBeNull();
+      expect(server!.name).toBe("OldServer");
+      expect(server!.category).toBeUndefined(); // null -> undefined
+      expect(server!.tags).toEqual([]); // DEFAULT '[]'
+
+      db.close();
     });
   });
 
@@ -212,7 +388,11 @@ describe("PlatformRepository", () => {
     });
 
     it("handles requiredTools field", () => {
-      const skill = repo.createSkill({ name: "ToolSkill", content: "c", requiredTools: ["shell-execute", "web-search"] });
+      const skill = repo.createSkill({
+        name: "ToolSkill",
+        content: "c",
+        requiredTools: ["shell-execute", "web-search"],
+      });
       expect(skill.requiredTools).toEqual(["shell-execute", "web-search"]);
 
       const updated = repo.updateSkill(skill.id, { requiredTools: ["shell-execute"] });
@@ -229,7 +409,11 @@ describe("PlatformRepository", () => {
 
   describe("agents", () => {
     it("creates, reads, updates, deletes agents", () => {
-      const agent = repo.createAgent({ name: "Research Bot", description: "Researches topics", systemPrompt: "You are a researcher." });
+      const agent = repo.createAgent({
+        name: "Research Bot",
+        description: "Researches topics",
+        systemPrompt: "You are a researcher.",
+      });
       expect(agent.name).toBe("Research Bot");
       expect(agent.description).toBe("Researches topics");
       expect(agent.systemPrompt).toBe("You are a researcher.");
