@@ -674,7 +674,50 @@ export TALOS_ADMIN_TOKEN="your-secret-token"
 ```
 The UI sends this token via the `Authorization: Bearer <token>` header.
 
-### Prompt Library
+### MCP Server Configuration
+
+Talos can connect to external MCP (Model Context Protocol) servers to extend its tooling — for example, querying GitHub, running SQL against a database, or accessing Jira tickets. Servers are configured in **Admin → MCP Servers** using the preset picker.
+
+#### Runtime Prerequisites
+
+Each preset has a **runtime requirement** that must be satisfied on the machine running the Talos backend:
+
+| Runtime | Preset(s) | Install |
+|---------|-----------|---------|
+| **Docker** | GitHub Cloud, GitHub Enterprise, JDBC, AWS API, Docker, Atlassian | [docs.docker.com/get-docker](https://docs.docker.com/get-docker/) |
+| **Node.js ≥ 18** | Salesforce, Context7, Playwright | Bundled with Talos (Node.js ≥22 required) |
+| **Python ≥ 3.9 + uvx** | *(none by default — custom servers)* | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) |
+| **Java JRE ≥ 11** | *(none by default — custom servers)* | [adoptium.net](https://adoptium.net/) |
+
+> **Tip:** Docker is recommended for most server types because it bundles the server runtime — you don't need to install Go, Python, or Java separately. Talos's Node.js runtime covers all `npx`-based presets automatically.
+
+#### How Docker Presets Work
+
+Docker presets use the MCP stdio transport inside a container. Talos spawns:
+
+```bash
+docker run -i --rm -e ENV_VAR_NAME <image>
+```
+
+The `-e VAR_NAME` flag (without a value) tells Docker to pass that variable from the host process environment into the container. Talos sets the actual credential values from the stored server config before spawning the process.
+
+**Environment variables are stored encrypted at rest** — Talos never logs token values.
+
+#### Preset Reference
+
+| Preset | Image / Package | Runtime | Notes |
+|--------|----------------|---------|-------|
+| GitHub (Cloud) | `ghcr.io/github/github-mcp-server` | Docker | Official GitHub MCP server (Go). Replaces deprecated `@modelcontextprotocol/server-github` (April 2025). |
+| GitHub Enterprise | `ghcr.io/github/github-mcp-server` | Docker | Same image — set `GITHUB_HOST` to your enterprise hostname (no `https://`). |
+| JDBC Database | `guang1/jdbc-mcp:latest` | Docker | Supports Oracle, PostgreSQL, MySQL, SQL Server. Create one server per connection. |
+| AWS API | `mcp/aws-api-mcp-server` | Docker | Official AWS API server from AWS Labs. |
+| Docker | `mcp/docker` | Docker | Manages Docker containers on the host. Mounts `/var/run/docker.sock`. |
+| Atlassian | `mcp/atlassian` | Docker | Jira + Confluence Cloud and Data Center. |
+| Salesforce | `@salesforce/mcp` | Node.js | CRM data via SOQL and REST API. |
+| Context7 | `@upstash/context7-mcp` | Node.js | Library and framework documentation lookup. |
+| Playwright | `@playwright/mcp` | Node.js | Browser automation (official Microsoft package). |
+
+
 
 **Route:** `/library`
 
