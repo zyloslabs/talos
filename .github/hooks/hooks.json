@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "./.github/hooks/scripts/session-start.sh",
+        "timeout": 5
+      }
+    ],
+    "SubagentStart": [
+      {
+        "type": "command",
+        "command": "./.github/hooks/scripts/subagent-log.sh",
+        "timeout": 5
+      }
+    ],
+    "SubagentStop": [
+      {
+        "type": "command",
+        "command": "./.github/hooks/scripts/subagent-log.sh",
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "run_in_terminal",
+        "type": "command",
+        "command": "./.github/hooks/scripts/terminal-audit.sh",
+        "timeout": 5
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "replace_string_in_file|create_file|multi_replace_string_in_file",
+        "type": "command",
+        "command": "./.github/hooks/scripts/post-edit-format.sh",
+        "timeout": 10
+      }
+    ]
+  }
+}
