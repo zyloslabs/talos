@@ -22,7 +22,8 @@ const KNOWN_VARS: KnownVar[] = [
   {
     key: "GITHUB_CLIENT_ID",
     label: "GitHub Client ID",
-    description: "Required for GitHub Copilot device auth flow (not needed if GITHUB_TOKEN / COPILOT_GITHUB_TOKEN is set)",
+    description:
+      "Required for GitHub Copilot device auth flow (not needed if GITHUB_TOKEN / COPILOT_GITHUB_TOKEN is set)",
     required: false,
     category: "Authentication",
   },
@@ -104,7 +105,10 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
 
   const saveMut = useMutation({
     mutationFn: (value: string) => setEnvEntry(varDef.key, value),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["env"] }); setEditing(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["env"] });
+      setEditing(false);
+    },
   });
 
   const deleteMut = useMutation({
@@ -143,11 +147,15 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
           <div className="flex items-center gap-2 flex-wrap">
             <code className="text-sm font-mono font-medium">{varDef.key}</code>
             {varDef.required && !isSet && (
-              <Badge variant="destructive" className="text-xs">required</Badge>
+              <Badge variant="destructive" className="text-xs">
+                required
+              </Badge>
             )}
             {isSet && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
             {isSystemEnv && (
-              <Badge variant="outline" className="text-xs text-muted-foreground">System env</Badge>
+              <Badge variant="outline" className="text-xs text-muted-foreground">
+                System env
+              </Badge>
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{varDef.description}</p>
@@ -178,17 +186,13 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
         )}
       </div>
 
-      {!editing && isSet && (
-        <p className="text-xs font-mono text-muted-foreground truncate pl-1">{displayValue()}</p>
-      )}
+      {!editing && isSet && <p className="text-xs font-mono text-muted-foreground truncate pl-1">{displayValue()}</p>}
       {!editing && isSet && isSystemEnv && (
         <p className="text-xs text-muted-foreground italic pl-1">
           Set in system environment — enter a value above to override with a file-stored value.
         </p>
       )}
-      {!editing && !isSet && (
-        <p className="text-xs text-muted-foreground italic pl-1">Not configured</p>
-      )}
+      {!editing && !isSet && <p className="text-xs text-muted-foreground italic pl-1">Not configured</p>}
 
       {editing && (
         <div className="flex gap-2">
@@ -204,7 +208,8 @@ function KnownVarRow({ varDef, entry }: { varDef: KnownVar; entry: EnvEntry | un
             }}
           />
           <Button size="sm" className="h-8" onClick={() => saveMut.mutate(editValue)} disabled={saveMut.isPending}>
-            <Save className="h-3 w-3 mr-1" />Save
+            <Save className="h-3 w-3 mr-1" />
+            Save
           </Button>
           <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditing(false)}>
             Cancel
@@ -225,7 +230,11 @@ export function EnvPanel() {
 
   const addMut = useMutation({
     mutationFn: () => setEnvEntry(newKey, newValue),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["env"] }); setNewKey(""); setNewValue(""); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["env"] });
+      setNewKey("");
+      setNewValue("");
+    },
   });
 
   const deleteMut = useMutation({
@@ -255,9 +264,7 @@ export function EnvPanel() {
         <>
           {CATEGORIES.map((category) => (
             <div key={category} className="space-y-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">
-                {category}
-              </h4>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1">{category}</h4>
               <div className="space-y-2">
                 {KNOWN_VARS.filter((v) => v.category === category).map((varDef) => (
                   <KnownVarRow key={varDef.key} varDef={varDef} entry={entriesMap.get(varDef.key)} />

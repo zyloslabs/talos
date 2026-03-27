@@ -3,8 +3,7 @@
 > tsx watch src/index.ts
 
 [talos] server listening on http://localhost:3000
-[talos] data directory: /Users/cronin/.talos
-[CLI subprocess] (node:74912) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+[talos] data directory: ~/.talos
+[CLI subprocess] (node:4522) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 [CLI subprocess] (Use `node --trace-warnings ...` to show where the warning was created)
-[socket] client connected: l56wtZB5EZ7vZEjKAAAB
-2:33:15 PM [tsx] Previous process hasn't exited yet. Force killing...
+[socket] client connected: qoJivCoLcf1zSi9NAAAB

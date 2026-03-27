@@ -2,7 +2,7 @@
 - Local:         http://localhost:3001
 - Network:       http://192.168.68.62:3001
 - Environments: .env.local
-✓ Ready in 414ms
+✓ Ready in 322ms
 ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
  We detected multiple lockfiles and selected the directory of /Users/cronin/Development/package-lock.json as the root directory.
  To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
@@ -11,9 +11,8 @@
    * /Users/cronin/Development/talos/pnpm-workspace.yaml
 
 
- GET / 307 in 646ms (next.js: 448ms, application-code: 198ms)
- GET / 307 in 63ms (next.js: 10ms, application-code: 53ms)
- GET /talos 200 in 78ms (next.js: 19ms, application-code: 59ms)
- GET /admin 200 in 63ms (next.js: 44ms, application-code: 19ms)
- GET /chat 200 in 588ms (next.js: 574ms, application-code: 14ms)
-[?25h
+ GET / 307 in 314ms (next.js: 130ms, application-code: 183ms)
+ GET /admin 200 in 107ms (next.js: 25ms, application-code: 83ms)
+ GET /chat 200 in 47ms (next.js: 29ms, application-code: 18ms)
+ GET /admin 200 in 45ms (next.js: 22ms, application-code: 23ms)
+ GET /chat 200 in 35ms (next.js: 11ms, application-code: 24ms)
