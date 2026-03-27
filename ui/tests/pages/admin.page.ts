@@ -1,4 +1,4 @@
-import type { Page, Locator } from "@playwright/test";
+import { type Page, type Locator, expect } from "@playwright/test";
 
 export class AdminPage {
   readonly page: Page;
@@ -51,6 +51,14 @@ export class AdminPage {
   readonly knowledgeSearchInput: Locator;
   readonly knowledgeSearchButton: Locator;
   readonly reindexButton: Locator;
+
+  // Sidebar (PR #344 — button-based controlled navigation)
+  readonly sidebar: Locator;
+
+  // MCP Preset Panel (PR #345, #346)
+  readonly addMcpServerButton: Locator;
+  readonly presetServerNameInput: Locator;
+  readonly presetAddServerButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -107,6 +115,14 @@ export class AdminPage {
     this.knowledgeSearchInput = page.getByPlaceholder("Search knowledge base...");
     this.knowledgeSearchButton = this.knowledgeSection.getByRole("button", { name: "Search" });
     this.reindexButton = page.getByRole("button", { name: /Re-index/ });
+
+    // Sidebar (PR #344)
+    this.sidebar = page.getByRole("complementary");
+
+    // MCP Preset Panel (PR #345, #346)
+    this.addMcpServerButton = this.mcpSection.getByRole("button", { name: "Add MCP Server" });
+    this.presetServerNameInput = this.mcpSection.getByPlaceholder("server-name");
+    this.presetAddServerButton = this.mcpSection.getByRole("button", { name: "Add Server" });
   }
 
   async goto() {
@@ -123,7 +139,11 @@ export class AdminPage {
   }
 
   getEnvEditButton(key: string): Locator {
-    return this.envSection.getByText(key).locator("..").locator("..").getByRole("button", { name: /Edit|Set/ });
+    return this.envSection
+      .getByText(key)
+      .locator("..")
+      .locator("..")
+      .getByRole("button", { name: /Edit|Set/ });
   }
 
   getMissingRequiredWarning(): Locator {
@@ -152,5 +172,50 @@ export class AdminPage {
   // Personality helpers
   getPersonalityToggle(name: string): Locator {
     return this.personalitySection.getByText(name).locator("..").getByRole("switch");
+  }
+
+  // ── Sidebar Navigation (PR #344) ──────────────────────────────────────
+
+  getSidebarButton(label: string): Locator {
+    return this.sidebar.getByRole("button", { name: label });
+  }
+  /** Open the MCP section by clicking its SectionCard header toggle. */
+  async openMcpSection() {
+    await this.mcpSection.scrollIntoViewIfNeeded();
+    // Only toggle if the section content is not already visible
+    const isOpen = await this.addMcpServerButton.isVisible().catch(() => false);
+    if (!isOpen) {
+      await this.mcpSection.getByText("MCP Servers", { exact: true }).click();
+    }
+    await expect(this.addMcpServerButton).toBeVisible();
+  }
+
+  /**
+   * Click an element inside the MCP section content.
+   * Uses force:true because Playwright's pointer hit-testing fails on
+   * elements inside SectionCard's overflow-hidden + max-h animated wrapper.
+   */
+  async clickInMcp(locator: Locator) {
+    await expect(locator).toBeVisible();
+    await locator.click({ force: true });
+  }
+  // ── MCP Server Cards (PR #345, #346) ──────────────────────────────────
+
+  getPresetCard(label: string): Locator {
+    return this.mcpSection.getByRole("button").filter({ hasText: label });
+  }
+
+  getServerCard(name: string): Locator {
+    return this.mcpSection
+      .locator(".rounded-lg.border.p-3")
+      .filter({ has: this.page.getByText(name, { exact: true }) });
+  }
+
+  getServerToggle(name: string): Locator {
+    return this.getServerCard(name).getByRole("switch");
+  }
+
+  getServerDeleteButton(name: string): Locator {
+    return this.getServerCard(name).first().getByRole("button", { name: "Delete server" });
   }
 }

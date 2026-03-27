@@ -4,6 +4,6 @@
 
 [talos] server listening on http://localhost:3000
 [talos] data directory: ~/.talos
-[CLI subprocess] (node:4522) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+[CLI subprocess] (node:35706) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 [CLI subprocess] (Use `node --trace-warnings ...` to show where the warning was created)
-[socket] client connected: qoJivCoLcf1zSi9NAAAB
+[socket] client connected: 5CaDNBxvlnRbQ676AAAB

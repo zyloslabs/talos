@@ -26,3 +26,6 @@ Thumbs.db
 
 # pnpm
 .pnpm-store/
+
+# Ignore attachment-style terminal logs (filename begins with '#')
+\#file:terminal.log
