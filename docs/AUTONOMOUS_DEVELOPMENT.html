@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>AUTONOMOUS_DEVELOPMENT.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="autonomous-development-pipeline">Autonomous Development Pipeline</h1>
+<blockquote>
+<p><strong>How TALOS uses GitHub Copilot agents, subagents, skills, and MCP tools to autonomously research, plan, implement, test, review, and fix code — all from a single prompt.</strong></p>
+</blockquote>
+<hr>
+<h2 id="table-of-contents">Table of Contents</h2>
+<ul>
+<li><a href="#part-1-concepts--how-the-pieces-fit-together">Part 1: Concepts — How the Pieces Fit Together</a>
+<ul>
+<li><a href="#what-is-an-agent">What Is an Agent?</a></li>
+<li><a href="#what-is-a-subagent">What Is a Subagent?</a></li>
+<li><a href="#what-is-a-skill">What Is a Skill?</a></li>
+<li><a href="#what-is-an-instruction">What Is an Instruction?</a></li>
+<li><a href="#what-is-an-mcp-tool">What Is an MCP Tool?</a></li>
+<li><a href="#how-they-compose-together">How They Compose Together</a></li>
+</ul>
+</li>
+<li><a href="#part-2-the-agent-roster">Part 2: The Agent Roster</a>
+<ul>
+<li><a href="#orchestrator-agent">Orchestrator Agent</a></li>
+<li><a href="#research-agent">Research Agent</a></li>
+<li><a href="#code-planner-agent">Code Planner Agent</a></li>
+<li><a href="#code-issue-agent">Code Issue Agent</a></li>
+<li><a href="#code-review-agent">Code Review Agent</a></li>
+<li><a href="#e2e-test-agent">E2E Test Agent</a></li>
+<li><a href="#test-orchestrator-agent">Test Orchestrator Agent</a></li>
+</ul>
+</li>
+<li><a href="#part-3-the-skill-library">Part 3: The Skill Library</a>
+<ul>
+<li><a href="#epic-planner">epic-planner</a></li>
+<li><a href="#code-issue">code-issue</a></li>
+<li><a href="#code-review">code-review</a></li>
+<li><a href="#research-gather">research-gather</a></li>
+<li><a href="#e2e-test">e2e-test</a></li>
+<li><a href="#resolve-pr-comments">resolve-pr-comments</a></li>
+<li><a href="#criteria-generator">criteria-generator</a></li>
+<li><a href="#repo-scaffold">repo-scaffold</a></li>
+<li><a href="#test-planner">test-planner</a></li>
+<li><a href="#test-reviewer">test-reviewer</a></li>
+</ul>
+</li>
+<li><a href="#part-4-the-mcp-tool-ecosystem">Part 4: The MCP Tool Ecosystem</a></li>
+<li><a href="#part-5-instruction-files">Part 5: Instruction Files</a></li>
+<li><a href="#part-6-the-full-pipeline--end-to-end">Part 6: The Full Pipeline — End to End</a>
+<ul>
+<li><a href="#phase-0-research">Phase 0: Research</a></li>
+<li><a href="#phase-1-plan">Phase 1: Plan</a></li>
+<li><a href="#phase-2-implement">Phase 2: Implement</a></li>
+<li><a href="#phase-3-security-audit">Phase 3: Security Audit</a></li>
+<li><a href="#phase-4-e2e-test">Phase 4: E2E Test</a></li>
+<li><a href="#phase-5-review">Phase 5: Review</a></li>
+<li><a href="#phase-6-fix">Phase 6: Fix</a></li>
+<li><a href="#phase-7-re-review">Phase 7: Re-Review</a></li>
+<li><a href="#phase-8-report">Phase 8: Report</a></li>
+</ul>
+</li>
+<li><a href="#part-7-traceability--from-requirement-to-passing-test">Part 7: Traceability — From Requirement to Passing Test</a></li>
+<li><a href="#part-8-handling-codeql-and-security-findings">Part 8: Handling CodeQL and Security Findings</a></li>
+<li><a href="#part-9-real-world-example-walk-through">Part 9: Real-World Example Walk-Through</a></li>
+<li><a href="#appendix-a-file-system-layout">Appendix A: File System Layout</a></li>
+<li><a href="#appendix-b-quick-reference--agent--skill--tool-matrix">Appendix B: Quick Reference — Agent ↔ Skill ↔ Tool Matrix</a></li>
+</ul>
+<hr>
+<h2 id="part-1-concepts--how-the-pieces-fit-together">Part 1: Concepts — How the Pieces Fit Together</h2>
+<p>This section explains the foundational building blocks of the autonomous development system from first principles. If you already understand VS Code Copilot customization, skip to <a href="#part-2-the-agent-roster">Part 2</a>.</p>
+<h3 id="what-is-an-agent">What Is an Agent?</h3>
+<p>An <strong>agent</strong> is a persistent AI persona with a defined role, a restricted set of tools, and specific instructions that govern its behavior. Agents are defined in <code>.agent.md</code> Markdown files stored in <code>.github/agents/</code>.</p>
+<p>Think of an agent as a specialized team member. A &quot;Code Review&quot; agent behaves like a senior code reviewer — it reads PRs, checks requirements, evaluates security, and publishes review comments. It has access to GitHub tools for reading PRs and posting reviews, but it doesn't have permission to edit code files.</p>
+<h4 id="agent-file-structure">Agent File Structure</h4>
+<pre class="hljs"><code><div><span class="hljs-comment"># .github/agents/code-review.agent.md</span>
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">Code</span> <span class="hljs-string">Review</span>                      <span class="hljs-comment"># Display name in VS Code agent dropdown</span>
+<span class="hljs-attr">description:</span> <span class="hljs-string">"Senior code reviewer..."</span> <span class="hljs-comment"># Tooltip shown in the UI</span>
+<span class="hljs-attr">argument-hint:</span> <span class="hljs-string">"[PR number]"</span>           <span class="hljs-comment"># Placeholder text in chat input</span>
+<span class="hljs-attr">tools:</span>                                 <span class="hljs-comment"># Allowed tool groups</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">read</span>                               <span class="hljs-comment"># Built-in: read files</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">search</span>                             <span class="hljs-comment"># Built-in: search workspace</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">github/*</span>                           <span class="hljs-comment"># All GitHub MCP tools</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">cve-search-mcp/*</span>                   <span class="hljs-comment"># CVE lookup MCP tools</span>
+<span class="hljs-attr">handoffs:</span>                              <span class="hljs-comment"># Suggested next agents</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-attr">label:</span> <span class="hljs-string">Fix</span> <span class="hljs-string">Review</span> <span class="hljs-string">Comments</span>
+    <span class="hljs-attr">agent:</span> <span class="hljs-string">Code</span> <span class="hljs-string">Issue</span>
+    <span class="hljs-attr">prompt:</span> <span class="hljs-string">Resolve</span> <span class="hljs-string">the</span> <span class="hljs-string">review</span> <span class="hljs-string">comments...</span>
+<span class="hljs-attr">agents:</span>                                <span class="hljs-comment"># Allowed subagents</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">Code</span> <span class="hljs-string">Issue</span>
+<span class="hljs-meta">---</span>
+
+<span class="hljs-comment"># Agent body — system prompt instructions in Markdown</span>
+<span class="hljs-string">You</span> <span class="hljs-string">are</span> <span class="hljs-string">a</span> <span class="hljs-string">Senior</span> <span class="hljs-string">Code</span> <span class="hljs-string">Reviewer...</span>
+</div></code></pre>
+<p><strong>Key properties:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Identifier used in the agent dropdown and when invoking as a subagent</td>
+</tr>
+<tr>
+<td><code>tools</code></td>
+<td>Whitelist of available tools. <code>github/*</code> means all MCP tools from the <code>github</code> server. If a tool isn't listed, the agent cannot use it.</td>
+</tr>
+<tr>
+<td><code>agents</code></td>
+<td>Which other agents can be invoked as subagents (via <code>runSubagent</code>). Use <code>*</code> for all, <code>[]</code> for none.</td>
+</tr>
+<tr>
+<td><code>handoffs</code></td>
+<td>Buttons that appear after a response, suggesting the user switch to another agent.</td>
+</tr>
+<tr>
+<td>Body</td>
+<td>Markdown instructions that become the agent's system prompt. This defines its persona, workflow, and rules.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Where agents live:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>Scope</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.github/agents/</code></td>
+<td>Workspace — shared via version control</td>
+</tr>
+<tr>
+<td><code>~/.copilot/agents/</code></td>
+<td>User profile — personal, across all workspaces</td>
+</tr>
+<tr>
+<td><code>.claude/agents/</code></td>
+<td>Claude-compatible format (also detected by VS Code)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Reference:</strong> <a href="https://code.visualstudio.com/docs/copilot/customization/custom-agents">VS Code — Custom Agents</a></p>
+</blockquote>
+<hr>
+<h3 id="what-is-a-subagent">What Is a Subagent?</h3>
+<p>A <strong>subagent</strong> is an agent invoked <em>by</em> another agent to handle an isolated subtask. The calling agent passes a prompt, the subagent works autonomously in its own context, and returns a single result.</p>
+<pre class="hljs"><code><div>┌──────────────────────────────────────────────────────────────┐
+│  Orchestrator Agent (main session)                           │
+│                                                              │
+│  &quot;Plan this feature&quot;                                         │
+│       │                                                      │
+│       ├── runSubagent(Code Planner, &quot;Create epics for...&quot;)   │
+│       │       │                                              │
+│       │       └── Code Planner works autonomously            │
+│       │           └── Returns: &quot;Epic #42, issues #43-#48&quot;    │
+│       │                                                      │
+│       ├── runSubagent(Code Issue, &quot;Implement epic #42...&quot;)    │
+│       │       │                                              │
+│       │       └── Code Issue works autonomously              │
+│       │           └── Returns: &quot;PR #50 created&quot;              │
+│       │                                                      │
+│       └── runSubagent(Code Review, &quot;Review PR #50...&quot;)       │
+│               │                                              │
+│               └── Code Review works autonomously             │
+│                   └── Returns: &quot;APPROVE&quot;                     │
+└──────────────────────────────────────────────────────────────┘
+</div></code></pre>
+<p><strong>Key characteristics:</strong></p>
+<ul>
+<li><strong>Context isolation</strong> — Each subagent starts with a clean context. It only sees the prompt passed to it, not the calling agent's full conversation history. This prevents context pollution.</li>
+<li><strong>Synchronous execution</strong> — The calling agent waits for the subagent to complete before continuing.</li>
+<li><strong>Single result</strong> — The subagent returns one message. This forces it to summarize its work concisely.</li>
+<li><strong>Tool inheritance</strong> — By default, a subagent inherits the parent's tools. If the subagent is a custom agent, its own tool list overrides the parent's.</li>
+<li><strong>Nesting</strong> — By default, subagents cannot spawn further subagents (prevents infinite recursion). Enable <code>chat.subagents.allowInvocationsFromSubagents</code> for recursive patterns (max depth: 5).</li>
+</ul>
+<h4 id="why-use-subagents">Why Use Subagents?</h4>
+<table>
+<thead>
+<tr>
+<th>Without subagents</th>
+<th>With subagents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>One agent does everything — context grows until it degrades</td>
+<td>Each subtask gets a fresh context</td>
+</tr>
+<tr>
+<td>Tool access is all-or-nothing</td>
+<td>Each agent has only the tools it needs</td>
+</tr>
+<tr>
+<td>Errors in one phase poison the whole session</td>
+<td>Failures are isolated to the subagent</td>
+</tr>
+<tr>
+<td>Can't parallelize</td>
+<td>Independent subtasks can run in parallel</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Reference:</strong> <a href="https://code.visualstudio.com/docs/copilot/agents/subagents">VS Code — Subagents</a></p>
+</blockquote>
+<hr>
+<h3 id="what-is-a-skill">What Is a Skill?</h3>
+<p>A <strong>skill</strong> is a reusable, portable set of instructions (and optionally scripts/resources) that teaches an agent how to perform a specific task. Skills are stored in directories under <code>.github/skills/</code> with a <code>SKILL.md</code> file.</p>
+<p>If an agent is <em>who</em> does the work, a skill is <em>how</em> the work is done.</p>
+<pre class="hljs"><code><div>.github/skills/
+├── code-issue/
+│   └── SKILL.md          # Step-by-step workflow for implementing GitHub issues
+├── code-review/
+│   └── SKILL.md          # Multi-dimensional PR review protocol
+├── epic-planner/
+│   └── SKILL.md          # Epic creation with Mermaid diagrams and acceptance criteria
+├── e2e-test/
+│   └── SKILL.md          # Playwright test writing with Page Object Model
+└── research-gather/
+    └── SKILL.md           # Multi-source research compilation
+</div></code></pre>
+<h4 id="skill-file-structure">Skill File Structure</h4>
+<pre class="hljs"><code><div><span class="hljs-comment"># .github/skills/code-issue/SKILL.md</span>
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">code-issue</span>
+<span class="hljs-attr">description:</span> <span class="hljs-string">"Autonomous senior developer workflow for resolving GitHub issues..."</span>
+<span class="hljs-attr">argument-hint:</span> <span class="hljs-string">"[epic or issue number]"</span>
+<span class="hljs-meta">---</span>
+
+<span class="hljs-comment"># Code Issue Resolver</span>
+
+<span class="hljs-comment">## Purpose</span>
+<span class="hljs-string">This</span> <span class="hljs-string">skill</span> <span class="hljs-string">drives</span> <span class="hljs-string">the</span> <span class="hljs-string">Code</span> <span class="hljs-string">Issue</span> <span class="hljs-string">agent</span> <span class="hljs-string">through</span> <span class="hljs-string">a</span> <span class="hljs-string">complete</span> <span class="hljs-string">development</span> <span class="hljs-string">workflow...</span>
+
+<span class="hljs-comment">## Workflow</span>
+<span class="hljs-comment">### Step 1: Planning</span>
+<span class="hljs-number">1</span><span class="hljs-string">.</span> <span class="hljs-string">Read</span> <span class="hljs-string">the</span> <span class="hljs-string">issue</span> <span class="hljs-string">using</span> <span class="hljs-string">`mcp_github_issue_read`</span>
+<span class="hljs-number">2</span><span class="hljs-string">.</span> <span class="hljs-string">Analyze</span> <span class="hljs-string">the</span> <span class="hljs-string">codebase...</span>
+
+<span class="hljs-comment">### Step 2: Branch Setup</span>
+<span class="hljs-string">...</span>
+
+<span class="hljs-comment">### Step 3: Implementation Loop</span>
+<span class="hljs-string">...</span>
+</div></code></pre>
+<h4 id="how-skills-load-three-levels">How Skills Load (Three Levels)</h4>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    A["1. Discovery<br/>Agent reads name + description<br/>from YAML frontmatter"] --> B["2. Instructions Loading<br/>Agent reads SKILL.md body<br/>into its context"]
+    B --> C["3. Resource Access<br/>Agent reads companion files<br/>(templates, examples) on demand"]
+</div></code></pre>
+<ol>
+<li><strong>Discovery</strong> — Copilot reads the skill's <code>name</code> and <code>description</code>. When the user asks &quot;help me test the login page&quot;, Copilot matches this to a relevant skill based on its description.</li>
+<li><strong>Instructions loading</strong> — Copilot loads the <code>SKILL.md</code> body into context, gaining access to the step-by-step procedures.</li>
+<li><strong>Resource access</strong> — As Copilot works through the instructions, it reads companion files (templates, examples) only when referenced.</li>
+</ol>
+<p>This progressive loading means many skills can exist without consuming context. Only what's relevant gets loaded.</p>
+<h4 id="skills-vs-instructions-vs-agents">Skills vs. Instructions vs. Agents</h4>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Agent (<code>.agent.md</code>)</th>
+<th>Skill (<code>SKILL.md</code>)</th>
+<th>Instruction (<code>.instructions.md</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Purpose</strong></td>
+<td>Define a persona with tool access</td>
+<td>Teach a specialized workflow</td>
+<td>Set coding standards and guidelines</td>
+</tr>
+<tr>
+<td><strong>Scope</strong></td>
+<td>Active when selected or invoked as subagent</td>
+<td>Loaded on-demand for specific tasks</td>
+<td>Always-on or glob-pattern matched</td>
+</tr>
+<tr>
+<td><strong>Content</strong></td>
+<td>System prompt + tool config</td>
+<td>Step-by-step procedures + resources</td>
+<td>Coding rules and conventions</td>
+</tr>
+<tr>
+<td><strong>Portability</strong></td>
+<td>VS Code, Copilot CLI, cloud agents</td>
+<td>Open standard (<a href="https://agentskills.io/">agentskills.io</a>)</td>
+<td>VS Code and GitHub.com only</td>
+</tr>
+<tr>
+<td><strong>Has tools?</strong></td>
+<td>Yes — tool whitelist</td>
+<td>No — uses invoking agent's tools</td>
+<td>No</td>
+</tr>
+<tr>
+<td><strong>Example</strong></td>
+<td>&quot;You are a Senior Code Reviewer&quot;</td>
+<td>&quot;Step 1: Read the PR. Step 2: Check requirements...&quot;</td>
+<td>&quot;Use <code>date-fns</code> instead of <code>moment.js</code>&quot;</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Reference:</strong> <a href="https://code.visualstudio.com/docs/copilot/customization/agent-skills">VS Code — Agent Skills</a></p>
+</blockquote>
+<hr>
+<h3 id="what-is-an-instruction">What Is an Instruction?</h3>
+<p>An <strong>instruction</strong> is a Markdown file that defines coding standards, conventions, or guidelines. Instructions are automatically injected into the AI's context based on file patterns or always-on rules.</p>
+<pre class="hljs"><code><div><span class="hljs-comment"># .github/instructions/nextjs-tailwind.instructions.md</span>
+<span class="hljs-meta">---</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">'Next.js + Tailwind Standards'</span>
+<span class="hljs-attr">description:</span> <span class="hljs-string">'Development standards for Next.js and Tailwind files'</span>
+<span class="hljs-attr">applyTo:</span> <span class="hljs-string">'**/*.tsx, **/*.ts, **/*.jsx, **/*.js, **/*.css'</span>
+<span class="hljs-meta">---</span>
+
+<span class="hljs-comment"># Next.js + Tailwind Development Standards</span>
+<span class="hljs-bullet">-</span> <span class="hljs-string">Use</span> <span class="hljs-string">the</span> <span class="hljs-string">App</span> <span class="hljs-string">Router</span> <span class="hljs-string">pattern,</span> <span class="hljs-string">not</span> <span class="hljs-string">Pages</span> <span class="hljs-string">Router</span>
+<span class="hljs-bullet">-</span> <span class="hljs-string">Server</span> <span class="hljs-string">Components</span> <span class="hljs-string">by</span> <span class="hljs-string">default,</span> <span class="hljs-string">add</span> <span class="hljs-string">"use client"</span> <span class="hljs-string">only</span> <span class="hljs-string">when</span> <span class="hljs-string">needed</span>
+<span class="hljs-bullet">-</span> <span class="hljs-string">Use</span> <span class="hljs-string">Tailwind</span> <span class="hljs-string">utility</span> <span class="hljs-string">classes</span> <span class="hljs-string">instead</span> <span class="hljs-string">of</span> <span class="hljs-string">custom</span> <span class="hljs-string">CSS</span>
+<span class="hljs-string">...</span>
+</div></code></pre>
+<p><strong>Key property:</strong> <code>applyTo</code> — a glob pattern that determines when the instruction is injected. When the agent works on a <code>.tsx</code> file, instructions matching <code>**/*.tsx</code> are automatically included.</p>
+<p><strong>This project's instructions:</strong></p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Applies To</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>go.instructions.md</code></td>
+<td><code>**/*.go, **/go.mod, **/go.sum</code></td>
+<td>Idiomatic Go practices</td>
+</tr>
+<tr>
+<td><code>nextjs-tailwind.instructions.md</code></td>
+<td><code>**/*.tsx, **/*.ts, **/*.jsx, **/*.js, **/*.css</code></td>
+<td>Next.js + Tailwind standards</td>
+</tr>
+<tr>
+<td><code>playwright-typescript.instructions.md</code></td>
+<td><em>(all files)</em></td>
+<td>Playwright test conventions</td>
+</tr>
+<tr>
+<td><code>python.instructions.md</code></td>
+<td><code>**/*.py</code></td>
+<td>Python coding conventions</td>
+</tr>
+<tr>
+<td><code>gilfoyle-code-review.instructions.md</code></td>
+<td><code>**</code> (all files)</td>
+<td>Sardonic code review persona (for entertainment)</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Reference:</strong> <a href="https://code.visualstudio.com/docs/copilot/customization/custom-instructions">VS Code — Custom Instructions</a></p>
+</blockquote>
+<hr>
+<h3 id="what-is-an-mcp-tool">What Is an MCP Tool?</h3>
+<p><strong>MCP (Model Context Protocol)</strong> is an open standard that lets AI agents interact with external services through structured tool calls. An MCP server exposes tools (functions) that agents can invoke — reading GitHub issues, searching the web, querying databases, etc.</p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    Agent["AI Agent<br/>(in VS Code)"] -->|"Tool call"| MCP["MCP Server<br/>(local or remote)"]
+    MCP -->|"JSON result"| Agent
+    MCP --> GH["GitHub API"]
+    MCP --> Web["Web Search<br/>(Tavily)"]
+    MCP --> Docs["Library Docs<br/>(Context7)"]
+    MCP --> CVE["CVE Database"]
+</div></code></pre>
+<p>In VS Code, MCP servers are configured in <code>.vscode/mcp.json</code> (workspace) or the user-level settings. Agents reference them in their <code>tools:</code> frontmatter using the <code>&lt;server-label&gt;/*</code> wildcard format.</p>
+<p><strong>Example:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-attr">tools:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">github/*</span>          <span class="hljs-comment"># All tools from the "github" MCP server</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">context7/*</span>        <span class="hljs-comment"># All tools from the "context7" MCP server</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">cve-search-mcp/*</span>  <span class="hljs-comment"># All tools from the "cve-search-mcp" MCP server</span>
+</div></code></pre>
+<hr>
+<h3 id="how-they-compose-together">How They Compose Together</h3>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    User["👤 User types a prompt"] --> Orch["🎭 Orchestrator Agent<br/><i>orchestrator.agent.md</i>"]
+    
+    Orch -->|"runSubagent"| Research["🔬 Research Agent<br/><i>research.agent.md</i>"]
+    Orch -->|"runSubagent"| Planner["📋 Code Planner Agent<br/><i>code-planner.agent.md</i>"]
+    Orch -->|"runSubagent"| Issue["💻 Code Issue Agent<br/><i>code-issue.agent.md</i>"]
+    Orch -->|"runSubagent"| Review["🔍 Code Review Agent<br/><i>code-review.agent.md</i>"]
+    Orch -->|"runSubagent"| E2E["🎭 E2E Test Agent<br/><i>e2e-test.agent.md</i>"]
+    
+    Research -.->|"reads"| SkillRG["📖 research-gather<br/>SKILL.md"]
+    Planner -.->|"reads"| SkillEP["📖 epic-planner<br/>SKILL.md"]
+    Issue -.->|"reads"| SkillCI["📖 code-issue<br/>SKILL.md"]
+    Review -.->|"reads"| SkillCR["📖 code-review<br/>SKILL.md"]
+    E2E -.->|"reads"| SkillE2E["📖 e2e-test<br/>SKILL.md"]
+    Issue -.->|"reads"| SkillRP["📖 resolve-pr-comments<br/>SKILL.md"]
+    
+    Research -->|"calls"| MCP1["🔧 Tavily MCP<br/>(web search)"]
+    Research -->|"calls"| MCP2["🔧 Context7 MCP<br/>(library docs)"]
+    Planner -->|"calls"| MCP3["🔧 GitHub MCP<br/>(create issues)"]
+    Issue -->|"calls"| MCP3
+    Review -->|"calls"| MCP3
+    Review -->|"calls"| MCP4["🔧 CVE Search MCP<br/>(vulnerability check)"]
+    
+    style Orch fill:#7057ff,color:#fff
+    style Research fill:#1d76db,color:#fff
+    style Planner fill:#1d76db,color:#fff
+    style Issue fill:#1d76db,color:#fff
+    style Review fill:#1d76db,color:#fff
+    style E2E fill:#1d76db,color:#fff
+</div></code></pre>
+<p><strong>The composition model:</strong></p>
+<ol>
+<li><strong>User</strong> talks to the <strong>Orchestrator</strong> agent</li>
+<li><strong>Orchestrator</strong> delegates phases to <strong>subagent</strong> specialists</li>
+<li>Each <strong>subagent</strong> loads the relevant <strong>skill</strong> (<code>SKILL.md</code>) for step-by-step instructions</li>
+<li><strong>Skills</strong> reference <strong>MCP tools</strong> to interact with GitHub, web APIs, and databases</li>
+<li><strong>Instructions</strong> (<code>.instructions.md</code>) are automatically injected based on file patterns</li>
+<li>The pipeline flows: Research → Plan → Implement → Audit → Test → Review → Fix → Report</li>
+</ol>
+<hr>
+<h2 id="part-2-the-agent-roster">Part 2: The Agent Roster</h2>
+<h3 id="orchestrator-agent">Orchestrator Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/orchestrator.agent.md</code></p>
+<p>The conductor of the entire pipeline. It never writes code, creates issues, or reviews PRs itself. It coordinates by calling subagents in sequence and passing each phase's output to the next.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>End-to-end development coordinator</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>agent</code>, <code>browser</code>, <code>edit</code>, <code>execute</code>, <code>read</code>, <code>search</code>, <code>todo</code>, <code>vscode</code>, <code>web</code>, <code>github/*</code>, <code>context7/*</code>, <code>cve-search-mcp/*</code>, <code>tavily-mcp/*</code></td>
+</tr>
+<tr>
+<td><strong>Subagents</strong></td>
+<td>Research, Code Planner, Code Issue, Code Review, E2E Test</td>
+</tr>
+<tr>
+<td><strong>Triggers</strong></td>
+<td>User describes a feature, bug fix, or project work</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key behaviors:</strong></p>
+<ul>
+<li>Tracks progress via a todo list (9 phases)</li>
+<li>Detects whether research is needed from the user's prompt</li>
+<li>Passes output forward — epic numbers, PR numbers, review verdicts flow between phases</li>
+<li>Limits to 2 review cycles to prevent infinite loops</li>
+<li>Enforces CHANGELOG updates and SemVer versioning rules</li>
+<li>Runs CVE security audit between implementation and review</li>
+</ul>
+<hr>
+<h3 id="research-agent">Research Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/research.agent.md</code></p>
+<p>A requirements research specialist that gathers material from multiple sources and compiles a structured summary.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>Requirements researcher</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>agent</code>, <code>read</code>, <code>search</code>, <code>web</code>, <code>context7/*</code>, <code>tavily-mcp/*</code></td>
+</tr>
+<tr>
+<td><strong>Skill</strong></td>
+<td><code>research-gather</code></td>
+</tr>
+<tr>
+<td><strong>Handoff</strong></td>
+<td>→ Code Planner (&quot;Plan Epics from Research&quot;)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Source types:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Tool Used</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local files</td>
+<td><code>read_file</code></td>
+<td>Read a PRD from <code>docs/specs/</code></td>
+</tr>
+<tr>
+<td>Web pages</td>
+<td><code>tavily_search</code>, <code>tavily_extract</code>, <code>fetch_webpage</code></td>
+<td>Fetch API docs from a URL</td>
+</tr>
+<tr>
+<td>Library docs</td>
+<td><code>context7_resolve-library-id</code> → <code>context7_query-docs</code></td>
+<td>Look up Playwright API reference</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Output format:</strong> A structured research summary with tables of sources, functional requirements, non-functional requirements, business rules, data models, integration points, and technology recommendations.</p>
+<hr>
+<h3 id="code-planner-agent">Code Planner Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/code-planner.agent.md</code></p>
+<p>Operates in two modes: (1) scaffold a new repo from scratch, or (2) plan features for an existing codebase as GitHub epics and sub-issues.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>Project planner</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>tavily-mcp/*</code>, <code>cve-search-mcp/*</code> + built-ins</td>
+</tr>
+<tr>
+<td><strong>Skill</strong></td>
+<td><code>epic-planner</code> (and optionally <code>repo-scaffold</code>)</td>
+</tr>
+<tr>
+<td><strong>Subagents</strong></td>
+<td>Research</td>
+</tr>
+<tr>
+<td><strong>Handoffs</strong></td>
+<td>→ Research (&quot;Gather Research First&quot;), → Code Issue (&quot;Start Implementation&quot;), → Code Review (&quot;Review Plan&quot;)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>What it produces:</strong></p>
+<ul>
+<li>GitHub epics with Mermaid dependency diagrams</li>
+<li>Sub-issues with Given/When/Then acceptance criteria</li>
+<li>Fibonacci story point estimates (1, 2, 3, 5, 8, 13)</li>
+<li>Phased order of operations (dependency-aware)</li>
+<li>Labels: <code>epic</code>, <code>feature</code>, <code>frontend</code>, <code>backend</code>, <code>database</code>, <code>infra</code>, <code>docs</code>, <code>testing</code>, <code>security</code></li>
+</ul>
+<hr>
+<h3 id="code-issue-agent">Code Issue Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/code-issue.agent.md</code></p>
+<p>An autonomous senior developer that resolves GitHub issues using TDD with 80% coverage enforcement.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>Implementation engineer</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>cve-search-mcp/*</code> + all built-ins</td>
+</tr>
+<tr>
+<td><strong>Skills</strong></td>
+<td><code>code-issue</code>, <code>resolve-pr-comments</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Workflow (from the <code>code-issue</code> skill):</strong></p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    A["1. PLAN<br/>Read issue, analyze codebase"] --> B["2. BRANCH<br/>Create feature branch from main"]
+    B --> C["3. IMPLEMENT<br/>TDD loop for each sub-issue"]
+    C --> D{"Tests ≥ 80%?"}
+    D -->|No| C
+    D -->|Yes| E["4. SECURITY<br/>Scan for CVEs, OWASP"]
+    E --> F["5. CI<br/>Run lint + tests + build"]
+    F --> G["6. DELIVER<br/>Commit, push, create PR"]
+    G --> H["7. HANDOFF<br/>Report PR number"]
+</div></code></pre>
+<p><strong>Key rules:</strong></p>
+<ul>
+<li>Never push to <code>main</code> — always uses feature branches</li>
+<li><code>Closes #N</code> in PR body for every resolved issue</li>
+<li>Updates <code>CHANGELOG.md</code> and <code>docs/ARCHITECTURE.md</code></li>
+<li>Runs <code>pnpm lint &amp;&amp; pnpm typecheck &amp;&amp; pnpm test &amp;&amp; cd ui &amp;&amp; npx next build</code> as quality gate</li>
+</ul>
+<hr>
+<h3 id="code-review-agent">Code Review Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/code-review.agent.md</code></p>
+<p>A meticulous senior reviewer that validates PRs across 7 dimensions and publishes structured GitHub reviews.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>PR reviewer / quality gate</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>cve-search-mcp/*</code> + read/search</td>
+</tr>
+<tr>
+<td><strong>Skill</strong></td>
+<td><code>code-review</code></td>
+</tr>
+<tr>
+<td><strong>Handoff</strong></td>
+<td>→ Code Issue (&quot;Fix Review Comments&quot;)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Review dimensions (from the <code>code-review</code> skill):</strong></p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    subgraph "10-Step Review Protocol"
+        O["1. Orient"] --> SC["1b. Scanner<br/>Comments"]
+        SC --> PR["1c. Prior<br/>Reviews"]
+        PR --> R["2. Requirements"]
+        R --> D["3. Design"]
+        D --> S["4. Security<br/>(OWASP)"]
+        S --> Q["5. Quality"]
+        Q --> P["6. Performance"]
+        P --> T["7. Tests"]
+        T --> DOC["8. Documentation"]
+        DOC --> PUB["9. Publish<br/>Review"]
+        PUB --> H["10. Handoff"]
+    end
+</div></code></pre>
+<p><strong>Verdicts:</strong> <code>APPROVE</code>, <code>COMMENT</code>, or <code>REQUEST_CHANGES</code></p>
+<p><strong>Scanner integration:</strong> The review agent fetches comments from <code>github-advanced-security</code> (CodeQL), <code>dependabot</code>, <code>snyk</code>, and GitHub Copilot automated review. Unresolved High/Critical scanner findings are automatically blocking.</p>
+<hr>
+<h3 id="e2e-test-agent">E2E Test Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/e2e-test.agent.md</code></p>
+<p>A Playwright test specialist that maps acceptance criteria to test cases using Page Object Model and accessible locators.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>E2E test writer</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>chrome-devtools/*</code> + built-ins</td>
+</tr>
+<tr>
+<td><strong>Skill</strong></td>
+<td><code>e2e-test</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Non-negotiable rules:</strong></p>
+<ul>
+<li>Only user-facing locators: <code>getByRole()</code>, <code>getByLabel()</code>, <code>getByText()</code>, <code>getByPlaceholder()</code>, <code>getByTestId()</code></li>
+<li>No CSS selectors, no XPath</li>
+<li>No <code>page.waitForTimeout()</code> — web-first assertions only</li>
+<li>Page Object Model for every page</li>
+<li>Every acceptance criterion gets at least one test</li>
+</ul>
+<hr>
+<h3 id="test-orchestrator-agent">Test Orchestrator Agent</h3>
+<p><strong>File:</strong> <code>.github/agents/test-orchestrator.agent.md</code></p>
+<p>Drives the autonomous testing lifecycle from requirements ingestion through test execution and self-healing.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Role</strong></td>
+<td>Testing lifecycle coordinator</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>tavily/*</code> + built-ins</td>
+</tr>
+<tr>
+<td><strong>Subagents</strong></td>
+<td>Research, Code Issue</td>
+</tr>
+<tr>
+<td><strong>Skills</strong></td>
+<td><code>criteria-generator</code>, <code>test-planner</code>, <code>test-reviewer</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phases:</strong></p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    A["1. ANALYZE<br/>Ingest requirements"] --> B["2. PLAN<br/>Generate criteria"]
+    B --> C["3. GENERATE<br/>Create Playwright tests"]
+    C --> D["4. EXECUTE<br/>Run across browsers"]
+    D --> E["5. HEAL<br/>Self-heal failures"]
+    E --> F["6. REPORT<br/>Coverage & gaps"]
+</div></code></pre>
+<p>This agent uses TALOS's own RAG-powered tools (<code>talos_generate_criteria</code>, <code>talos_ingest_document</code>, <code>talos_get_traceability</code>) to close the loop between requirements and test coverage.</p>
+<hr>
+<h2 id="part-3-the-skill-library">Part 3: The Skill Library</h2>
+<p>Each skill is a <code>SKILL.md</code> file in <code>.github/skills/&lt;name&gt;/</code> that provides step-by-step procedures for a specific task.</p>
+<h3 id="epic-planner">epic-planner</h3>
+<p><strong>Used by:</strong> Code Planner agent</p>
+<p>Creates GitHub epics with Mermaid dependency diagrams, acceptance criteria (Given/When/Then), Fibonacci story points, and phased execution order. Supports single-feature epics and master epics for full systems.</p>
+<p><strong>Workflow:</strong> Gather Context → Understand Scope → Plan Structure → Create Mermaid Diagram → Write Issues → Link Sub-Issues → Present Plan</p>
+<p><strong>Labels created:</strong> <code>epic</code>, <code>feature</code>, <code>frontend</code>, <code>backend</code>, <code>database</code>, <code>infra</code>, <code>docs</code>, <code>testing</code>, <code>security</code>, <code>blocked</code></p>
+<hr>
+<h3 id="code-issue">code-issue</h3>
+<p><strong>Used by:</strong> Code Issue agent</p>
+<p>The core implementation workflow: read issue → create branch → TDD loop → security scan → CI → PR → handoff. Enforces 80% unit test coverage as a hard gate.</p>
+<p><strong>Key steps:</strong></p>
+<ol>
+<li><strong>Plan</strong> — Read the issue, analyze codebase, identify affected files</li>
+<li><strong>Branch</strong> — <code>feature/issue-{number}-{short-description}</code></li>
+<li><strong>Implement</strong> — Write failing tests → implement → run coverage → lint</li>
+<li><strong>Self-review</strong> — Checklist before committing (no secrets, no TODO, conventions followed)</li>
+<li><strong>Security</strong> — Scan for CVEs, OWASP vulnerabilities</li>
+<li><strong>Deliver</strong> — Atomic commits, PR with <code>Closes #N</code></li>
+</ol>
+<hr>
+<h3 id="code-review">code-review</h3>
+<p><strong>Used by:</strong> Code Review agent</p>
+<p>10-step review protocol inspired by Google's Engineering Practices and the OWASP Code Review Guide.</p>
+<p><strong>Critical steps:</strong></p>
+<ul>
+<li><strong>Step 1b (Scanner Comments):</strong> Fetches all review comments from CodeQL, Dependabot, and Snyk. Builds a findings table with verified/unverified status. Non-outdated, non-resolved scanner findings are presumed valid.</li>
+<li><strong>Step 1c (Prior Reviews):</strong> Reads all existing human and Copilot review comments. Classifies each as addressed or still open.</li>
+<li><strong>Step 4 (Security):</strong> OWASP Top 10 scan — injection, broken auth, misconfiguration, vulnerable dependencies.</li>
+<li><strong>Step 9 (Publish):</strong> Structured review with inline comments, then formal verdict.</li>
+</ul>
+<hr>
+<h3 id="research-gather">research-gather</h3>
+<p><strong>Used by:</strong> Research agent</p>
+<p>Multi-source research compilation. Queries local files, web search (Tavily), and library documentation (Context7). Produces a structured summary with requirements, business rules, data models, and integration points.</p>
+<hr>
+<h3 id="e2e-test">e2e-test</h3>
+<p><strong>Used by:</strong> E2E Test agent</p>
+<p>Playwright test creation workflow. Maps acceptance criteria to test cases, scaffolds page objects, implements tests with accessible locators, runs them to verify, and pushes to the feature branch.</p>
+<p><strong>Acceptance criteria mapping table:</strong></p>
+<pre class="hljs"><code><div>| # | Criterion (from issue) | Test Case              | Priority |
+|---|------------------------|------------------------|----------|
+| 1 | User can log in        | auth.spec.ts: login    | P0       |
+| 2 | Error for bad password | auth.spec.ts: bad pass | P0       |
+</div></code></pre>
+<hr>
+<h3 id="resolve-pr-comments">resolve-pr-comments</h3>
+<p><strong>Used by:</strong> Code Issue agent (during fix phase)</p>
+<p>Fetches unresolved review comments, triages each (actionable / clarification-needed / already-resolved / disagree / nit / scanner-finding / copilot-review), applies fixes, runs tests, and replies to each thread.</p>
+<p><strong>Comment author classification:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Author</th>
+<th>Priority</th>
+<th>Trust Level</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github-advanced-security</code> (CodeQL)</td>
+<td>Highest</td>
+<td>Authoritative static analysis</td>
+</tr>
+<tr>
+<td><code>dependabot</code></td>
+<td>Highest</td>
+<td>Known CVE alerts</td>
+</tr>
+<tr>
+<td><code>snyk</code>, <code>sonarcloud</code></td>
+<td>High</td>
+<td>Verify but treat seriously</td>
+</tr>
+<tr>
+<td><code>copilot</code>, <code>github-copilot</code></td>
+<td>Medium</td>
+<td>Validate each finding individually</td>
+</tr>
+<tr>
+<td>Human reviewer</td>
+<td>High</td>
+<td>Understands business context</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="criteria-generator">criteria-generator</h3>
+<p><strong>Used by:</strong> Test Orchestrator agent</p>
+<p>Converts ingested requirements into structured Given/When/Then acceptance criteria using RAG-powered LLM generation. Assigns confidence scores, auto-tags criteria, and maintains traceability links back to source requirements.</p>
+<hr>
+<h3 id="repo-scaffold">repo-scaffold</h3>
+<p><strong>Used by:</strong> Code Planner agent</p>
+<p>Scaffolds a new project repository from scratch. Interviews the user about project type (web app, API, CLI, library, full-stack, mobile, MCP server), researches the optimal tech stack via Context7 and Tavily, creates local + remote repos, and applies CI/CD, linting, testing, and docs structure.</p>
+<hr>
+<h3 id="test-planner">test-planner</h3>
+<p><strong>Used by:</strong> Test Orchestrator agent</p>
+<p>Analyzes requirements and codebase to produce a prioritized test plan. Maps testable requirements, identifies coverage gaps, and outputs a structured plan with test types and priorities.</p>
+<hr>
+<h3 id="test-reviewer">test-reviewer</h3>
+<p><strong>Used by:</strong> Test Orchestrator agent</p>
+<p>Reviews generated tests against their linked acceptance criteria. Checks scenario coverage (Given/When/Then verification), assertion completeness, precondition setup, Page Object Model compliance, and accessible locator usage. Outputs a scored review with per-criterion pass/fail.</p>
+<hr>
+<h2 id="part-4-the-mcp-tool-ecosystem">Part 4: The MCP Tool Ecosystem</h2>
+<p>MCP (Model Context Protocol) servers extend agents with external capabilities. Each server exposes a set of tools that agents can call.</p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    subgraph "MCP Servers"
+        GH["github<br/>🔧 70+ tools"]
+        C7["context7<br/>🔧 2 tools"]
+        TV["tavily-mcp<br/>🔧 5 tools"]
+        CVE["cve-search-mcp<br/>🔧 6 tools"]
+    end
+    
+    subgraph "GitHub MCP Tools (Selection)"
+        GH --> GH1["issue_read / issue_write"]
+        GH --> GH2["sub_issue_write"]
+        GH --> GH3["pull_request_read"]
+        GH --> GH4["pull_request_review_write"]
+        GH --> GH5["add_comment_to_pending_review"]
+        GH --> GH6["create_branch / push_files"]
+        GH --> GH7["search_code / search_issues"]
+        GH --> GH8["get_file_contents"]
+    end
+    
+    subgraph "Context7 MCP Tools"
+        C7 --> C71["resolve-library-id<br/>Find a library's Context7 ID"]
+        C7 --> C72["query-docs<br/>Fetch up-to-date documentation"]
+    end
+    
+    subgraph "Tavily MCP Tools"
+        TV --> TV1["tavily_search<br/>Web search"]
+        TV --> TV2["tavily_extract<br/>Extract from URL"]
+        TV --> TV3["tavily_crawl<br/>Crawl a website"]
+        TV --> TV4["tavily_research<br/>Deep research"]
+        TV --> TV5["tavily_map<br/>Sitemap discovery"]
+    end
+    
+    subgraph "CVE Search MCP Tools"
+        CVE --> CVE1["vul_cve_search<br/>Look up CVE by ID"]
+        CVE --> CVE2["vul_vendor_product_cve<br/>CVEs for a package"]
+        CVE --> CVE3["vul_last_cves<br/>Recent CVEs"]
+        CVE --> CVE4["vul_vendors<br/>List vendors"]
+    end
+</div></code></pre>
+<p><strong>How agents reference tools in frontmatter:</strong></p>
+<pre class="hljs"><code><div><span class="hljs-attr">tools:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">github/*</span>        <span class="hljs-comment"># All tools from the "github" MCP server</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">context7/*</span>      <span class="hljs-comment"># All tools from the "context7" MCP server</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">read</span>             <span class="hljs-comment"># Built-in VS Code tool: read files</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">edit</span>             <span class="hljs-comment"># Built-in VS Code tool: edit files</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">execute</span>          <span class="hljs-comment"># Built-in VS Code tool: run terminal commands</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">search</span>           <span class="hljs-comment"># Built-in VS Code tool: search workspace</span>
+</div></code></pre>
+<p><strong>Important:</strong> The <code>&lt;server-label&gt;/*</code> format uses the key name from <code>mcp.json</code>, <strong>lowercased</strong>. If the key is <code>&quot;GitHub-Enterprise&quot;</code>, the wildcard must be <code>github-enterprise/*</code>.</p>
+<hr>
+<h2 id="part-5-instruction-files">Part 5: Instruction Files</h2>
+<p>Instruction files (<code>.instructions.md</code>) in <code>.github/instructions/</code> set coding standards that are automatically applied when the agent works on matching files.</p>
+<table>
+<thead>
+<tr>
+<th>Instruction File</th>
+<th><code>applyTo</code> Pattern</th>
+<th>What It Enforces</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>go.instructions.md</code></td>
+<td><code>**/*.go, **/go.mod, **/go.sum</code></td>
+<td>Idiomatic Go: error handling, package naming, standard library preference</td>
+</tr>
+<tr>
+<td><code>nextjs-tailwind.instructions.md</code></td>
+<td><code>**/*.tsx, **/*.ts, **/*.jsx, **/*.js, **/*.css</code></td>
+<td>App Router, Server Components, Tailwind utilities, Radix UI components</td>
+</tr>
+<tr>
+<td><code>playwright-typescript.instructions.md</code></td>
+<td><em>(all files)</em></td>
+<td>Playwright best practices: accessible locators, web-first assertions, POM</td>
+</tr>
+<tr>
+<td><code>python.instructions.md</code></td>
+<td><code>**/*.py</code></td>
+<td>PEP 8, type hints, docstrings</td>
+</tr>
+<tr>
+<td><code>gilfoyle-code-review.instructions.md</code></td>
+<td><code>**</code></td>
+<td>Sardonic code review persona with technical rigor</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Priority order (highest to lowest):</strong></p>
+<ol>
+<li>Personal instructions (user-level)</li>
+<li>Repository instructions (<code>.github/copilot-instructions.md</code> or <code>AGENTS.md</code>)</li>
+<li>Organization instructions</li>
+</ol>
+<hr>
+<h2 id="part-6-the-full-pipeline--end-to-end">Part 6: The Full Pipeline — End to End</h2>
+<p>This is the complete autonomous development flow as orchestrated by the Orchestrator agent.</p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    START["👤 User describes a feature"] --> R{"Research<br/>needed?"}
+    
+    R -->|"URLs or docs mentioned"| P0["Phase 0: RESEARCH<br/>Research Agent<br/><i>research-gather skill</i>"]
+    R -->|"No"| P1
+    
+    P0 --> P1["Phase 1: PLAN<br/>Code Planner Agent<br/><i>epic-planner skill</i>"]
+    
+    P1 --> P2["Phase 2: IMPLEMENT<br/>Code Issue Agent<br/><i>code-issue skill</i>"]
+    
+    P2 --> DEP{"Dependency<br/>files changed?"}
+    DEP -->|"Yes"| P3["Phase 3: SECURITY AUDIT<br/>CVE dependency check"]
+    DEP -->|"No"| UI
+    
+    P3 --> BLOCK{"CVSS ≥ 7.0?"}
+    BLOCK -->|"Yes"| FIX_SEC["Block — fix before continuing"]
+    FIX_SEC --> P3
+    BLOCK -->|"No"| UI
+    
+    UI{"UI files<br/>changed?"}
+    UI -->|"Yes"| P4["Phase 4: E2E TEST<br/>E2E Test Agent<br/><i>e2e-test skill</i>"]
+    UI -->|"No"| P5
+    
+    P4 --> P5["Phase 5: REVIEW<br/>Code Review Agent<br/><i>code-review skill</i>"]
+    
+    P5 --> V{"Verdict?"}
+    V -->|"APPROVE"| P8["Phase 8: REPORT"]
+    V -->|"REQUEST_CHANGES"| P6["Phase 6: FIX<br/>Code Issue Agent<br/><i>resolve-pr-comments skill</i>"]
+    
+    P6 --> P7["Phase 7: RE-REVIEW<br/>Code Review Agent"]
+    
+    P7 --> V2{"Verdict?"}
+    V2 -->|"APPROVE"| P8
+    V2 -->|"REQUEST_CHANGES"| P8_MANUAL["Phase 8: REPORT<br/><i>(manual attention needed)</i>"]
+    
+    P8 --> END["✅ PR ready to merge"]
+    P8_MANUAL --> END2["⚠️ Blocking issues reported"]
+    
+    style START fill:#4CAF50,color:#fff
+    style END fill:#4CAF50,color:#fff
+    style END2 fill:#FF9800,color:#fff
+    style P0 fill:#2196F3,color:#fff
+    style P1 fill:#2196F3,color:#fff
+    style P2 fill:#2196F3,color:#fff
+    style P3 fill:#f44336,color:#fff
+    style P4 fill:#2196F3,color:#fff
+    style P5 fill:#9C27B0,color:#fff
+    style P6 fill:#FF9800,color:#fff
+    style P7 fill:#9C27B0,color:#fff
+</div></code></pre>
+<hr>
+<h3 id="phase-0-research">Phase 0: Research</h3>
+<p><strong>Agent:</strong> Research | <strong>Skill:</strong> <code>research-gather</code> | <strong>Conditional:</strong> Only if the user provides document paths, URLs, or mentions research needs.</p>
+<ol>
+<li>Detect sources from the user's request (local files, web URLs, library docs)</li>
+<li>Read local documents with <code>read_file</code></li>
+<li>Search the web with <code>tavily_search</code> / <code>tavily_extract</code></li>
+<li>Query library docs with <code>context7_resolve-library-id</code> → <code>context7_query-docs</code></li>
+<li>Compile structured research summary: requirements, business rules, data models, integration points</li>
+</ol>
+<p><strong>Output passed forward:</strong> Research summary → Code Planner prompt</p>
+<hr>
+<h3 id="phase-1-plan">Phase 1: Plan</h3>
+<p><strong>Agent:</strong> Code Planner | <strong>Skill:</strong> <code>epic-planner</code></p>
+<ol>
+<li>Receive user request + research summary (if Phase 0 ran)</li>
+<li>Analyze scope: single feature vs. full system</li>
+<li>Identify domains, dependencies, and unknowns</li>
+<li>Create Mermaid dependency diagram</li>
+<li>Write GitHub epic with phased order of operations</li>
+<li>Create sub-issues with:
+<ul>
+<li>Given/When/Then acceptance criteria</li>
+<li>Fibonacci story points</li>
+<li>Labels (frontend, backend, database, etc.)</li>
+<li>Affected file paths</li>
+</ul>
+</li>
+<li>Link sub-issues to parent epic via <code>mcp_github_sub_issue_write</code></li>
+</ol>
+<p><strong>Output passed forward:</strong> Epic number + all sub-issue numbers → Code Issue prompt</p>
+<hr>
+<h3 id="phase-2-implement">Phase 2: Implement</h3>
+<p><strong>Agent:</strong> Code Issue | <strong>Skill:</strong> <code>code-issue</code></p>
+<ol>
+<li>Read all issues attached to the epic</li>
+<li>Create feature branch: <code>feature/issue-{N}-{description}</code></li>
+<li><strong>For each sub-issue:</strong>
+<ul>
+<li>Write failing tests (TDD)</li>
+<li>Implement minimum code to pass tests</li>
+<li>Run <code>pnpm test:coverage</code> — verify ≥80%</li>
+<li>Run lint and fix all errors</li>
+<li>Self-review checklist</li>
+</ul>
+</li>
+<li>Security scan for CVEs and OWASP issues</li>
+<li>Run full CI quality gate</li>
+<li>Update <code>CHANGELOG.md</code> with user-facing changes</li>
+<li>Update <code>docs/ARCHITECTURE.md</code> if architecture changed</li>
+<li>Create PR with <code>Closes #N</code> for every resolved issue</li>
+</ol>
+<p><strong>Output passed forward:</strong> PR number → Security Audit / E2E Test / Code Review</p>
+<hr>
+<h3 id="phase-3-security-audit">Phase 3: Security Audit</h3>
+<p><strong>Run by:</strong> Orchestrator directly (not a subagent) | <strong>Conditional:</strong> Only if <code>package.json</code>, <code>pom.xml</code>, <code>build.gradle</code>, <code>requirements.txt</code>, or <code>go.mod</code> was modified.</p>
+<ol>
+<li>Read the PR's dependency manifest from the feature branch</li>
+<li>Run <code>npm audit --audit-level=moderate</code></li>
+<li>CVE lookup for top 5-10 direct dependencies via <code>mcp_cve-search-mc_vul_vendor_product_cve</code></li>
+<li>Look up flagged CVE IDs via <code>mcp_cve-search-mc_vul_cve_search</code></li>
+</ol>
+<p><strong>Gate logic:</strong></p>
+<table>
+<thead>
+<tr>
+<th>CVSS Score</th>
+<th>Severity</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≥ 7.0</td>
+<td>High/Critical</td>
+<td><strong>Block</strong> — comment on PR, do not proceed</td>
+</tr>
+<tr>
+<td>4.0 – 6.9</td>
+<td>Medium</td>
+<td><strong>Warn</strong> — note in report, proceed</td>
+</tr>
+<tr>
+<td>&lt; 4.0</td>
+<td>Low/Info</td>
+<td><strong>Log</strong> — informational only</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h3 id="phase-4-e2e-test">Phase 4: E2E Test</h3>
+<p><strong>Agent:</strong> E2E Test | <strong>Skill:</strong> <code>e2e-test</code> | <strong>Conditional:</strong> Only if the PR includes UI changes.</p>
+<ol>
+<li>Read the PR and linked issues for acceptance criteria</li>
+<li>Map every criterion to a test case (explicit mapping table)</li>
+<li>Scaffold Page Objects in <code>tests/pages/</code></li>
+<li>Implement tests using only accessible locators and web-first assertions</li>
+<li>Run tests in Chromium</li>
+<li>Push tests to the feature branch</li>
+</ol>
+<p><strong>Output passed forward:</strong> Test count + acceptance criteria coverage → Code Review</p>
+<hr>
+<h3 id="phase-5-review">Phase 5: Review</h3>
+<p><strong>Agent:</strong> Code Review | <strong>Skill:</strong> <code>code-review</code></p>
+<ol>
+<li><strong>Orient</strong> — Read PR, linked issues, and <code>docs/</code> folder</li>
+<li><strong>Scanner Comments</strong> — Fetch CodeQL/GHAS/Dependabot findings, build findings table</li>
+<li><strong>Prior Reviews</strong> — Read all existing human and Copilot review comments</li>
+<li><strong>Requirements</strong> — Validate all acceptance criteria are met</li>
+<li><strong>Design</strong> — Evaluate architecture and abstraction choices</li>
+<li><strong>Security</strong> — OWASP Top 10 scan, cross-reference scanner findings</li>
+<li><strong>Quality</strong> — Naming, complexity, DRY, error handling</li>
+<li><strong>Performance</strong> — N+1 queries, memory leaks, bundle size</li>
+<li><strong>Tests</strong> — Coverage ≥80%, edge cases, test quality</li>
+<li><strong>Documentation</strong> — Inline docs, README, CHANGELOG</li>
+<li><strong>Publish</strong> — Submit GitHub review with verdict and inline comments</li>
+</ol>
+<p><strong>Output passed forward:</strong> Verdict (APPROVE/REQUEST_CHANGES) + blocking issues list</p>
+<hr>
+<h3 id="phase-6-fix">Phase 6: Fix</h3>
+<p><strong>Agent:</strong> Code Issue | <strong>Skill:</strong> <code>resolve-pr-comments</code> | <strong>Conditional:</strong> Only if review verdict is REQUEST_CHANGES.</p>
+<ol>
+<li>Fetch all unresolved review comments (including scanner findings)</li>
+<li>Triage each: actionable / already-resolved / disagree / nit / scanner-finding</li>
+<li>Apply fixes for all actionable items</li>
+<li>Run tests and lint</li>
+<li>Push to existing branch</li>
+<li>Reply to each review thread with fix details</li>
+</ol>
+<hr>
+<h3 id="phase-7-re-review">Phase 7: Re-Review</h3>
+<p><strong>Agent:</strong> Code Review | <strong>Skill:</strong> <code>code-review</code> | <strong>Max 2 total review cycles</strong></p>
+<p>Same as Phase 5 but focused on verifying the fixes. If the second review still has blocking issues, they're reported to the user for manual resolution.</p>
+<hr>
+<h3 id="phase-8-report">Phase 8: Report</h3>
+<p><strong>Run by:</strong> Orchestrator directly</p>
+<p>Produces a summary covering all phases:</p>
+<pre class="hljs"><code><div>## Development Complete
+
+### Research (if applicable)
+- Sources consulted: {count and types}
+
+### Planning
+- Epic: #{N} — {title}
+- Sub-issues: #{list}
+
+### Implementation
+- Branch: `feature/...`
+- PR: #{N}
+- Unit test coverage: ≥80% (enforced)
+
+### Security Audit
+- Dependency CVEs: {pass/findings}
+- Critical/High: {count or &quot;None&quot;}
+
+### E2E Tests (if applicable)
+- Tests written: {count}
+- Acceptance criteria covered: {N}/{total}
+
+### Review
+- Verdict: {APPROVE/COMMENT/REQUEST_CHANGES}
+- Review cycles: {count}
+- Outstanding: {items or &quot;None&quot;}
+
+### Next Steps
+{Merge guidance or manual attention needed}
+</div></code></pre>
+<hr>
+<h2 id="part-7-traceability--from-requirement-to-passing-test">Part 7: Traceability — From Requirement to Passing Test</h2>
+<p>The pipeline maintains full traceability at every level:</p>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart TD
+    REQ["📄 Requirement Document<br/>(PRD, user story, API spec)"] -->|"Research Agent<br/>ingests"| KB["🧠 RAG Knowledge Base<br/>(chunked, embedded, tagged)"]
+    
+    KB -->|"Criteria Generator<br/>produces"| AC["✅ Acceptance Criteria<br/>(Given/When/Then)"]
+    
+    AC -->|"Epic Planner<br/>structures"| ISSUE["📋 GitHub Issue<br/>(with AC in body)"]
+    
+    ISSUE -->|"Code Issue Agent<br/>implements"| CODE["💻 Code + Unit Tests<br/>(TDD, ≥80% coverage)"]
+    
+    ISSUE -->|"E2E Test Agent<br/>maps"| E2E["🎭 Playwright Tests<br/>(1:1 criterion mapping)"]
+    
+    CODE -->|"Code Review Agent<br/>validates"| REVIEW["🔍 PR Review<br/>(requirements check)"]
+    
+    E2E -->|"Must reference"| AC
+    REVIEW -->|"Checks against"| AC
+    
+    subgraph "Traceability Chain"
+        REQ -.->|"traced to"| AC
+        AC -.->|"traced to"| ISSUE
+        ISSUE -.->|"Closes #N"| CODE
+        AC -.->|"traced to"| E2E
+    end
+</div></code></pre>
+<p><strong>How each link is maintained:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Link</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Requirement → Criterion</td>
+<td><code>criteria-generator</code> skill: each criterion includes source document ID and version</td>
+</tr>
+<tr>
+<td>Criterion → Issue</td>
+<td><code>epic-planner</code> skill: acceptance criteria written into issue body</td>
+</tr>
+<tr>
+<td>Issue → Code</td>
+<td><code>code-issue</code> skill: <code>Closes #N</code> in PR body</td>
+</tr>
+<tr>
+<td>Criterion → E2E Test</td>
+<td><code>e2e-test</code> skill: explicit mapping table + comment above each test</td>
+</tr>
+<tr>
+<td>Issue → Review</td>
+<td><code>code-review</code> skill: reads linked issue before reviewing any code</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="part-8-handling-codeql-and-security-findings">Part 8: Handling CodeQL and Security Findings</h2>
+<p>Security scanning is woven into multiple phases of the pipeline.</p>
+<h3 id="during-implementation-phase-2">During Implementation (Phase 2)</h3>
+<p>The Code Issue agent's self-review checklist includes:</p>
+<ul>
+<li>No hardcoded secrets, credentials, or API keys</li>
+<li>No <code>eval()</code>, <code>Function()</code> constructor, or <code>child_process</code> usage</li>
+<li>Input validation at system boundaries</li>
+</ul>
+<h3 id="during-security-audit-phase-3">During Security Audit (Phase 3)</h3>
+<p>The Orchestrator runs <code>npm audit</code> and CVE lookups against the dependency tree. High/Critical findings block the pipeline.</p>
+<h3 id="during-review-phase-5">During Review (Phase 5)</h3>
+<p>The Code Review agent executes <strong>Step 1b (Scanner Comments)</strong>:</p>
+<ol>
+<li>Fetch all review comments on the PR</li>
+<li>Filter for comments from <code>github-advanced-security</code>, <code>dependabot</code>, <code>snyk</code></li>
+<li>Classify each finding:
+<ul>
+<li><code>is_outdated: false</code> → Code unchanged → <strong>presumed still valid</strong></li>
+<li><code>is_outdated: true</code> → Code changed → <strong>verify manually</strong> (refactoring might move, not fix, the vulnerability)</li>
+<li><code>is_resolved: true</code> → Explicitly resolved → skip</li>
+</ul>
+</li>
+<li>Build a scanner findings table for cross-reference during security review</li>
+<li>Any unresolved High/Critical CodeQL finding → <strong>automatic blocking issue</strong></li>
+</ol>
+<h3 id="during-fix-phase-6">During Fix (Phase 6)</h3>
+<p>The resolve-pr-comments skill classifies scanner findings as the highest-priority items:</p>
+<table>
+<thead>
+<tr>
+<th>Author</th>
+<th>Priority</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CodeQL / GHAS</td>
+<td>Highest — fix before all other comments</td>
+</tr>
+<tr>
+<td>Dependabot</td>
+<td>Highest — known CVE alerts</td>
+</tr>
+<tr>
+<td>Human reviewer (BLOCKING)</td>
+<td>High</td>
+</tr>
+<tr>
+<td>Copilot review</td>
+<td>Medium — validate before fixing</td>
+</tr>
+</tbody>
+</table>
+<h3 id="default-setup-vs-actions-workflow">Default Setup vs. Actions Workflow</h3>
+<p>This project uses GitHub's <strong>CodeQL default setup</strong> (configured in repo Security settings) rather than a separate <code>codeql.yml</code> Actions workflow. The default setup:</p>
+<ul>
+<li>Auto-detects languages in the repo</li>
+<li>Runs on push to main and weekly schedule</li>
+<li>Auto-updates the CodeQL analysis engine</li>
+<li>Results appear as review comments from <code>github-advanced-security</code></li>
+</ul>
+<hr>
+<h2 id="part-9-real-world-example-walk-through">Part 9: Real-World Example Walk-Through</h2>
+<p>Here's how the pipeline handled a real feature request — <strong>JDBC Database Data Sources &amp; Atlassian Integration</strong> (Epic #328):</p>
+<h3 id="user-prompt">User Prompt</h3>
+<blockquote>
+<p>&quot;Add JDBC database data sources and Atlassian (Jira + Confluence) integration to TALOS.&quot;</p>
+</blockquote>
+<h3 id="phase-0-research">Phase 0: Research</h3>
+<p>The Orchestrator detected research signals (MCP server documentation URLs, library references) and called the Research agent. It:</p>
+<ul>
+<li>Fetched <code>quarkiverse/quarkus-mcp-servers</code> JDBC README from GitHub</li>
+<li>Fetched <code>sooperset/mcp-atlassian</code> authentication docs</li>
+<li>Queried Context7 for JDBC MCP server configuration</li>
+<li>Read <code>docs/ARCHITECTURE.md</code> and <code>docs/USER_GUIDE.md</code></li>
+</ul>
+<h3 id="phase-1-plan">Phase 1: Plan</h3>
+<p>The Code Planner created:</p>
+<ul>
+<li><strong>Epic #328</strong> with a Mermaid dependency diagram</li>
+<li><strong>13 sub-issues</strong> (#329–#341) spanning 8 phases and 80 story points</li>
+<li>Labels: <code>epic</code>, <code>feature</code>, <code>backend</code>, <code>frontend</code>, <code>database</code>, <code>integration</code>, <code>docker</code>, <code>docs</code></li>
+</ul>
+<h3 id="phase-2-implement">Phase 2: Implement</h3>
+<p>The Code Issue agent:</p>
+<ul>
+<li>Created branch <code>feature/issue-328-jdbc-atlassian-integration</code></li>
+<li>Implemented all 13 issues with TDD</li>
+<li>Added Zod config schemas, SQLite tables, Docker MCP manager, MCP tools, REST endpoints, wizard steps, settings panels, RAG integration, and docs updates</li>
+<li><strong>889 tests passing</strong>, all lint and typecheck clean</li>
+<li>Created <strong>PR #342</strong></li>
+</ul>
+<h3 id="phase-3-security-audit">Phase 3: Security Audit</h3>
+<p>Skipped — no dependency manifests (<code>package.json</code>, etc.) were modified.</p>
+<h3 id="phase-4-e2e-test">Phase 4: E2E Test</h3>
+<p>The E2E Test agent:</p>
+<ul>
+<li>Created 2 spec files and 2 page objects</li>
+<li>Wrote <strong>44 Playwright tests</strong> covering 19/19 wizard acceptance criteria</li>
+<li>All tests passing</li>
+</ul>
+<h3 id="phase-5-review-cycle-1">Phase 5: Review (Cycle 1)</h3>
+<p>The Code Review agent found <strong>5 blocking issues</strong>:</p>
+<ul>
+<li><strong>S1 (Critical):</strong> Shell command injection in Docker MCP manager</li>
+<li><strong>S2 (High):</strong> SQL injection guard bypass in JDBC tools</li>
+<li><strong>S3 (Medium):</strong> Missing Zod validation on API endpoints</li>
+<li><strong>S4 (Medium):</strong> No JDBC URL format validation</li>
+<li><strong>T1 (High):</strong> Wizard test expects old step ordering</li>
+</ul>
+<p>Verdict: <strong>REQUEST_CHANGES</strong></p>
+<h3 id="phase-6-fix">Phase 6: Fix</h3>
+<p>The Code Issue agent (using <code>resolve-pr-comments</code> skill) fixed all 5 issues:</p>
+<ul>
+<li>Replaced <code>sh -c</code> with safe <code>execFileAsync</code> array args</li>
+<li>Hardened SQL guard: strip comments, reject semicolons, block CTEs with DML</li>
+<li>Added Zod <code>safeParse()</code> on POST endpoints</li>
+<li>Added <code>.refine()</code> for JDBC URL format</li>
+<li>Updated wizard test for 9-step ordering</li>
+</ul>
+<h3 id="phase-7-re-review-cycle-2">Phase 7: Re-Review (Cycle 2)</h3>
+<p>The Code Review agent verified all 5 fixes. <strong>Verdict: APPROVE</strong> with 1 non-blocking nit.</p>
+<h3 id="phase-8-report">Phase 8: Report</h3>
+<p>Final summary delivered to user with all metrics, PR link, and merge guidance.</p>
+<hr>
+<h2 id="appendix-a-file-system-layout">Appendix A: File System Layout</h2>
+<pre class="hljs"><code><div>.github/
+├── agents/                              # Custom agent definitions
+│   ├── orchestrator.agent.md            # End-to-end coordinator
+│   ├── research.agent.md               # Requirements researcher
+│   ├── code-planner.agent.md           # Epic/issue planner
+│   ├── code-issue.agent.md             # TDD implementation engineer
+│   ├── code-review.agent.md            # PR reviewer
+│   ├── e2e-test.agent.md               # Playwright test writer
+│   └── test-orchestrator.agent.md      # Testing lifecycle coordinator
+│
+├── skills/                              # Reusable skill definitions
+│   ├── code-issue/SKILL.md             # Implementation workflow
+│   ├── code-review/SKILL.md            # Review protocol
+│   ├── epic-planner/SKILL.md           # Epic creation workflow
+│   ├── research-gather/SKILL.md        # Multi-source research
+│   ├── e2e-test/SKILL.md              # Playwright test workflow
+│   ├── resolve-pr-comments/SKILL.md    # Fix review comments
+│   ├── criteria-generator/SKILL.md     # Acceptance criteria generation
+│   ├── repo-scaffold/SKILL.md          # New project scaffolding
+│   ├── test-planner/SKILL.md           # Test strategy planning
+│   └── test-reviewer/SKILL.md          # Test quality review
+│
+├── instructions/                        # Coding standard rules
+│   ├── go.instructions.md              # Go conventions
+│   ├── nextjs-tailwind.instructions.md # Next.js + Tailwind standards
+│   ├── playwright-typescript.instructions.md # Playwright best practices
+│   ├── python.instructions.md          # Python conventions
+│   └── gilfoyle-code-review.instructions.md  # Review persona
+│
+└── workflows/                           # CI/CD
+    ├── ci.yml                           # Lint, typecheck, test, build
+    └── release.yml                      # Tagged releases
+</div></code></pre>
+<hr>
+<h2 id="appendix-b-quick-reference--agent-%E2%86%94-skill-%E2%86%94-tool-matrix">Appendix B: Quick Reference — Agent ↔ Skill ↔ Tool Matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>Primary Skill(s)</th>
+<th>Key MCP Tools</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Orchestrator</strong></td>
+<td><em>(coordinates, no skill)</em></td>
+<td><code>github/*</code>, <code>cve-search-mcp/*</code></td>
+<td>Pipeline coordinator</td>
+</tr>
+<tr>
+<td><strong>Research</strong></td>
+<td><code>research-gather</code></td>
+<td><code>tavily-mcp/*</code>, <code>context7/*</code></td>
+<td>Requirements researcher</td>
+</tr>
+<tr>
+<td><strong>Code Planner</strong></td>
+<td><code>epic-planner</code>, <code>repo-scaffold</code></td>
+<td><code>github/*</code> (issue_write, sub_issue_write)</td>
+<td>Epic/issue planner</td>
+</tr>
+<tr>
+<td><strong>Code Issue</strong></td>
+<td><code>code-issue</code>, <code>resolve-pr-comments</code></td>
+<td><code>github/*</code> (push_files, create_pull_request)</td>
+<td>Implementation engineer</td>
+</tr>
+<tr>
+<td><strong>Code Review</strong></td>
+<td><code>code-review</code></td>
+<td><code>github/*</code> (pull_request_read, review_write), <code>cve-search-mcp/*</code></td>
+<td>PR reviewer</td>
+</tr>
+<tr>
+<td><strong>E2E Test</strong></td>
+<td><code>e2e-test</code></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>chrome-devtools/*</code></td>
+<td>Playwright test writer</td>
+</tr>
+<tr>
+<td><strong>Test Orchestrator</strong></td>
+<td><code>criteria-generator</code>, <code>test-planner</code>, <code>test-reviewer</code></td>
+<td><code>github/*</code>, <code>context7/*</code>, <code>tavily/*</code></td>
+<td>Testing lifecycle coordinator</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><em>This document is maintained alongside the codebase. Last updated: March 2026.</em></p>
+
+</body>
+</html>
