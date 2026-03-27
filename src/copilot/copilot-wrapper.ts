@@ -62,7 +62,7 @@ export type ChatOptions = {
 type CopilotSessionLike = {
   readonly sessionId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  on: (event: string, handler: (event: any) => void) => (() => void);
+  on: (event: string, handler: (event: any) => void) => () => void;
   sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<unknown>;
   destroy: () => Promise<void>;
 };
@@ -139,7 +139,9 @@ const writeAuthState = async (authPath: string, state: AuthState) => {
 const normalizeAuthResult = (result: unknown): { token: string; refreshToken?: string; expiresAt?: number } => {
   if (!result || typeof result !== "object") throw new Error("Auth returned empty result");
   const obj = result as Record<string, unknown>;
-  const token = (typeof obj.token === "string" ? obj.token : typeof obj.accessToken === "string" ? obj.accessToken : "") as string;
+  const token = (
+    typeof obj.token === "string" ? obj.token : typeof obj.accessToken === "string" ? obj.accessToken : ""
+  ) as string;
   if (!token) throw new Error("Auth did not return a token");
   return {
     token,
@@ -158,7 +160,10 @@ class AsyncQueue<T> {
   push(item: T) {
     if (this.done) return;
     const resolver = this.resolvers.shift();
-    if (resolver) { resolver({ value: item, done: false }); return; }
+    if (resolver) {
+      resolver({ value: item, done: false });
+      return;
+    }
     this.items.push(item);
   }
 
@@ -173,7 +178,9 @@ class AsyncQueue<T> {
   async next(): Promise<IteratorResult<T>> {
     if (this.items.length > 0) return { value: this.items.shift() as T, done: false };
     if (this.done) return { value: undefined as unknown as T, done: true };
-    return new Promise((resolve) => { this.resolvers.push(resolve); });
+    return new Promise((resolve) => {
+      this.resolvers.push(resolve);
+    });
   }
 }
 
@@ -199,14 +206,13 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   constructor(options: CopilotWrapperOptions = {}) {
     super();
-    const resolvedToken = options.githubToken
-      ?? process.env.GITHUB_TOKEN
-      ?? process.env.COPILOT_GITHUB_TOKEN;
+    const resolvedToken = options.githubToken ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN;
 
     if (resolvedToken) {
       this.githubToken = resolvedToken;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      this.client = options.client ?? (new CopilotClient({ githubToken: resolvedToken, useLoggedInUser: false }) as any);
+      this.client =
+        options.client ?? (new CopilotClient({ githubToken: resolvedToken, useLoggedInUser: false }) as any);
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       this.client = options.client ?? (new CopilotClient() as any);
@@ -223,7 +229,10 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   private async ensureStarted(): Promise<void> {
     if (this.started || this.startFailed) return;
-    if (this.startPromise) { await this.startPromise; return; }
+    if (this.startPromise) {
+      await this.startPromise;
+      return;
+    }
     this.startPromise = (async () => {
       try {
         if (this.client.start) await this.client.start();
@@ -294,9 +303,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     await this.ensureStarted();
 
     if (this.startFailed) {
-      throw new Error(
-        "Copilot SDK failed to start. Please ensure the GitHub Copilot CLI is up to date."
-      );
+      throw new Error("Copilot SDK failed to start. Please ensure the GitHub Copilot CLI is up to date.");
     }
 
     const effectiveModel = options?.model ?? this.model;
@@ -327,9 +334,8 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
     // Only pass reasoningEffort to models that support it
     const rawReasoningEffort = options?.reasoningEffort ?? this.defaultReasoningEffort;
-    const effectiveReasoningEffort = rawReasoningEffort && this.modelSupportsReasoning(effectiveModel)
-      ? rawReasoningEffort
-      : undefined;
+    const effectiveReasoningEffort =
+      rawReasoningEffort && this.modelSupportsReasoning(effectiveModel) ? rawReasoningEffort : undefined;
 
     if (!session) {
       session = await this.client.createSession({
@@ -358,12 +364,18 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
       }
     });
 
-    const unsubUsage = session.on("usage", (event: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) => {
-      this.tokenTracker.track(conversationId, event);
-    });
+    const unsubUsage = session.on(
+      "usage",
+      (event: { promptTokens?: number; completionTokens?: number; totalTokens?: number }) => {
+        this.tokenTracker.track(conversationId, event);
+      }
+    );
 
-    session.sendAndWait({ prompt: message }, this.sendAndWaitTimeoutMs)
-      .then(() => { queue.end(); })
+    session
+      .sendAndWait({ prompt: message }, this.sendAndWaitTimeoutMs)
+      .then(() => {
+        queue.end();
+      })
       .catch((err: Error) => {
         this.emit("error", err);
         queue.end();
@@ -387,20 +399,40 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
       throw new Error("Copilot SDK failed to start — cannot list models");
     }
     if (!this.client.listModels) return [{ id: this.model }];
-    const models = await this.client.listModels();
-    // Cache model capabilities for reasoning-effort gating
-    for (const model of models) {
-      const supportsReasoning = model.capabilities?.supports?.reasoningEffort === true;
-      this.modelCapabilitiesCache.set(model.id, { supportsReasoning });
+    try {
+      const models = await this.client.listModels();
+      // Cache model capabilities for reasoning-effort gating
+      for (const model of models) {
+        const supportsReasoning = model.capabilities?.supports?.reasoningEffort === true;
+        this.modelCapabilitiesCache.set(model.id, { supportsReasoning });
+      }
+      return models;
+    } catch (err) {
+      // PATs are not supported for models.list — fall back to configured model
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("Personal Access Tokens are not supported")) {
+        console.warn("[copilot] models.list unavailable with PAT auth — returning configured model only");
+        return [{ id: this.model }];
+      }
+      throw err;
     }
-    return models;
   }
 
-  getModel(): string { return this.model; }
-  setModel(model: string): void { this.model = model; }
-  getReasoningEffort(): ReasoningEffort | undefined { return this.defaultReasoningEffort; }
-  setReasoningEffort(effort: ReasoningEffort | undefined): void { this.defaultReasoningEffort = effort; }
-  getProvider(): ProviderConfig | undefined { return this.providerConfig; }
+  getModel(): string {
+    return this.model;
+  }
+  setModel(model: string): void {
+    this.model = model;
+  }
+  getReasoningEffort(): ReasoningEffort | undefined {
+    return this.defaultReasoningEffort;
+  }
+  setReasoningEffort(effort: ReasoningEffort | undefined): void {
+    this.defaultReasoningEffort = effort;
+  }
+  getProvider(): ProviderConfig | undefined {
+    return this.providerConfig;
+  }
 
   setProvider(provider: ProviderConfig | undefined): void {
     this.providerConfig = provider;

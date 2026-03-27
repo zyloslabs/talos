@@ -41,12 +41,14 @@ export type AdminRouterDeps = {
 
 const VALID_TASK_STATUSES: TaskStatus[] = ["pending", "running", "completed", "failed", "cancelled"];
 
-const KnowledgeConfigUpdateSchema = z.object({
-  vectorDbPath: z.string().min(1).optional(),
-  collectionName: z.string().min(1).optional(),
-  searchMode: z.enum(["hybrid", "vector", "keyword"]).optional(),
-  minScore: z.number().min(0).max(1).optional(),
-}).strict();
+const KnowledgeConfigUpdateSchema = z
+  .object({
+    vectorDbPath: z.string().min(1).optional(),
+    collectionName: z.string().min(1).optional(),
+    searchMode: z.enum(["hybrid", "vector", "keyword"]).optional(),
+    minScore: z.number().min(0).max(1).optional(),
+  })
+  .strict();
 
 /**
  * Validates a URL is safe for server-side use (anti-SSRF).
@@ -62,12 +64,12 @@ function isUrlSafe(urlStr: string): boolean {
     const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname);
     if (ipv4Match) {
       const [, a, b] = ipv4Match.map(Number);
-      if (a === 10) return false;                     // 10.0.0.0/8
+      if (a === 10) return false; // 10.0.0.0/8
       if (a === 172 && b >= 16 && b <= 31) return false; // 172.16.0.0/12
-      if (a === 192 && b === 168) return false;       // 192.168.0.0/16
-      if (a === 127) return false;                    // 127.0.0.0/8
-      if (a === 169 && b === 254) return false;       // 169.254.0.0/16 (link-local)
-      if (a === 0) return false;                      // 0.0.0.0/8
+      if (a === 192 && b === 168) return false; // 192.168.0.0/16
+      if (a === 127) return false; // 127.0.0.0/8
+      if (a === 169 && b === 254) return false; // 169.254.0.0/16 (link-local)
+      if (a === 0) return false; // 0.0.0.0/8
     }
     return true;
   } catch {
@@ -75,7 +77,13 @@ function isUrlSafe(urlStr: string): boolean {
   }
 }
 
-export function createAdminRouter({ platformRepo, copilot, adminToken, envManager, ragPipeline }: AdminRouterDeps): Router {
+export function createAdminRouter({
+  platformRepo,
+  copilot,
+  adminToken,
+  envManager,
+  ragPipeline,
+}: AdminRouterDeps): Router {
   const router = Router();
 
   // ── Auth Middleware ──────────────────────────────────────────────────────
@@ -98,26 +106,33 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     const authenticated = copilot ? await copilot.isAuthenticated() : false;
     const sdkAuthType = copilot ? await copilot.getAuthType() : undefined;
     // Derive display mode: prefer SDK report, fall back to env-var heuristic
-    const authMode = sdkAuthType === "env" || sdkAuthType === "token" || copilot?.hasGithubToken()
-      ? "token"
-      : "device";
+    const authMode = sdkAuthType === "env" || sdkAuthType === "token" || copilot?.hasGithubToken() ? "token" : "device";
     res.json({ authenticated, authMode });
   });
 
   router.post("/auth/device", async (_req, res) => {
-    if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
+    if (!copilot) {
+      res.status(503).json({ error: "Copilot not configured" });
+      return;
+    }
     const info = await copilot.authenticate();
     res.json(info);
   });
 
   router.post("/auth/wait", async (_req, res) => {
-    if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
+    if (!copilot) {
+      res.status(503).json({ error: "Copilot not configured" });
+      return;
+    }
     await copilot.waitForAuth();
     res.json({ authenticated: true });
   });
 
   router.get("/auth/test", async (_req, res) => {
-    if (!copilot) { res.status(503).json({ connected: false, error: "Copilot not configured" }); return; }
+    if (!copilot) {
+      res.status(503).json({ connected: false, error: "Copilot not configured" });
+      return;
+    }
     try {
       const models = await copilot.listModels();
       res.json({ connected: true, models: models.length });
@@ -130,16 +145,34 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   // ── Environment Variables ──────────────────────────────────────────────────
 
   // Keys the UI knows about — supplement with process.env values not yet stored in the env file.
-  const KNOWN_ENV_KEYS = ["GITHUB_CLIENT_ID", "GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN", "GITHUB_PERSONAL_ACCESS_TOKEN", "TALOS_ADMIN_TOKEN", "BRAVE_API_KEY", "OPENAI_API_KEY", "PORT", "TALOS_DATA_DIR", "TALOS_ALLOWED_DIRS"];
+  const KNOWN_ENV_KEYS = [
+    "GITHUB_CLIENT_ID",
+    "GITHUB_TOKEN",
+    "COPILOT_GITHUB_TOKEN",
+    "GITHUB_PERSONAL_ACCESS_TOKEN",
+    "TALOS_ADMIN_TOKEN",
+    "BRAVE_API_KEY",
+    "OPENAI_API_KEY",
+    "PORT",
+    "TALOS_DATA_DIR",
+    "TALOS_ALLOWED_DIRS",
+  ];
   // Token keys whose changes require re-initialising the Copilot wrapper.
   const COPILOT_TOKEN_KEYS = new Set(["GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN"]);
 
   router.get("/env", (_req, res) => {
-    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    if (!envManager) {
+      res.status(503).json({ error: "EnvManager not configured" });
+      return;
+    }
     const entries = envManager.list();
     // GITHUB_CLIENT_ID is only needed for device auth. If a direct token is already set, skip the warning.
-    const hasToken = !!(envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
-      ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN);
+    const hasToken = !!(
+      envManager.getRaw("GITHUB_TOKEN") ??
+      envManager.getRaw("COPILOT_GITHUB_TOKEN") ??
+      process.env.GITHUB_TOKEN ??
+      process.env.COPILOT_GITHUB_TOKEN
+    );
     const missing = hasToken ? [] : envManager.validateRequired(["GITHUB_CLIENT_ID"]);
 
     // Append process.env values for known vars that are not stored in the env file,
@@ -156,22 +189,37 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   });
 
   router.get("/env/:key", (req, res) => {
-    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    if (!envManager) {
+      res.status(503).json({ error: "EnvManager not configured" });
+      return;
+    }
     const value = envManager.getRaw(req.params.key);
-    if (value === undefined) { res.status(404).json({ error: "Key not found" }); return; }
+    if (value === undefined) {
+      res.status(404).json({ error: "Key not found" });
+      return;
+    }
     res.json({ key: req.params.key, value });
   });
 
   router.put("/env", async (req, res) => {
-    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
+    if (!envManager) {
+      res.status(503).json({ error: "EnvManager not configured" });
+      return;
+    }
     const { key, value } = req.body as { key?: string; value?: string };
-    if (!key || value === undefined) { res.status(400).json({ error: "key and value are required" }); return; }
+    if (!key || value === undefined) {
+      res.status(400).json({ error: "key and value are required" });
+      return;
+    }
     try {
       const entry = envManager.set(key, value);
       // Re-initialise the Copilot wrapper so the new token takes effect immediately.
       if (COPILOT_TOKEN_KEYS.has(key) && copilot) {
-        const token = envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
-          ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN;
+        const token =
+          envManager.getRaw("GITHUB_TOKEN") ??
+          envManager.getRaw("COPILOT_GITHUB_TOKEN") ??
+          process.env.GITHUB_TOKEN ??
+          process.env.COPILOT_GITHUB_TOKEN;
         await copilot.reinit(token);
       }
       res.json(entry);
@@ -185,21 +233,37 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   });
 
   router.delete("/env/:key", async (req, res) => {
-    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
-    if (!envManager.delete(req.params.key)) { res.status(404).json({ error: "Key not found" }); return; }
+    if (!envManager) {
+      res.status(503).json({ error: "EnvManager not configured" });
+      return;
+    }
+    if (!envManager.delete(req.params.key)) {
+      res.status(404).json({ error: "Key not found" });
+      return;
+    }
     // Re-initialise the Copilot wrapper if a token was removed.
     if (COPILOT_TOKEN_KEYS.has(req.params.key) && copilot) {
-      const token = envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
-        ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN;
+      const token =
+        envManager.getRaw("GITHUB_TOKEN") ??
+        envManager.getRaw("COPILOT_GITHUB_TOKEN") ??
+        process.env.GITHUB_TOKEN ??
+        process.env.COPILOT_GITHUB_TOKEN;
       await copilot.reinit(token);
     }
     res.status(204).end();
   });
 
   router.get("/env/validate/required", (_req, res) => {
-    if (!envManager) { res.status(503).json({ error: "EnvManager not configured" }); return; }
-    const hasToken = !!(envManager.getRaw("GITHUB_TOKEN") ?? envManager.getRaw("COPILOT_GITHUB_TOKEN")
-      ?? process.env.GITHUB_TOKEN ?? process.env.COPILOT_GITHUB_TOKEN);
+    if (!envManager) {
+      res.status(503).json({ error: "EnvManager not configured" });
+      return;
+    }
+    const hasToken = !!(
+      envManager.getRaw("GITHUB_TOKEN") ??
+      envManager.getRaw("COPILOT_GITHUB_TOKEN") ??
+      process.env.GITHUB_TOKEN ??
+      process.env.COPILOT_GITHUB_TOKEN
+    );
     const missing = hasToken ? [] : envManager.validateRequired(["GITHUB_CLIENT_ID"]);
     res.json({ valid: missing.length === 0, missing });
   });
@@ -225,11 +289,13 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     }
   });
 
-
   // ── Models ──────────────────────────────────────────────────────────────
 
   router.get("/models", async (_req, res) => {
-    if (!copilot) { res.json({ models: [], selected: "gpt-4.1", reasoningEffort: "medium" }); return; }
+    if (!copilot) {
+      res.json({ models: [], selected: "gpt-4.1", reasoningEffort: "medium" });
+      return;
+    }
     const models = await copilot.listModels();
     res.json({
       models,
@@ -241,7 +307,10 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.put("/models/selected", (req, res) => {
     const { model } = req.body as { model?: string };
-    if (!model) { res.status(400).json({ error: "model is required" }); return; }
+    if (!model) {
+      res.status(400).json({ error: "model is required" });
+      return;
+    }
     copilot?.setModel(model);
     res.json({ selected: model });
   });
@@ -276,16 +345,25 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.post("/personality", (req, res) => {
     const { name, systemPrompt } = req.body as { name?: string; systemPrompt?: string };
-    if (!name) { res.status(400).json({ error: "name is required" }); return; }
+    if (!name) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
     const p = platformRepo.createPersonality(name, systemPrompt ?? "");
     res.status(201).json(p);
   });
 
   router.put("/personality/:id", (req, res) => {
     const { systemPrompt } = req.body as { systemPrompt?: string };
-    if (systemPrompt === undefined) { res.status(400).json({ error: "systemPrompt is required" }); return; }
+    if (systemPrompt === undefined) {
+      res.status(400).json({ error: "systemPrompt is required" });
+      return;
+    }
     const updated = platformRepo.updatePersonality(req.params.id, systemPrompt);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
@@ -303,24 +381,36 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/prompts/:id", (req, res) => {
     const prompt = platformRepo.getPrompt(req.params.id);
-    if (!prompt) { res.status(404).json({ error: "Not found" }); return; }
+    if (!prompt) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(prompt);
   });
 
   router.post("/prompts", (req, res) => {
     const input = req.body as CreatePromptInput;
-    if (!input.name || !input.content) { res.status(400).json({ error: "name and content are required" }); return; }
+    if (!input.name || !input.content) {
+      res.status(400).json({ error: "name and content are required" });
+      return;
+    }
     res.status(201).json(platformRepo.createPrompt(input));
   });
 
   router.put("/prompts/:id", (req, res) => {
     const updated = platformRepo.updatePrompt(req.params.id, req.body as UpdatePromptInput);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
   router.delete("/prompts/:id", (req, res) => {
-    if (!platformRepo.deletePrompt(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    if (!platformRepo.deletePrompt(req.params.id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -332,26 +422,36 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/scheduler/jobs/:id", (req, res) => {
     const job = platformRepo.getJob(req.params.id);
-    if (!job) { res.status(404).json({ error: "Not found" }); return; }
+    if (!job) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(job);
   });
 
   router.post("/scheduler/jobs", (req, res) => {
     const input = req.body as CreateJobInput;
     if (!input.name || !input.cronExpression || !input.prompt) {
-      res.status(400).json({ error: "name, cronExpression, and prompt are required" }); return;
+      res.status(400).json({ error: "name, cronExpression, and prompt are required" });
+      return;
     }
     res.status(201).json(platformRepo.createJob(input));
   });
 
   router.put("/scheduler/jobs/:id", (req, res) => {
     const updated = platformRepo.updateJob(req.params.id, req.body as UpdateJobInput);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
   router.delete("/scheduler/jobs/:id", (req, res) => {
-    if (!platformRepo.deleteJob(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    if (!platformRepo.deleteJob(req.params.id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -374,21 +474,33 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/tasks/:id", (req, res) => {
     const task = platformRepo.getTask(req.params.id);
-    if (!task) { res.status(404).json({ error: "Not found" }); return; }
+    if (!task) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(task);
   });
 
   router.post("/tasks", (req, res) => {
     const { prompt, parentId } = req.body as { prompt?: string; parentId?: string };
-    if (!prompt) { res.status(400).json({ error: "prompt is required" }); return; }
+    if (!prompt) {
+      res.status(400).json({ error: "prompt is required" });
+      return;
+    }
     res.status(201).json(platformRepo.createTask({ prompt, parentId }));
   });
 
   router.put("/tasks/:id/status", (req, res) => {
     const { status, result, error } = req.body as { status?: TaskStatus; result?: string; error?: string };
-    if (!status) { res.status(400).json({ error: "status is required" }); return; }
+    if (!status) {
+      res.status(400).json({ error: "status is required" });
+      return;
+    }
     const updated = platformRepo.updateTaskStatus(req.params.id, status, result, error);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
@@ -400,13 +512,19 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/mcp-servers/:id", (req, res) => {
     const server = platformRepo.getMcpServer(req.params.id);
-    if (!server) { res.status(404).json({ error: "Not found" }); return; }
+    if (!server) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(server);
   });
 
   router.post("/mcp-servers", (req, res) => {
     const input = req.body as CreateMcpServerInput;
-    if (!input.name || !input.type) { res.status(400).json({ error: "name and type are required" }); return; }
+    if (!input.name || !input.type) {
+      res.status(400).json({ error: "name and type are required" });
+      return;
+    }
     if (input.url && !isUrlSafe(input.url)) {
       res.status(400).json({ error: "Invalid or unsafe URL. Only public http/https URLs are allowed." });
       return;
@@ -421,12 +539,18 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
       return;
     }
     const updated = platformRepo.updateMcpServer(req.params.id, input);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
   router.delete("/mcp-servers/:id", (req, res) => {
-    if (!platformRepo.deleteMcpServer(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    if (!platformRepo.deleteMcpServer(req.params.id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -438,25 +562,37 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/skills/:id", (req, res) => {
     const skill = platformRepo.getSkill(req.params.id);
-    if (!skill) { res.status(404).json({ error: "Not found" }); return; }
+    if (!skill) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const agents = platformRepo.getSkillAgents(req.params.id);
     res.json({ ...skill, agents });
   });
 
   router.post("/skills", (req, res) => {
     const input = req.body as CreateSkillInput;
-    if (!input.name || !input.content) { res.status(400).json({ error: "name and content are required" }); return; }
+    if (!input.name || !input.content) {
+      res.status(400).json({ error: "name and content are required" });
+      return;
+    }
     res.status(201).json(platformRepo.createSkill(input));
   });
 
   router.put("/skills/:id", (req, res) => {
     const updated = platformRepo.updateSkill(req.params.id, req.body as UpdateSkillInput);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
   router.delete("/skills/:id", (req, res) => {
-    if (!platformRepo.deleteSkill(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    if (!platformRepo.deleteSkill(req.params.id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -474,9 +610,15 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.post("/knowledge/search", async (req, res) => {
     const { query, limit, applicationId, minScore } = req.body as {
-      query?: string; limit?: number; applicationId?: string; minScore?: number;
+      query?: string;
+      limit?: number;
+      applicationId?: string;
+      minScore?: number;
     };
-    if (!query) { res.status(400).json({ error: "query is required" }); return; }
+    if (!query) {
+      res.status(400).json({ error: "query is required" });
+      return;
+    }
     if (!ragPipeline) {
       res.json({ results: [], query, limit: limit ?? 10 });
       return;
@@ -510,9 +652,15 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
   });
 
   router.post("/ai/enhance", async (req: Request, res: Response) => {
-    if (!copilot) { res.status(503).json({ error: "Copilot not configured" }); return; }
+    if (!copilot) {
+      res.status(503).json({ error: "Copilot not configured" });
+      return;
+    }
     const authenticated = await copilot.isAuthenticated();
-    if (!authenticated) { res.status(401).json({ error: "Not authenticated" }); return; }
+    if (!authenticated) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
     const parsed = EnhanceInputSchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: "Invalid input", details: parsed.error.flatten().fieldErrors });
@@ -546,7 +694,10 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.delete("/knowledge/documents/:docId", (req, res) => {
     const deleted = platformRepo.deleteKnowledgeDocument(req.params.docId);
-    if (!deleted) { res.status(404).json({ error: "Document not found" }); return; }
+    if (!deleted) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -585,7 +736,10 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
 
   router.get("/agents/:id", (req, res) => {
     const agent = platformRepo.getAgent(req.params.id);
-    if (!agent) { res.status(404).json({ error: "Not found" }); return; }
+    if (!agent) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(agent);
   });
 
@@ -622,12 +776,18 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
       return;
     }
     const updated = platformRepo.updateAgent(req.params.id, parsed.data);
-    if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+    if (!updated) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.json(updated);
   });
 
   router.delete("/agents/:id", (req, res) => {
-    if (!platformRepo.deleteAgent(req.params.id)) { res.status(404).json({ error: "Not found" }); return; }
+    if (!platformRepo.deleteAgent(req.params.id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     res.status(204).end();
   });
 
@@ -635,9 +795,11 @@ export function createAdminRouter({ platformRepo, copilot, adminToken, envManage
     res.json(platformRepo.getAgentSkills(req.params.id));
   });
 
-  const AgentSkillsSchema = z.object({
-    skillIds: z.array(z.string()),
-  }).strict();
+  const AgentSkillsSchema = z
+    .object({
+      skillIds: z.array(z.string()),
+    })
+    .strict();
 
   router.put("/agents/:id/skills", (req, res) => {
     const parsed = AgentSkillsSchema.safeParse(req.body);
