@@ -111,6 +111,10 @@ export type McpServerConfig = {
   env?: Record<string, string>;
   enabled: boolean;
   tools: string[];
+  /** Grouping category: github, jdbc, cloud, devtools, general */
+  category?: string;
+  /** Free-form tags for filtering */
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -123,6 +127,8 @@ export type CreateMcpServerInput = {
   url?: string;
   env?: Record<string, string>;
   enabled?: boolean;
+  category?: string;
+  tags?: string[];
 };
 
 export type UpdateMcpServerInput = Partial<CreateMcpServerInput>;
@@ -278,6 +284,8 @@ export type StoredMcpServer = {
   env_json: string;
   enabled: number;
   tools_json: string;
+  category: string | null;
+  tags_json: string | null;
   created_at: string;
   updated_at: string;
 };

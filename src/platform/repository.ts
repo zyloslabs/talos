@@ -96,6 +96,8 @@ const toMcpServer = (row: StoredMcpServer): McpServerConfig => ({
   env: JSON.parse(row.env_json) as Record<string, string>,
   enabled: row.enabled === 1,
   tools: JSON.parse(row.tools_json) as string[],
+  category: row.category ?? undefined,
+  tags: JSON.parse(row.tags_json ?? "[]") as string[],
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -191,6 +193,8 @@ export class PlatformRepository {
         env_json TEXT NOT NULL DEFAULT '{}',
         enabled INTEGER NOT NULL DEFAULT 1,
         tools_json TEXT NOT NULL DEFAULT '[]',
+        category TEXT,
+        tags_json TEXT NOT NULL DEFAULT '[]',
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
@@ -260,25 +264,42 @@ export class PlatformRepository {
       this.db.exec("ALTER TABLE skills ADD COLUMN required_tools_json TEXT NOT NULL DEFAULT '[]'");
     }
 
+    // Add category and tags_json columns to mcp_servers if missing (v3 migration)
+    const mcpCols = this.db.pragma("table_info(mcp_servers)") as { name: string }[];
+    if (!mcpCols.some((c) => c.name === "category")) {
+      this.db.exec("ALTER TABLE mcp_servers ADD COLUMN category TEXT");
+    }
+    if (!mcpCols.some((c) => c.name === "tags_json")) {
+      this.db.exec("ALTER TABLE mcp_servers ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'");
+    }
+
     // Seed default personality if none exists
     const count = this.db.prepare("SELECT COUNT(*) as c FROM personality").get() as { c: number };
     if (count.c === 0) {
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         INSERT INTO personality (id, name, system_prompt, is_active)
         VALUES (?, ?, ?, 1)
-      `).run(randomUUID(), "Default", "You are Talos, an autonomous test automation assistant.");
+      `
+        )
+        .run(randomUUID(), "Default", "You are Talos, an autonomous test automation assistant.");
     }
   }
 
   // ── Personality ──
 
   getActivePersonality(): Personality | null {
-    const row = this.db.prepare("SELECT * FROM personality WHERE is_active = 1 LIMIT 1").get() as StoredPersonality | undefined;
+    const row = this.db.prepare("SELECT * FROM personality WHERE is_active = 1 LIMIT 1").get() as
+      | StoredPersonality
+      | undefined;
     return row ? toPersonality(row) : null;
   }
 
   listPersonalities(): Personality[] {
-    return (this.db.prepare("SELECT * FROM personality ORDER BY created_at DESC").all() as StoredPersonality[]).map(toPersonality);
+    return (this.db.prepare("SELECT * FROM personality ORDER BY created_at DESC").all() as StoredPersonality[]).map(
+      toPersonality
+    );
   }
 
   updatePersonality(id: string, prompt: string): Personality | null {
@@ -296,10 +317,14 @@ export class PlatformRepository {
   createPersonality(name: string, systemPrompt: string): Personality {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO personality (id, name, system_prompt, is_active, created_at, updated_at)
       VALUES (?, ?, ?, 0, ?, ?)
-    `).run(id, name, systemPrompt, now, now);
+    `
+      )
+      .run(id, name, systemPrompt, now, now);
     return toPersonality(this.db.prepare("SELECT * FROM personality WHERE id = ?").get(id) as StoredPersonality);
   }
 
@@ -307,9 +332,15 @@ export class PlatformRepository {
 
   listPrompts(category?: string): SavedPrompt[] {
     if (category) {
-      return (this.db.prepare("SELECT * FROM saved_prompts WHERE category = ? ORDER BY updated_at DESC").all(category) as StoredPrompt[]).map(toPrompt);
+      return (
+        this.db
+          .prepare("SELECT * FROM saved_prompts WHERE category = ? ORDER BY updated_at DESC")
+          .all(category) as StoredPrompt[]
+      ).map(toPrompt);
     }
-    return (this.db.prepare("SELECT * FROM saved_prompts ORDER BY updated_at DESC").all() as StoredPrompt[]).map(toPrompt);
+    return (this.db.prepare("SELECT * FROM saved_prompts ORDER BY updated_at DESC").all() as StoredPrompt[]).map(
+      toPrompt
+    );
   }
 
   getPrompt(id: string): SavedPrompt | null {
@@ -320,21 +351,25 @@ export class PlatformRepository {
   createPrompt(input: CreatePromptInput): SavedPrompt {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO saved_prompts (id, name, description, content, category, tags_json, stages_json, preferred_tools_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.name,
-      input.description ?? "",
-      input.content,
-      input.category ?? "general",
-      JSON.stringify(input.tags ?? []),
-      input.stages ? JSON.stringify(input.stages) : null,
-      JSON.stringify(input.preferredTools ?? []),
-      now,
-      now,
-    );
+    `
+      )
+      .run(
+        id,
+        input.name,
+        input.description ?? "",
+        input.content,
+        input.category ?? "general",
+        JSON.stringify(input.tags ?? []),
+        input.stages ? JSON.stringify(input.stages) : null,
+        JSON.stringify(input.preferredTools ?? []),
+        now,
+        now
+      );
     return toPrompt(this.db.prepare("SELECT * FROM saved_prompts WHERE id = ?").get(id) as StoredPrompt);
   }
 
@@ -342,22 +377,26 @@ export class PlatformRepository {
     const existing = this.db.prepare("SELECT * FROM saved_prompts WHERE id = ?").get(id) as StoredPrompt | undefined;
     if (!existing) return null;
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE saved_prompts SET
         name = ?, description = ?, content = ?, category = ?,
         tags_json = ?, stages_json = ?, preferred_tools_json = ?, updated_at = ?
       WHERE id = ?
-    `).run(
-      input.name ?? existing.name,
-      input.description ?? existing.description,
-      input.content ?? existing.content,
-      input.category ?? existing.category,
-      input.tags ? JSON.stringify(input.tags) : existing.tags_json,
-      input.stages !== undefined ? (input.stages ? JSON.stringify(input.stages) : null) : existing.stages_json,
-      input.preferredTools ? JSON.stringify(input.preferredTools) : existing.preferred_tools_json,
-      now,
-      id,
-    );
+    `
+      )
+      .run(
+        input.name ?? existing.name,
+        input.description ?? existing.description,
+        input.content ?? existing.content,
+        input.category ?? existing.category,
+        input.tags ? JSON.stringify(input.tags) : existing.tags_json,
+        input.stages !== undefined ? (input.stages ? JSON.stringify(input.stages) : null) : existing.stages_json,
+        input.preferredTools ? JSON.stringify(input.preferredTools) : existing.preferred_tools_json,
+        now,
+        id
+      );
     return toPrompt(this.db.prepare("SELECT * FROM saved_prompts WHERE id = ?").get(id) as StoredPrompt);
   }
 
@@ -380,10 +419,23 @@ export class PlatformRepository {
   createJob(input: CreateJobInput): ScheduledJob {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO scheduled_jobs (id, name, description, cron_expression, prompt, enabled, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, input.name, input.description ?? "", input.cronExpression, input.prompt, input.enabled !== false ? 1 : 0, now, now);
+    `
+      )
+      .run(
+        id,
+        input.name,
+        input.description ?? "",
+        input.cronExpression,
+        input.prompt,
+        input.enabled !== false ? 1 : 0,
+        now,
+        now
+      );
     return toJob(this.db.prepare("SELECT * FROM scheduled_jobs WHERE id = ?").get(id) as StoredJob);
   }
 
@@ -391,19 +443,23 @@ export class PlatformRepository {
     const existing = this.db.prepare("SELECT * FROM scheduled_jobs WHERE id = ?").get(id) as StoredJob | undefined;
     if (!existing) return null;
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE scheduled_jobs SET
         name = ?, description = ?, cron_expression = ?, prompt = ?, enabled = ?, updated_at = ?
       WHERE id = ?
-    `).run(
-      input.name ?? existing.name,
-      input.description ?? existing.description,
-      input.cronExpression ?? existing.cron_expression,
-      input.prompt ?? existing.prompt,
-      input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
-      now,
-      id,
-    );
+    `
+      )
+      .run(
+        input.name ?? existing.name,
+        input.description ?? existing.description,
+        input.cronExpression ?? existing.cron_expression,
+        input.prompt ?? existing.prompt,
+        input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+        now,
+        id
+      );
     return toJob(this.db.prepare("SELECT * FROM scheduled_jobs WHERE id = ?").get(id) as StoredJob);
   }
 
@@ -413,9 +469,13 @@ export class PlatformRepository {
   }
 
   updateJobRunInfo(id: string, lastRunAt: string, nextRunAt: string | null): void {
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE scheduled_jobs SET last_run_at = ?, next_run_at = ?, run_count = run_count + 1, updated_at = datetime('now') WHERE id = ?
-    `).run(lastRunAt, nextRunAt, id);
+    `
+      )
+      .run(lastRunAt, nextRunAt, id);
   }
 
   getEnabledJobs(): ScheduledJob[] {
@@ -426,9 +486,15 @@ export class PlatformRepository {
 
   listTasks(status?: TaskStatus, limit = 100): AgentTask[] {
     if (status) {
-      return (this.db.prepare("SELECT * FROM agent_tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?").all(status, limit) as StoredTask[]).map(toTask);
+      return (
+        this.db
+          .prepare("SELECT * FROM agent_tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?")
+          .all(status, limit) as StoredTask[]
+      ).map(toTask);
     }
-    return (this.db.prepare("SELECT * FROM agent_tasks ORDER BY created_at DESC LIMIT ?").all(limit) as StoredTask[]).map(toTask);
+    return (
+      this.db.prepare("SELECT * FROM agent_tasks ORDER BY created_at DESC LIMIT ?").all(limit) as StoredTask[]
+    ).map(toTask);
   }
 
   getTask(id: string): AgentTask | null {
@@ -441,13 +507,19 @@ export class PlatformRepository {
     const now = new Date().toISOString();
     let depth = 0;
     if (input.parentId) {
-      const parent = this.db.prepare("SELECT depth FROM agent_tasks WHERE id = ?").get(input.parentId) as { depth: number } | undefined;
+      const parent = this.db.prepare("SELECT depth FROM agent_tasks WHERE id = ?").get(input.parentId) as
+        | { depth: number }
+        | undefined;
       depth = parent ? parent.depth + 1 : 0;
     }
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO agent_tasks (id, prompt, status, parent_id, depth, created_at)
       VALUES (?, ?, 'pending', ?, ?, ?)
-    `).run(id, input.prompt, input.parentId ?? null, depth, now);
+    `
+      )
+      .run(id, input.prompt, input.parentId ?? null, depth, now);
     return toTask(this.db.prepare("SELECT * FROM agent_tasks WHERE id = ?").get(id) as StoredTask);
   }
 
@@ -479,9 +551,13 @@ export class PlatformRepository {
   }
 
   getTaskStats(): { pending: number; running: number; completed: number; failed: number } {
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare(
+        `
       SELECT status, COUNT(*) as count FROM agent_tasks GROUP BY status
-    `).all() as { status: string; count: number }[];
+    `
+      )
+      .all() as { status: string; count: number }[];
     const stats = { pending: 0, running: 0, completed: 0, failed: 0 };
     for (const row of rows) {
       if (row.status in stats) {
@@ -505,21 +581,27 @@ export class PlatformRepository {
   createMcpServer(input: CreateMcpServerInput): McpServerConfig {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
-      INSERT INTO mcp_servers (id, name, type, command, args_json, url, env_json, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      id,
-      input.name,
-      input.type,
-      input.command ?? null,
-      JSON.stringify(input.args ?? []),
-      input.url ?? null,
-      JSON.stringify(input.env ?? {}),
-      input.enabled !== false ? 1 : 0,
-      now,
-      now,
-    );
+    this.db
+      .prepare(
+        `
+      INSERT INTO mcp_servers (id, name, type, command, args_json, url, env_json, enabled, category, tags_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `
+      )
+      .run(
+        id,
+        input.name,
+        input.type,
+        input.command ?? null,
+        JSON.stringify(input.args ?? []),
+        input.url ?? null,
+        JSON.stringify(input.env ?? {}),
+        input.enabled !== false ? 1 : 0,
+        input.category ?? null,
+        JSON.stringify(input.tags ?? []),
+        now,
+        now
+      );
     return toMcpServer(this.db.prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as StoredMcpServer);
   }
 
@@ -527,21 +609,27 @@ export class PlatformRepository {
     const existing = this.db.prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as StoredMcpServer | undefined;
     if (!existing) return null;
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE mcp_servers SET
-        name = ?, type = ?, command = ?, args_json = ?, url = ?, env_json = ?, enabled = ?, updated_at = ?
+        name = ?, type = ?, command = ?, args_json = ?, url = ?, env_json = ?, enabled = ?, category = ?, tags_json = ?, updated_at = ?
       WHERE id = ?
-    `).run(
-      input.name ?? existing.name,
-      input.type ?? existing.type,
-      input.command !== undefined ? input.command ?? null : existing.command,
-      input.args ? JSON.stringify(input.args) : existing.args_json,
-      input.url !== undefined ? input.url ?? null : existing.url,
-      input.env ? JSON.stringify(input.env) : existing.env_json,
-      input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
-      now,
-      id,
-    );
+    `
+      )
+      .run(
+        input.name ?? existing.name,
+        input.type ?? existing.type,
+        input.command !== undefined ? (input.command ?? null) : existing.command,
+        input.args ? JSON.stringify(input.args) : existing.args_json,
+        input.url !== undefined ? (input.url ?? null) : existing.url,
+        input.env ? JSON.stringify(input.env) : existing.env_json,
+        input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+        input.category !== undefined ? (input.category ?? null) : (existing.category ?? null),
+        input.tags ? JSON.stringify(input.tags) : (existing.tags_json ?? "[]"),
+        now,
+        id
+      );
     return toMcpServer(this.db.prepare("SELECT * FROM mcp_servers WHERE id = ?").get(id) as StoredMcpServer);
   }
 
@@ -564,10 +652,24 @@ export class PlatformRepository {
   createSkill(input: CreateSkillInput): Skill {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO skills (id, name, description, content, enabled, tags_json, required_tools_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, input.name, input.description ?? "", input.content, input.enabled !== false ? 1 : 0, JSON.stringify(input.tags ?? []), JSON.stringify(input.requiredTools ?? []), now, now);
+    `
+      )
+      .run(
+        id,
+        input.name,
+        input.description ?? "",
+        input.content,
+        input.enabled !== false ? 1 : 0,
+        JSON.stringify(input.tags ?? []),
+        JSON.stringify(input.requiredTools ?? []),
+        now,
+        now
+      );
     return toSkill(this.db.prepare("SELECT * FROM skills WHERE id = ?").get(id) as StoredSkill);
   }
 
@@ -575,18 +677,22 @@ export class PlatformRepository {
     const existing = this.db.prepare("SELECT * FROM skills WHERE id = ?").get(id) as StoredSkill | undefined;
     if (!existing) return null;
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE skills SET name = ?, description = ?, content = ?, enabled = ?, tags_json = ?, required_tools_json = ?, updated_at = ? WHERE id = ?
-    `).run(
-      input.name ?? existing.name,
-      input.description ?? existing.description,
-      input.content ?? existing.content,
-      input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
-      input.tags ? JSON.stringify(input.tags) : existing.tags_json,
-      input.requiredTools ? JSON.stringify(input.requiredTools) : existing.required_tools_json,
-      now,
-      id,
-    );
+    `
+      )
+      .run(
+        input.name ?? existing.name,
+        input.description ?? existing.description,
+        input.content ?? existing.content,
+        input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+        input.tags ? JSON.stringify(input.tags) : existing.tags_json,
+        input.requiredTools ? JSON.stringify(input.requiredTools) : existing.required_tools_json,
+        now,
+        id
+      );
     return toSkill(this.db.prepare("SELECT * FROM skills WHERE id = ?").get(id) as StoredSkill);
   }
 
@@ -598,14 +704,33 @@ export class PlatformRepository {
   // ── Knowledge Base ──
 
   getKnowledgeStats(): { documentCount: number; chunkCount: number; lastIndexedAt: string | null } {
-    const docCount = (this.db.prepare("SELECT COUNT(*) as count FROM knowledge_documents").get() as { count: number })?.count ?? 0;
-    const chunkCount = (this.db.prepare("SELECT SUM(chunk_count) as total FROM knowledge_documents").get() as { total: number | null })?.total ?? 0;
-    const lastRow = this.db.prepare("SELECT MAX(indexed_at) as last FROM knowledge_documents").get() as { last: string | null } | undefined;
+    const docCount =
+      (this.db.prepare("SELECT COUNT(*) as count FROM knowledge_documents").get() as { count: number })?.count ?? 0;
+    const chunkCount =
+      (this.db.prepare("SELECT SUM(chunk_count) as total FROM knowledge_documents").get() as { total: number | null })
+        ?.total ?? 0;
+    const lastRow = this.db.prepare("SELECT MAX(indexed_at) as last FROM knowledge_documents").get() as
+      | { last: string | null }
+      | undefined;
     return { documentCount: docCount, chunkCount, lastIndexedAt: lastRow?.last ?? null };
   }
 
-  listKnowledgeDocuments(): { id: string; applicationId: string; filePath: string; type: string; chunkCount: number; indexedAt: string }[] {
-    return this.db.prepare("SELECT * FROM knowledge_documents ORDER BY indexed_at DESC").all() as { id: string; applicationId: string; filePath: string; type: string; chunkCount: number; indexedAt: string }[];
+  listKnowledgeDocuments(): {
+    id: string;
+    applicationId: string;
+    filePath: string;
+    type: string;
+    chunkCount: number;
+    indexedAt: string;
+  }[] {
+    return this.db.prepare("SELECT * FROM knowledge_documents ORDER BY indexed_at DESC").all() as {
+      id: string;
+      applicationId: string;
+      filePath: string;
+      type: string;
+      chunkCount: number;
+      indexedAt: string;
+    }[];
   }
 
   deleteKnowledgeDocument(id: string): boolean {
@@ -615,21 +740,29 @@ export class PlatformRepository {
 
   getKnowledgeConfig(): { vectorDbPath: string; collectionName: string; searchMode: string; minScore: number } {
     const row = this.db.prepare("SELECT * FROM knowledge_config WHERE id = 'default'").get() as
-      { vector_db_path: string; collection_name: string; search_mode: string; min_score: number } | undefined;
-    return row ? {
-      vectorDbPath: row.vector_db_path,
-      collectionName: row.collection_name,
-      searchMode: row.search_mode,
-      minScore: row.min_score,
-    } : {
-      vectorDbPath: "~/.talos/vectordb",
-      collectionName: "talos_chunks",
-      searchMode: "hybrid",
-      minScore: 0.5,
-    };
+      | { vector_db_path: string; collection_name: string; search_mode: string; min_score: number }
+      | undefined;
+    return row
+      ? {
+          vectorDbPath: row.vector_db_path,
+          collectionName: row.collection_name,
+          searchMode: row.search_mode,
+          minScore: row.min_score,
+        }
+      : {
+          vectorDbPath: "~/.talos/vectordb",
+          collectionName: "talos_chunks",
+          searchMode: "hybrid",
+          minScore: 0.5,
+        };
   }
 
-  updateKnowledgeConfig(config: Record<string, unknown>): { vectorDbPath: string; collectionName: string; searchMode: string; minScore: number } {
+  updateKnowledgeConfig(config: Record<string, unknown>): {
+    vectorDbPath: string;
+    collectionName: string;
+    searchMode: string;
+    minScore: number;
+  } {
     const current = this.getKnowledgeConfig();
     const updated = {
       vectorDbPath: (config.vectorDbPath as string) ?? current.vectorDbPath,
@@ -637,20 +770,30 @@ export class PlatformRepository {
       searchMode: (config.searchMode as string) ?? current.searchMode,
       minScore: (config.minScore as number) ?? current.minScore,
     };
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT OR REPLACE INTO knowledge_config (id, vector_db_path, collection_name, search_mode, min_score)
       VALUES ('default', ?, ?, ?, ?)
-    `).run(updated.vectorDbPath, updated.collectionName, updated.searchMode, updated.minScore);
+    `
+      )
+      .run(updated.vectorDbPath, updated.collectionName, updated.searchMode, updated.minScore);
     return updated;
   }
 
   getSkillAgents(skillId: string): Agent[] {
-    return (this.db.prepare(`
+    return (
+      this.db
+        .prepare(
+          `
       SELECT a.* FROM agents a
       JOIN agent_skills ags ON ags.agent_id = a.id
       WHERE ags.skill_id = ?
       ORDER BY a.name
-    `).all(skillId) as StoredAgent[]).map(toAgent);
+    `
+        )
+        .all(skillId) as StoredAgent[]
+    ).map(toAgent);
   }
 
   // ── Agents ──
@@ -668,20 +811,24 @@ export class PlatformRepository {
     const id = randomUUID();
     const now = new Date().toISOString();
     try {
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         INSERT INTO agents (id, name, description, system_prompt, tools_whitelist_json, parent_agent_id, enabled, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        id,
-        input.name,
-        input.description ?? "",
-        input.systemPrompt ?? "",
-        JSON.stringify(input.toolsWhitelist ?? []),
-        input.parentAgentId ?? null,
-        input.enabled !== false ? 1 : 0,
-        now,
-        now,
-      );
+      `
+        )
+        .run(
+          id,
+          input.name,
+          input.description ?? "",
+          input.systemPrompt ?? "",
+          JSON.stringify(input.toolsWhitelist ?? []),
+          input.parentAgentId ?? null,
+          input.enabled !== false ? 1 : 0,
+          now,
+          now
+        );
     } catch (err: unknown) {
       if (err instanceof Error && err.message.includes("UNIQUE constraint failed")) {
         const dupErr = new Error(`Agent with name '${input.name}' already exists`);
@@ -697,21 +844,25 @@ export class PlatformRepository {
     const existing = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent | undefined;
     if (!existing) return null;
     const now = new Date().toISOString();
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       UPDATE agents SET
         name = ?, description = ?, system_prompt = ?, tools_whitelist_json = ?,
         parent_agent_id = ?, enabled = ?, updated_at = ?
       WHERE id = ?
-    `).run(
-      input.name ?? existing.name,
-      input.description ?? existing.description,
-      input.systemPrompt ?? existing.system_prompt,
-      input.toolsWhitelist ? JSON.stringify(input.toolsWhitelist) : existing.tools_whitelist_json,
-      input.parentAgentId !== undefined ? (input.parentAgentId ?? null) : existing.parent_agent_id,
-      input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
-      now,
-      id,
-    );
+    `
+      )
+      .run(
+        input.name ?? existing.name,
+        input.description ?? existing.description,
+        input.systemPrompt ?? existing.system_prompt,
+        input.toolsWhitelist ? JSON.stringify(input.toolsWhitelist) : existing.tools_whitelist_json,
+        input.parentAgentId !== undefined ? (input.parentAgentId ?? null) : existing.parent_agent_id,
+        input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+        now,
+        id
+      );
     return toAgent(this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as StoredAgent);
   }
 
@@ -721,12 +872,18 @@ export class PlatformRepository {
   }
 
   getAgentSkills(agentId: string): Skill[] {
-    return (this.db.prepare(`
+    return (
+      this.db
+        .prepare(
+          `
       SELECT s.* FROM skills s
       JOIN agent_skills ags ON ags.skill_id = s.id
       WHERE ags.agent_id = ?
       ORDER BY s.name
-    `).all(agentId) as StoredSkill[]).map(toSkill);
+    `
+        )
+        .all(agentId) as StoredSkill[]
+    ).map(toSkill);
   }
 
   setAgentSkills(agentId: string, skillIds: string[]): void {
