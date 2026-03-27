@@ -74,13 +74,21 @@ function AdminSidebar({ activeSection, onSelect }: { activeSection: string; onSe
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
+  // activeSection: tracks which sidebar item is highlighted (scroll-driven)
   const [activeSection, setActiveSection] = useState("auth");
+  // openSections: independently tracks which panels are expanded (user-driven only)
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({ auth: true });
+
+  const setOpen = (id: string, open: boolean) => setOpenSections((prev) => ({ ...prev, [id]: open }));
 
   const handleSidebarSelect = (id: string) => {
     setActiveSection(id);
-    // Scroll the target section into view
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setOpen(id, true); // open the target panel; leave others untouched
+    // Slight delay so the section has expanded before scrolling
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   };
 
   useEffect(() => {
@@ -88,6 +96,7 @@ export default function AdminPage() {
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting && entry.target.id) {
+            // Only update sidebar highlight — never touch openSections
             setActiveSection(entry.target.id);
           }
         }
@@ -118,8 +127,8 @@ export default function AdminPage() {
             title="Authentication"
             description="Connect Talos to GitHub Copilot"
             icon={<Shield className="h-5 w-5" />}
-            isOpen={activeSection === "auth"}
-            onOpenChange={(open) => open && setActiveSection("auth")}
+            isOpen={openSections["auth"] ?? false}
+            onOpenChange={(open) => setOpen("auth", open)}
           >
             <AuthPanel />
           </SectionCard>
@@ -128,8 +137,8 @@ export default function AdminPage() {
             title="System Personality"
             description="Configure the AI assistant persona"
             icon={<User className="h-5 w-5" />}
-            isOpen={activeSection === "personality"}
-            onOpenChange={(open) => open && setActiveSection("personality")}
+            isOpen={openSections["personality"] ?? false}
+            onOpenChange={(open) => setOpen("personality", open)}
           >
             <PersonalityPanel />
           </SectionCard>
@@ -138,8 +147,8 @@ export default function AdminPage() {
             title="Model Configuration"
             description="Select AI model and reasoning effort"
             icon={<Brain className="h-5 w-5" />}
-            isOpen={activeSection === "models"}
-            onOpenChange={(open) => open && setActiveSection("models")}
+            isOpen={openSections["models"] ?? false}
+            onOpenChange={(open) => setOpen("models", open)}
           >
             <ModelsPanel />
           </SectionCard>
@@ -148,8 +157,8 @@ export default function AdminPage() {
             title="MCP Servers"
             description="Manage Model Context Protocol servers"
             icon={<Server className="h-5 w-5" />}
-            isOpen={activeSection === "mcp"}
-            onOpenChange={(open) => open && setActiveSection("mcp")}
+            isOpen={openSections["mcp"] ?? false}
+            onOpenChange={(open) => setOpen("mcp", open)}
           >
             <McpPanel />
           </SectionCard>
@@ -158,8 +167,8 @@ export default function AdminPage() {
             title="Network / Proxy"
             description="Corporate proxy and network settings"
             icon={<Globe className="h-5 w-5" />}
-            isOpen={activeSection === "network"}
-            onOpenChange={(open) => open && setActiveSection("network")}
+            isOpen={openSections["network"] ?? false}
+            onOpenChange={(open) => setOpen("network", open)}
           >
             <NetworkPanel />
           </SectionCard>
@@ -168,8 +177,8 @@ export default function AdminPage() {
             title="Environment Variables"
             description="Configure .env settings for Talos"
             icon={<KeyRound className="h-5 w-5" />}
-            isOpen={activeSection === "env"}
-            onOpenChange={(open) => open && setActiveSection("env")}
+            isOpen={openSections["env"] ?? false}
+            onOpenChange={(open) => setOpen("env", open)}
           >
             <EnvPanel />
           </SectionCard>
@@ -178,8 +187,8 @@ export default function AdminPage() {
             title="Knowledge Base"
             description="RAG document index and vector search"
             icon={<Database className="h-5 w-5" />}
-            isOpen={activeSection === "knowledge"}
-            onOpenChange={(open) => open && setActiveSection("knowledge")}
+            isOpen={openSections["knowledge"] ?? false}
+            onOpenChange={(open) => setOpen("knowledge", open)}
           >
             <KnowledgePanel />
           </SectionCard>
