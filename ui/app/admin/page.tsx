@@ -10,17 +10,26 @@ import { Badge } from "@/components/ui/badge";
 import { EnvPanel } from "@/components/talos/env-panel";
 import { KnowledgePanel } from "@/components/talos/knowledge-panel";
 import {
-  getPersonalities, createPersonality, updatePersonality, activatePersonality,
-  getModels, setSelectedModel, setReasoningEffort,
-  getAuthStatus, startDeviceAuth, testAuthConnection,
-  getMcpServers, createMcpServer, deleteMcpServer,
-  getProxyConfig, setProxyConfig, testProxyConnection,
-  type Personality, type ModelInfo, type McpServer, type ProxyConfig,
+  getPersonalities,
+  createPersonality,
+  updatePersonality,
+  activatePersonality,
+  getModels,
+  setSelectedModel,
+  setReasoningEffort,
+  getAuthStatus,
+  startDeviceAuth,
+  testAuthConnection,
+  getProxyConfig,
+  setProxyConfig,
+  testProxyConnection,
+  type Personality,
+  type ModelInfo,
+  type ProxyConfig,
 } from "@/lib/api";
 import { AiEnhanceBar } from "@/components/talos/ai-enhance-bar";
-import {
-  Shield, Brain, Server, User, KeyRound, Database, ChevronRight, Globe, Loader2,
-} from "lucide-react";
+import { McpPanel } from "@/components/talos/mcp-panel";
+import { Shield, Brain, Server, User, KeyRound, Database, ChevronRight, Globe, Loader2 } from "lucide-react";
 
 // ── Sidebar Navigation (#213) ─────────────────────────────────────────────────
 
@@ -34,17 +43,18 @@ const adminSections = [
   { id: "knowledge", label: "Knowledge Base", icon: Database },
 ];
 
-function AdminSidebar({ activeSection }: { activeSection: string }) {
+function AdminSidebar({ activeSection, onSelect }: { activeSection: string; onSelect: (id: string) => void }) {
   return (
     <aside className="sticky top-20 w-48 shrink-0 hidden lg:block">
       <nav className="space-y-1">
         {adminSections.map((s) => {
           const isActive = activeSection === s.id;
           return (
-            <a
+            <button
               key={s.id}
-              href={`#${s.id}`}
-              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
+              type="button"
+              onClick={() => onSelect(s.id)}
+              className={`flex w-full items-center gap-2 px-3 py-2 text-sm rounded-md transition-colors ${
                 isActive
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -53,7 +63,7 @@ function AdminSidebar({ activeSection }: { activeSection: string }) {
               <s.icon className="h-4 w-4" />
               <span>{s.label}</span>
               {isActive && <ChevronRight className="h-3 w-3 ml-auto" />}
-            </a>
+            </button>
           );
         })}
       </nav>
@@ -65,6 +75,13 @@ function AdminSidebar({ activeSection }: { activeSection: string }) {
 
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("auth");
+
+  const handleSidebarSelect = (id: string) => {
+    setActiveSection(id);
+    // Scroll the target section into view
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -94,32 +111,81 @@ export default function AdminPage() {
         </p>
       </header>
       <div className="flex gap-8">
-        <AdminSidebar activeSection={activeSection} />
+        <AdminSidebar activeSection={activeSection} onSelect={handleSidebarSelect} />
         <div className="flex-1 space-y-6 min-w-0">
-            <SectionCard id="auth" title="Authentication" description="Connect Talos to GitHub Copilot" icon={<Shield className="h-5 w-5" />} defaultOpen>
-              <AuthPanel />
-            </SectionCard>
-            <SectionCard id="personality" title="System Personality" description="Configure the AI assistant persona" icon={<User className="h-5 w-5" />}>
-              <PersonalityPanel />
-            </SectionCard>
-            <SectionCard id="models" title="Model Configuration" description="Select AI model and reasoning effort" icon={<Brain className="h-5 w-5" />}>
-              <ModelsPanel />
-            </SectionCard>
-            <SectionCard id="mcp" title="MCP Servers" description="Manage Model Context Protocol servers" icon={<Server className="h-5 w-5" />}>
-              <McpPanel />
-            </SectionCard>
-            <SectionCard id="network" title="Network / Proxy" description="Corporate proxy and network settings" icon={<Globe className="h-5 w-5" />}>
-              <NetworkPanel />
-            </SectionCard>
-            <SectionCard id="env" title="Environment Variables" description="Configure .env settings for Talos" icon={<KeyRound className="h-5 w-5" />}>
-              <EnvPanel />
-            </SectionCard>
-            <SectionCard id="knowledge" title="Knowledge Base" description="RAG document index and vector search" icon={<Database className="h-5 w-5" />}>
-              <KnowledgePanel />
-            </SectionCard>
-          </div>
+          <SectionCard
+            id="auth"
+            title="Authentication"
+            description="Connect Talos to GitHub Copilot"
+            icon={<Shield className="h-5 w-5" />}
+            isOpen={activeSection === "auth"}
+            onOpenChange={(open) => open && setActiveSection("auth")}
+          >
+            <AuthPanel />
+          </SectionCard>
+          <SectionCard
+            id="personality"
+            title="System Personality"
+            description="Configure the AI assistant persona"
+            icon={<User className="h-5 w-5" />}
+            isOpen={activeSection === "personality"}
+            onOpenChange={(open) => open && setActiveSection("personality")}
+          >
+            <PersonalityPanel />
+          </SectionCard>
+          <SectionCard
+            id="models"
+            title="Model Configuration"
+            description="Select AI model and reasoning effort"
+            icon={<Brain className="h-5 w-5" />}
+            isOpen={activeSection === "models"}
+            onOpenChange={(open) => open && setActiveSection("models")}
+          >
+            <ModelsPanel />
+          </SectionCard>
+          <SectionCard
+            id="mcp"
+            title="MCP Servers"
+            description="Manage Model Context Protocol servers"
+            icon={<Server className="h-5 w-5" />}
+            isOpen={activeSection === "mcp"}
+            onOpenChange={(open) => open && setActiveSection("mcp")}
+          >
+            <McpPanel />
+          </SectionCard>
+          <SectionCard
+            id="network"
+            title="Network / Proxy"
+            description="Corporate proxy and network settings"
+            icon={<Globe className="h-5 w-5" />}
+            isOpen={activeSection === "network"}
+            onOpenChange={(open) => open && setActiveSection("network")}
+          >
+            <NetworkPanel />
+          </SectionCard>
+          <SectionCard
+            id="env"
+            title="Environment Variables"
+            description="Configure .env settings for Talos"
+            icon={<KeyRound className="h-5 w-5" />}
+            isOpen={activeSection === "env"}
+            onOpenChange={(open) => open && setActiveSection("env")}
+          >
+            <EnvPanel />
+          </SectionCard>
+          <SectionCard
+            id="knowledge"
+            title="Knowledge Base"
+            description="RAG document index and vector search"
+            icon={<Database className="h-5 w-5" />}
+            isOpen={activeSection === "knowledge"}
+            onOpenChange={(open) => open && setActiveSection("knowledge")}
+          >
+            <KnowledgePanel />
+          </SectionCard>
         </div>
       </div>
+    </div>
   );
 }
 
@@ -136,27 +202,24 @@ function AuthPanel() {
         <Badge variant={authStatus?.authenticated ? "default" : "secondary"}>
           {authStatus?.authenticated ? "Authenticated" : "Not Authenticated"}
         </Badge>
-        {authStatus?.authMode === "token" && (
-          <Badge variant="outline">API Key</Badge>
-        )}
+        {authStatus?.authMode === "token" && <Badge variant="outline">API Key</Badge>}
       </div>
 
       {/* Token-based auth info */}
       {authStatus?.authMode === "token" && (
         <div className="p-4 bg-muted/50 rounded-lg space-y-3">
           <p className="text-sm text-muted-foreground">
-            Authenticated via <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> or <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">COPILOT_GITHUB_TOKEN</code> environment variable.
+            Authenticated via <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> or{" "}
+            <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">COPILOT_GITHUB_TOKEN</code> environment
+            variable.
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => testMutation.mutate()}
-            disabled={testMutation.isPending}
-          >
+          <Button size="sm" variant="outline" onClick={() => testMutation.mutate()} disabled={testMutation.isPending}>
             {testMutation.isPending ? "Testing..." : "Test Connection"}
           </Button>
           {testMutation.data && (
-            <div className={`text-sm ${testMutation.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+            <div
+              className={`text-sm ${testMutation.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+            >
               {testMutation.data.connected
                 ? `Connected — ${testMutation.data.models} model(s) available`
                 : `Failed: ${testMutation.data.error}`}
@@ -169,15 +232,28 @@ function AuthPanel() {
       {authStatus?.authMode !== "token" && !authStatus?.authenticated && (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">
-            Set <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in Environment Variables for API key auth, or use device auth below.
+            Set <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">GITHUB_TOKEN</code> in Environment
+            Variables for API key auth, or use device auth below.
           </p>
           <Button onClick={() => authMutation.mutate()} disabled={authMutation.isPending}>
             {authMutation.isPending ? "Starting..." : "Start Device Auth"}
           </Button>
           {authMutation.data && (
             <div className="p-4 bg-muted rounded-lg space-y-2">
-              <p className="text-sm">Open: <a href={authMutation.data.verificationUri} target="_blank" rel="noreferrer" className="text-primary underline">{authMutation.data.verificationUri}</a></p>
-              <p className="text-sm">Enter code: <code className="font-mono text-lg font-bold">{authMutation.data.userCode}</code></p>
+              <p className="text-sm">
+                Open:{" "}
+                <a
+                  href={authMutation.data.verificationUri}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline"
+                >
+                  {authMutation.data.verificationUri}
+                </a>
+              </p>
+              <p className="text-sm">
+                Enter code: <code className="font-mono text-lg font-bold">{authMutation.data.userCode}</code>
+              </p>
             </div>
           )}
         </div>
@@ -198,11 +274,18 @@ function PersonalityPanel() {
 
   const createMut = useMutation({
     mutationFn: () => createPersonality(newName, newPrompt),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["personality"] }); setNewName(""); setNewPrompt(""); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["personality"] });
+      setNewName("");
+      setNewPrompt("");
+    },
   });
   const updateMut = useMutation({
     mutationFn: () => updatePersonality(editId!, editPrompt),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["personality"] }); setEditId(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["personality"] });
+      setEditId(null);
+    },
   });
   const activateMut = useMutation({
     mutationFn: (id: string) => activatePersonality(id),
@@ -222,16 +305,31 @@ function PersonalityPanel() {
           </div>
           {editId === p.id ? (
             <div className="space-y-2">
-              <textarea className="w-full min-h-[100px] p-2 border rounded text-sm font-mono bg-background" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} />
+              <textarea
+                className="w-full min-h-[100px] p-2 border rounded text-sm font-mono bg-background"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+              />
               <AiEnhanceBar text={editPrompt} onEnhanced={setEditPrompt} context="system personality prompt" />
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => updateMut.mutate()}>Save</Button>
-                <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>Cancel</Button>
+                <Button size="sm" onClick={() => updateMut.mutate()}>
+                  Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditId(null)}>
+                  Cancel
+                </Button>
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground cursor-pointer" onClick={() => { setEditId(p.id); setEditPrompt(p.systemPrompt); }}>
-              {p.systemPrompt.substring(0, 200)}{p.systemPrompt.length > 200 ? "..." : ""}
+            <p
+              className="text-sm text-muted-foreground cursor-pointer"
+              onClick={() => {
+                setEditId(p.id);
+                setEditPrompt(p.systemPrompt);
+              }}
+            >
+              {p.systemPrompt.substring(0, 200)}
+              {p.systemPrompt.length > 200 ? "..." : ""}
             </p>
           )}
         </div>
@@ -239,8 +337,15 @@ function PersonalityPanel() {
       <div className="border-t pt-4 space-y-2">
         <h4 className="text-sm font-medium">Add Personality</h4>
         <Input placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-        <textarea className="w-full min-h-[60px] p-2 border rounded text-sm bg-background" placeholder="System prompt" value={newPrompt} onChange={(e) => setNewPrompt(e.target.value)} />
-        <Button size="sm" onClick={() => createMut.mutate()} disabled={!newName}>Create</Button>
+        <textarea
+          className="w-full min-h-[60px] p-2 border rounded text-sm bg-background"
+          placeholder="System prompt"
+          value={newPrompt}
+          onChange={(e) => setNewPrompt(e.target.value)}
+        />
+        <Button size="sm" onClick={() => createMut.mutate()} disabled={!newName}>
+          Create
+        </Button>
       </div>
     </div>
   );
@@ -268,7 +373,14 @@ function ModelsPanel() {
         <label className="text-sm font-medium">Selected Model</label>
         <div className="flex flex-wrap gap-2 mt-2">
           {(data as ModelInfo | undefined)?.models.map((m) => (
-            <Button key={m.id} size="sm" variant={m.id === data?.selected ? "default" : "outline"} onClick={() => selectMut.mutate(m.id)}>{m.id}</Button>
+            <Button
+              key={m.id}
+              size="sm"
+              variant={m.id === data?.selected ? "default" : "outline"}
+              onClick={() => selectMut.mutate(m.id)}
+            >
+              {m.id}
+            </Button>
           ))}
           {(!data?.models || data.models.length === 0) && (
             <p className="text-sm text-muted-foreground">No models available. Authenticate first.</p>
@@ -279,57 +391,16 @@ function ModelsPanel() {
         <label className="text-sm font-medium">Reasoning Effort</label>
         <div className="flex gap-2 mt-2">
           {efforts.map((e) => (
-            <Button key={e} size="sm" variant={e === data?.reasoningEffort ? "default" : "outline"} onClick={() => effortMut.mutate(e)}>{e}</Button>
+            <Button
+              key={e}
+              size="sm"
+              variant={e === data?.reasoningEffort ? "default" : "outline"}
+              onClick={() => effortMut.mutate(e)}
+            >
+              {e}
+            </Button>
           ))}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── MCP Panel ─────────────────────────────────────────────────────────────────
-
-function McpPanel() {
-  const qc = useQueryClient();
-  const { data: servers } = useQuery({ queryKey: ["mcp-servers"], queryFn: getMcpServers });
-  const [name, setName] = useState("");
-  const [type, setType] = useState("stdio");
-  const [command, setCommand] = useState("");
-
-  const createMut = useMutation({
-    mutationFn: () => createMcpServer({ name, type, command }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["mcp-servers"] }); setName(""); setCommand(""); },
-  });
-  const delMut = useMutation({
-    mutationFn: (id: string) => deleteMcpServer(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mcp-servers"] }),
-  });
-
-  return (
-    <div className="space-y-4">
-      {(servers as McpServer[] | undefined)?.map((s) => (
-        <div key={s.id} className="flex items-center justify-between border rounded p-3">
-          <div>
-            <span className="font-medium">{s.name}</span>
-            <span className="ml-2 text-xs text-muted-foreground">{s.type}</span>
-            {s.command && <span className="ml-2 text-xs font-mono">{s.command}</span>}
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={s.enabled ? "default" : "secondary"}>{s.enabled ? "Enabled" : "Disabled"}</Badge>
-            <Button size="sm" variant="ghost" onClick={() => delMut.mutate(s.id)}>Delete</Button>
-          </div>
-        </div>
-      ))}
-      <div className="border-t pt-4 space-y-2">
-        <h4 className="text-sm font-medium">Add MCP Server</h4>
-        <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-        <div className="flex gap-2">
-          {["stdio", "http", "sse", "docker"].map((t) => (
-            <Button key={t} size="sm" variant={t === type ? "default" : "outline"} onClick={() => setType(t)}>{t}</Button>
-          ))}
-        </div>
-        <Input placeholder="Command (for stdio)" value={command} onChange={(e) => setCommand(e.target.value)} />
-        <Button size="sm" onClick={() => createMut.mutate()} disabled={!name}>Add Server</Button>
       </div>
     </div>
   );
@@ -373,15 +444,27 @@ function NetworkPanel() {
         <div className="space-y-3 pt-1">
           <div>
             <label className="text-sm font-medium mb-1 block">HTTP Proxy</label>
-            <Input placeholder="http://proxy.corp.com:8080" value={httpProxy} onChange={(e) => setHttpProxy(e.target.value)} />
+            <Input
+              placeholder="http://proxy.corp.com:8080"
+              value={httpProxy}
+              onChange={(e) => setHttpProxy(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">HTTPS Proxy</label>
-            <Input placeholder="http://proxy.corp.com:8443" value={httpsProxy} onChange={(e) => setHttpsProxy(e.target.value)} />
+            <Input
+              placeholder="http://proxy.corp.com:8443"
+              value={httpsProxy}
+              onChange={(e) => setHttpsProxy(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">No Proxy</label>
-            <Input placeholder="localhost,127.0.0.1,.corp.com" value={noProxy} onChange={(e) => setNoProxy(e.target.value)} />
+            <Input
+              placeholder="localhost,127.0.0.1,.corp.com"
+              value={noProxy}
+              onChange={(e) => setNoProxy(e.target.value)}
+            />
             <p className="text-xs text-muted-foreground mt-1">Comma-separated list of hosts to bypass the proxy</p>
           </div>
         </div>
@@ -398,7 +481,9 @@ function NetworkPanel() {
         )}
       </div>
       {testMut.data && (
-        <p className={`text-sm ${testMut.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+        <p
+          className={`text-sm ${testMut.data.connected ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+        >
           {testMut.data.connected ? "Proxy connection successful" : `Proxy test failed: ${testMut.data.error}`}
         </p>
       )}
