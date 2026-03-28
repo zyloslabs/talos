@@ -617,17 +617,12 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           };
         }
         const parsed = ingestDocumentSchema.parse(args);
-        const result = await documentIngester.ingestDocument(
-          parsed.applicationId,
-          parsed.content,
-          parsed.format,
-          {
-            fileName: parsed.fileName,
-            docType: parsed.docType,
-            version: parsed.version,
-            tags: parsed.tags,
-          }
-        );
+        const result = await documentIngester.ingestDocument(parsed.applicationId, parsed.content, parsed.format, {
+          fileName: parsed.fileName,
+          docType: parsed.docType,
+          version: parsed.version,
+          tags: parsed.tags,
+        });
         return {
           text: JSON.stringify(
             {
@@ -645,8 +640,7 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
 
     {
       name: "talos_generate_criteria",
-      description:
-        "Generate acceptance criteria from requirements in the knowledge base using AI/RAG",
+      description: "Generate acceptance criteria from requirements in the knowledge base using AI/RAG",
       inputSchema: {
         type: "object",
         properties: {

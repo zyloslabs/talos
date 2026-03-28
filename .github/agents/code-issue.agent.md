@@ -58,3 +58,5 @@ For the detailed step-by-step workflow, read the code-issue skill at `.github/sk
 - Always include `Closes #N` in the PR body for every resolved issue
 - If you encounter a blocker, explain it clearly and ask the user for guidance
 - Keep commits atomic — one logical change per commit when possible
+- **After pushing a PR, wait for CodeQL checks to complete and fix any findings.** CodeQL comment-based suppressions (e.g., `// codeql[js/path-injection]`) are **ineffective** — CodeQL requires actual code fixes such as input validation, `path.resolve()` + `startsWith()` containment, URL allowlisting, or parameterized queries. Never declare a PR ready until all CodeQL alerts are resolved.
+- **Verify ALL CI checks pass before handoff.** Run `gh pr checks <PR_NUMBER>` and confirm every job (api, ui, CodeQL, Analyze) shows `pass`. If any check fails, fix it before reporting completion.
