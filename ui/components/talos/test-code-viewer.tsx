@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import type * as monaco from "monaco-editor";
 import { Loader2, Pencil, Save, X, Code } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -30,12 +30,8 @@ export function TestCodeViewer({
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoTheme = useMonacoTheme();
 
-  // Keep currentCode in sync when the code prop changes from outside
-  useEffect(() => {
-    if (!isEditing) {
-      setCurrentCode(code);
-    }
-  }, [code, isEditing]);
+  // NOTE: callers should pass key={testId} so this component remounts
+  // when the test changes — no setState-in-effect needed.
 
   const lineCount = currentCode.split("\n").length;
 
