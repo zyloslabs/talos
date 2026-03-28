@@ -36,7 +36,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `updateTest` and `explainTest` functions added to `ui/lib/api.ts` (#375).
   - `TestMatrix` code viewer dialog replaced with two-panel layout: Monaco-based `TestCodeViewer` (left) + `TestExplainPanel` (right), mobile-responsive via `flex-col md:flex-row` (#375).
   - `Skeleton` UI component added at `ui/components/ui/skeleton.tsx` (#374).
-=======
 - **Wire Real Talos Pipeline — DiscoveryEngine, RAG, TestGenerator, PlaywrightRunner** (Epic #353): All pipeline engines are now instantiated at startup and wired into orchestration for end-to-end test generation and execution.
   - `SdkAttachment` type and `attachments?: SdkAttachment[]` option in `CopilotWrapper.chat()` for passing file context into LLM requests (#357).
   - `getGithubToken()` method on `CopilotWrapper` exposing the authenticated GitHub PAT for use by downstream services (e.g., GitHub Models embeddings) (#357).
