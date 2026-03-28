@@ -44,6 +44,18 @@ function buildApp(copilot?: Partial<CopilotWrapper>) {
     }
 
     const { selection } = req.body as { selection?: string };
+
+    if (selection !== undefined) {
+      if (typeof selection !== "string") {
+        res.status(400).json({ error: "selection must be a string" });
+        return;
+      }
+      if (selection.length > 10000) {
+        res.status(400).json({ error: "selection too long (max 10000 characters)" });
+        return;
+      }
+    }
+
     const codeToExplain = selection ?? record.code;
 
     if (!copilot) {
@@ -204,6 +216,42 @@ describe("POST /api/talos/tests/:id/explain", () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { explanation: string };
         expect(body.explanation).toBe("Explanation with spaces.");
+      });
+    });
+
+    it("returns 400 when selection is not a string", async () => {
+      const mockCopilot: Partial<CopilotWrapper> = {
+        chat: vi.fn().mockReturnValue(mockStream(["irrelevant"])),
+      };
+      const { appExpress, testId } = buildApp(mockCopilot);
+
+      await withServer(appExpress, async (base) => {
+        const res = await fetch(`${base}/api/talos/tests/${testId}/explain`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selection: 12345 }),
+        });
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("selection must be a string");
+      });
+    });
+
+    it("returns 400 when selection exceeds 10000 characters", async () => {
+      const mockCopilot: Partial<CopilotWrapper> = {
+        chat: vi.fn().mockReturnValue(mockStream(["irrelevant"])),
+      };
+      const { appExpress, testId } = buildApp(mockCopilot);
+
+      await withServer(appExpress, async (base) => {
+        const res = await fetch(`${base}/api/talos/tests/${testId}/explain`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selection: "x".repeat(10001) }),
+        });
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("selection too long (max 10000 characters)");
       });
     });
   });

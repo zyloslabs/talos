@@ -709,6 +709,18 @@ app.post("/api/talos/tests/:id/explain", async (req, res) => {
   }
 
   const { selection } = req.body as { selection?: string };
+
+  if (selection !== undefined) {
+    if (typeof selection !== "string") {
+      res.status(400).json({ error: "selection must be a string" });
+      return;
+    }
+    if (selection.length > 10000) {
+      res.status(400).json({ error: "selection too long (max 10000 characters)" });
+      return;
+    }
+  }
+
   const codeToExplain = selection ?? test.code;
 
   if (!copilot) {
