@@ -754,3 +754,56 @@ export type StoredAtlassianConfig = {
   created_at: string;
   updated_at: string;
 };
+
+// ── App Intelligence Types ────────────────────────────────────────────────────
+
+export type TechStackCategory = "framework" | "library" | "language" | "build" | "test" | "lint" | "other";
+
+export type TechStackItem = {
+  name: string;
+  version?: string;
+  category: TechStackCategory;
+  source: string;
+};
+
+export type DetectedDatabase = {
+  type: string;
+  connectionPattern: string;
+  source: string;
+  environment?: string;
+};
+
+export type DetectedTestUser = {
+  variableName: string;
+  source: string;
+  roleHint?: string;
+};
+
+export type DetectedDocument = {
+  filePath: string;
+  type: "readme" | "api-spec" | "guide" | "contributing" | "changelog" | "other";
+  title?: string;
+};
+
+export type DetectedConfigFile = {
+  filePath: string;
+  type: string;
+};
+
+export type AppIntelligenceReport = {
+  id: string;
+  applicationId: string;
+  techStack: TechStackItem[];
+  databases: DetectedDatabase[];
+  testUsers: DetectedTestUser[];
+  documentation: DetectedDocument[];
+  configFiles: DetectedConfigFile[];
+  scannedAt: Date;
+};
+
+export type StoredAppIntelligence = {
+  id: string;
+  application_id: string;
+  report_json: string;
+  scanned_at: string;
+};

@@ -133,9 +133,7 @@ export class GitHubMcpClient {
    */
   async listFiles(extensions: string[], ref = "HEAD"): Promise<GitHubFile[]> {
     const tree = await this.getTree(ref, true);
-    return tree.tree.filter(
-      (f) => f.type === "file" && extensions.some((ext) => f.path.endsWith(ext))
-    );
+    return tree.tree.filter((f) => f.type === "file" && extensions.some((ext) => f.path.endsWith(ext)));
   }
 
   /**
@@ -214,10 +212,7 @@ export class GitHubMcpClient {
         }
 
         // Exponential backoff
-        const delay = Math.min(
-          this.config.backoffBaseMs * Math.pow(2, this.backoffAttempts),
-          this.config.backoffMaxMs
-        );
+        const delay = Math.min(this.config.backoffBaseMs * Math.pow(2, this.backoffAttempts), this.config.backoffMaxMs);
         this.backoffAttempts++;
         await this.sleep(delay);
       }

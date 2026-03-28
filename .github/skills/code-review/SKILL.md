@@ -117,6 +117,8 @@ GitHub Advanced Security (GHAS) runs CodeQL analysis on PRs and posts review com
 
 **Important:** Scanner findings are authoritative signals. A CodeQL High/Critical that remains unaddressed after your review is a **blocking** issue that must appear in your verdict, even if your own manual analysis didn't independently flag it.
 
+**Critical — CodeQL suppression comments do NOT work:** Inline comments like `// codeql[js/path-injection]` are **ineffective** at suppressing CodeQL findings. If you see a developer using comment-based suppressions, flag it as a blocking issue and instruct them to fix the actual code instead. Valid CodeQL fixes include: `path.resolve()` + `startsWith()` containment for path injection, URL hostname allowlisting for SSRF, parameterized queries for SQL injection, and `express-rate-limit` middleware for missing rate limiting.
+
 ### Step 1c: Existing Reviewer Comments (Human & Copilot)
 
 **Goal:** Identify and analyze all prior review comments from human reviewers, GitHub Copilot, or any other non-scanner reviewer so their feedback is incorporated into the review verdict.

@@ -504,6 +504,71 @@ app.post("/api/talos/applications/:appId/atlassian/test", (req, res) => {
   res.json({ success: true, message: "Atlassian connection test queued" });
 });
 
+// ── App Intelligence ──────────────────────────────────────────────────────────
+
+app.get("/api/talos/applications/:appId/intelligence", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+  const report = repo.getIntelligenceReport(req.params.appId);
+  if (!report) {
+    res.status(404).json({ error: "No intelligence report found. Run a scan first." });
+    return;
+  }
+  res.json(report);
+});
+
+app.post("/api/talos/applications/:appId/intelligence/refresh", async (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+
+  try {
+    // Lazy import to keep module boundary clean
+    const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
+    const { GitHubMcpClient } = await import("./talos/discovery/github-mcp-client.js");
+
+    // Resolve PAT
+    let pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
+    if (app_.githubPatRef) {
+      // Try resolving from vault — for now we just use the env var
+      pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
+    }
+
+    if (!pat) {
+      res.status(400).json({ error: "No GitHub PAT configured (set GITHUB_PERSONAL_ACCESS_TOKEN)" });
+      return;
+    }
+
+    // Parse repo URL
+    const repoMatch =
+      app_.repositoryUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/) ?? app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
+    if (!repoMatch) {
+      res.status(400).json({ error: "Invalid repository URL" });
+      return;
+    }
+    const [, owner, repoName] = repoMatch;
+
+    const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+    const tree = await client.getTree("HEAD", true);
+
+    const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
+    const report = await scanner.scan(tree, (path) => client.getFileText(path));
+
+    repo.saveIntelligenceReport(report);
+    io.emit("intelligence:scanned", { applicationId: app_.id, report });
+
+    res.json(report);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: `Intelligence scan failed: ${message}` });
+  }
+});
+
 // ── Admin API ─────────────────────────────────────────────────────────────────
 
 app.use(

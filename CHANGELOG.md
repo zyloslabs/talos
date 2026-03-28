@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **App Intelligence** (Epic #379): Automated repository analysis that detects tech stack, databases, test users, and documentation from config files — no AI required, pure regex/string matching.
+  - `AppIntelligenceReport` type and Zod schema with `techStack`, `databases`, `testUsers`, `documentation`, and `configFiles` arrays (#380).
+  - Tech Stack Detector: parses `package.json`, `pom.xml`, `build.gradle`, `requirements.txt`, `go.mod`, `Cargo.toml`, `Gemfile` and maps dependencies to known frameworks/libraries (#381).
+  - Database Connection Scanner: regex-based detection of JDBC URLs, PostgreSQL/MySQL/MongoDB connection strings in `.env*` files, Docker Compose DB services, ORM configs (`schema.prisma`, `ormconfig.ts`, Django `DATABASES`) (#382).
+  - Test User Scanner: detects test credential patterns (`TEST_USER_*`, `ADMIN_*`, `E2E_*`, `SEED_*`) in `.env` files, and Playwright config patterns (`globalSetup`, `storageState`, `httpCredentials`) (#383).
+  - Documentation Collector: identifies READMEs, `docs/**/*.md`, OpenAPI/Swagger specs, CONTRIBUTING.md, CHANGELOG.md from the file tree (#384).
+  - `talos_app_intelligence` SQLite table with `report_json` column for persisting intelligence reports per application, including cascade delete (#385).
+  - `AppIntelligenceScanner` orchestrator class that coordinates all 4 detectors against a GitHub file tree with content fetching (#386).
+  - Discovery Engine integration: `POST /api/talos/applications/:appId/intelligence/refresh` triggers a full scan (#387).
+  - API endpoints: `GET /api/talos/applications/:appId/intelligence` and `POST /api/talos/applications/:appId/intelligence/refresh` (#388).
+  - App Intelligence UI panel (`ui/components/talos/app-intelligence-panel.tsx`): tech stack badges grouped by category, detected databases with "Configure" action, test user references with "Create Vault Role" action, documentation inventory with type icons, and "Scan/Rescan" button (#389).
+
 - **GitHub Export** (Epic #354): Push AI-generated Playwright test suites from Talos to a user-chosen GitHub repository.
   - `exportRepoUrl` field added to `TalosApplication` type and `talos_applications` SQLite table via idempotent `ALTER TABLE` migration (#366).
   - `GitHubExportService` (`src/talos/export/github-export-service.ts`): wraps the GitHub REST API to ensure a repo exists, create it if needed (`POST /user/repos`), and push files with SHA-based conflict-free updates (#367).

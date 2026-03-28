@@ -218,6 +218,22 @@ Crawls a GitHub repository, filters relevant source files, and chunks them for R
 | `DiscoveryEngine` | Orchestrates the full discovery flow — resolves vault secrets, creates GitHub client, filters files, chunks content, stores vectors |
 | `GitHubMcpClient` | GitHub REST API client with rate limiting, exponential backoff, response caching |
 | `FileChunker` | Splits source files into semantically meaningful chunks using structural or sliding-window strategies |
+| `AppIntelligenceScanner` | Coordinates 4 detectors (tech stack, databases, test users, docs) to produce an `AppIntelligenceReport` |
+
+#### App Intelligence
+
+**Location:** `src/talos/discovery/detectors/`
+
+Pure regex/string-matching analysis of repository config files — no AI required.
+
+| Detector | Input | Output |
+|----------|-------|--------|
+| `detectTechStack()` | `package.json`, `pom.xml`, `build.gradle`, `requirements.txt`, `go.mod`, `Cargo.toml`, `Gemfile` | `TechStackItem[]` + `DetectedConfigFile[]` |
+| `detectDatabases()` | `.env*`, Docker Compose, ORM configs | `DetectedDatabase[]` |
+| `detectTestUsers()` | `.env.example`, `.env.test`, `playwright.config.ts` | `DetectedTestUser[]` |
+| `detectDocumentation()` | File tree paths | `DetectedDocument[]` |
+
+Reports are persisted to `talos_app_intelligence` SQLite table and exposed via API endpoints.
 
 #### GitHubMcpClient
 
@@ -832,7 +848,7 @@ Socket.IO integration via custom hooks:
 
 Typed HTTP client wrapping `fetch` calls to the backend. Configurable base URL via `NEXT_PUBLIC_TALOS_API_BASE` environment variable.
 
-Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles — each with standard CRUD operations plus specialized triggers (e.g., `triggerTestRun`, `triggerDiscovery`).
+Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles, AppIntelligence — each with standard CRUD operations plus specialized triggers (e.g., `triggerTestRun`, `triggerDiscovery`, `refreshIntelligence`).
 
 #### Design System
 
@@ -898,6 +914,12 @@ TALOS uses a normalized relational schema with 9 core tables:
    │   is_active, read_only)     │       │   confluence_url, vault refs, │
    └────────────────────────────┘       │   is_active, ssl_verify)      │
                                         └──────────────────────────────┘
+
+   ┌────────────────────────────┐
+   │  talos_app_intelligence     │
+   │  (id, application_id,       │
+   │   report_json, scanned_at)  │
+   └────────────────────────────┘
 ```
 
 **Index strategy**: Every foreign key is indexed. Additional indexes on `status`, `type`, `name`, and `created_at` for common query patterns.
