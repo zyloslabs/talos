@@ -1552,3 +1552,159 @@ describe("Engine Integration Smoke Tests (#365)", () => {
     });
   });
 });
+
+// ── SSRF Protection — baseUrl validation ──────────────────────────────────────
+// Mirrors validateBaseUrl() in src/index.ts to verify the guard logic.
+
+function validateBaseUrl(urlStr: string, allowPrivate = false): { valid: boolean; reason?: string } {
+  let url: URL;
+  try {
+    url = new URL(urlStr);
+  } catch {
+    return { valid: false, reason: "Invalid URL format" };
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { valid: false, reason: "Only http and https URLs are allowed" };
+  }
+  if (allowPrivate) return { valid: true };
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return { valid: false, reason: "Loopback addresses are not allowed" };
+  }
+  const privateRanges = [
+    /^10\.\d+\.\d+\.\d+$/,
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+    /^192\.168\.\d+\.\d+$/,
+    /^169\.254\.\d+\.\d+$/,
+  ];
+  if (privateRanges.some((r) => r.test(hostname))) {
+    return { valid: false, reason: "Private network addresses are not allowed" };
+  }
+  return { valid: true };
+}
+
+function createSsrfTestApp(allowPrivateOverride = false) {
+  const db = new Database(":memory:");
+  db.pragma("journal_mode = WAL");
+  const repo = new TalosRepository(db);
+  repo.migrate();
+  const app = express();
+  app.use(express.json());
+
+  app.post("/api/talos/applications", (req, res) => {
+    const { name, repositoryUrl, baseUrl, description, githubPatRef } = req.body as Record<string, string>;
+    if (!name || !repositoryUrl || !baseUrl) {
+      res.status(400).json({ error: "name, repositoryUrl, and baseUrl are required" });
+      return;
+    }
+    const check = validateBaseUrl(baseUrl, allowPrivateOverride);
+    if (!check.valid) {
+      res.status(400).json({ error: `Invalid baseUrl: ${check.reason}` });
+      return;
+    }
+    const created = repo.createApplication({ name, description, repositoryUrl, baseUrl, githubPatRef });
+    res.status(201).json(created);
+  });
+
+  return { app, repo };
+}
+
+describe("SSRF protection — POST /api/talos/applications baseUrl validation", () => {
+  it("rejects private RFC-1918 IP (10.x.x.x)", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "http://10.0.0.1" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/private network/i);
+    });
+  });
+
+  it("rejects private RFC-1918 IP (192.168.x.x)", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "http://192.168.1.50" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/private network/i);
+    });
+  });
+
+  it("rejects loopback address (127.0.0.1)", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "http://127.0.0.1:3001" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/loopback/i);
+    });
+  });
+
+  it("rejects APIPA address (169.254.x.x)", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "http://169.254.1.1" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/private network/i);
+    });
+  });
+
+  it("rejects non-http scheme (file://)", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "file:///etc/passwd" }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/http|https/i);
+    });
+  });
+
+  it("accepts a public https URL", async () => {
+    const { app } = createSsrfTestApp();
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" }),
+      });
+      expect(res.status).toBe(201);
+    });
+  });
+
+  it("allows localhost when TALOS_ALLOW_PRIVATE_URLS mode is active", async () => {
+    const { app } = createSsrfTestApp(true /* allowPrivate */);
+    await withServer(createServer(app), async (base) => {
+      const res = await fetch(`${base}/api/talos/applications`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "LocalApp",
+          repositoryUrl: "https://github.com/a/b",
+          baseUrl: "http://localhost:3001",
+        }),
+      });
+      expect(res.status).toBe(201);
+    });
+  });
+});
