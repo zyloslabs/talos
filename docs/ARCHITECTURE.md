@@ -93,7 +93,7 @@ The engine exposes its functionality through **MCP tools** (Model Context Protoc
 | Module System | ESM | — | `"type": "module"` in package.json |
 | Database | better-sqlite3 | ^12.6 | WAL mode, synchronous DAL |
 | Vector DB | LanceDB | ^0.26 | Embedded vector store, ANN search |
-| Embeddings | OpenAI | ^4.96 | `text-embedding-3-small`, 1536 dims |
+| Embeddings | GitHub Models REST API | — | `text-embedding-3-small`, 1536 dims, via `https://models.github.ai/inference/embeddings` |
 | E2E Framework | Playwright | ^1.52 | Multi-browser, traces, video |
 | Schema Validation | Zod | ^3.25 | Config parsing, tool input validation |
 | ID Generation | nanoid | ^5.1 | URL-safe unique IDs |
@@ -150,7 +150,7 @@ Zod-validated configuration with sensible defaults. Parsed via `parseTalosConfig
 | Subsystem | Key Defaults |
 |-----------|-------------|
 | `vectorDb` | LanceDB at `~/.talos/vectordb`, collection `talos_chunks` |
-| `embedding` | OpenAI `text-embedding-3-small`, 1536 dimensions, batch size 100 |
+| `embedding` | GitHub Models REST API `text-embedding-3-small` (via `https://models.github.ai/inference/embeddings`), 1536 dimensions, batch size 100 |
 | `runner` | Chromium, 30s timeout, 60s navigation timeout, headless, 2 retries |
 | `healing` | 85% confidence threshold, 3 max retries, 5s cooldown |
 | `generator` | 80% confidence threshold, human review required, 10 context chunks, POM enabled |
@@ -292,7 +292,7 @@ Retrieval-Augmented Generation pipeline — embeds code chunks, stores them in a
 
 #### EmbeddingService
 
-- **Provider**: OpenAI `text-embedding-3-small` (default). Provider abstraction supports future local model backends.
+- **Provider**: GitHub Models REST API `text-embedding-3-small` (accessed via `https://models.github.ai/inference/embeddings`, default). Provider abstraction supports future local model backends.
 - **Dimensions**: 1536 (configurable).
 - **Batch processing**: Splits large arrays into batches of 100 (configurable). Returns per-batch token counts.
 - **Utilities**: `cosineSimilarity(a, b)` for local similarity computation.
