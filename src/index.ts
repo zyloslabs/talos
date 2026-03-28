@@ -699,6 +699,44 @@ function bumpPatch(version: string): string {
   return "1.0.1";
 }
 
+// ── AI Test Explanation (Epic C) ──────────────────────────────────────────────
+
+app.post("/api/talos/tests/:id/explain", async (req, res) => {
+  const test = repo.getTest(req.params.id);
+  if (!test) {
+    res.status(404).json({ error: "Test not found" });
+    return;
+  }
+
+  const { selection } = req.body as { selection?: string };
+  const codeToExplain = selection ?? test.code;
+
+  if (!copilot) {
+    res.json({ explanation: "AI explanation not available — Copilot is not configured." });
+    return;
+  }
+
+  const systemPrompt = `You are a QA expert. Explain what this Playwright test is doing in plain English, suitable for a QA engineer or product owner who doesn't code. Be concise (3-6 sentences). Cover: what feature it tests, what actions it takes, what it asserts. Do not include code in your response.`;
+
+  const userPrompt = selection
+    ? `Explain this code selection from a Playwright test:\n\n${codeToExplain}`
+    : `Explain this Playwright test:\n\`\`\`typescript\n${codeToExplain}\n\`\`\``;
+
+  try {
+    let explanation = "";
+    for await (const chunk of copilot.chat(userPrompt, {
+      systemMessage: { mode: "replace", content: systemPrompt },
+      conversationId: `explain-${req.params.id}-${Date.now()}`,
+    })) {
+      explanation += chunk;
+    }
+    res.json({ explanation: explanation.trim() });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: `Explanation failed: ${errMsg}` });
+  }
+});
+
 // ── Session Management (#222) ─────────────────────────────────────────────────
 
 app.get("/api/talos/sessions", (_req, res) => {

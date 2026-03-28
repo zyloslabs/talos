@@ -40,7 +40,7 @@ async function withServer(app: express.Express, fn: (baseUrl: string) => Promise
   try {
     await fn(`http://127.0.0.1:${port}`);
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }
 
@@ -150,7 +150,10 @@ describe("Admin API", () => {
         const updated = await json(updateRes);
         expect(updated.name).toBe("Updated");
 
-        const delRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, { method: "DELETE", headers: authHeaders });
+        const delRes = await fetch(`${base}/api/admin/prompts/${prompt.id as string}`, {
+          method: "DELETE",
+          headers: authHeaders,
+        });
         expect(delRes.status).toBe(204);
       });
     });
@@ -255,7 +258,10 @@ describe("Admin API", () => {
         });
         expect(updateRes.status).toBe(200);
 
-        const delRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, { method: "DELETE", headers: authHeaders });
+        const delRes = await fetch(`${base}/api/admin/mcp-servers/${server.id as string}`, {
+          method: "DELETE",
+          headers: authHeaders,
+        });
         expect(delRes.status).toBe(204);
       });
     });
@@ -306,7 +312,10 @@ describe("Admin API", () => {
         const getRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, { headers: authHeaders });
         expect(getRes.status).toBe(200);
 
-        const delRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, { method: "DELETE", headers: authHeaders });
+        const delRes = await fetch(`${base}/api/admin/skills/${skill.id as string}`, {
+          method: "DELETE",
+          headers: authHeaders,
+        });
         expect(delRes.status).toBe(204);
       });
     });
@@ -541,7 +550,9 @@ describe("Admin API", () => {
     it("POST /knowledge/search requires query", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/search`, {
-          method: "POST", headers: authHeaders, body: JSON.stringify({}),
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({}),
         });
         expect(res.status).toBe(400);
       });
@@ -550,7 +561,9 @@ describe("Admin API", () => {
     it("POST /knowledge/search returns results for valid query", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/search`, {
-          method: "POST", headers: authHeaders, body: JSON.stringify({ query: "login flow" }),
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ query: "login flow" }),
         });
         expect(res.status).toBe(200);
         const data = await json(res);
@@ -573,7 +586,9 @@ describe("Admin API", () => {
     it("PUT /knowledge/config updates with valid data", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/config`, {
-          method: "PUT", headers: authHeaders, body: JSON.stringify({ minScore: 0.7 }),
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ minScore: 0.7 }),
         });
         expect(res.status).toBe(200);
         const data = await json(res);
@@ -584,7 +599,9 @@ describe("Admin API", () => {
     it("PUT /knowledge/config rejects invalid searchMode", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/config`, {
-          method: "PUT", headers: authHeaders, body: JSON.stringify({ searchMode: "invalid" }),
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ searchMode: "invalid" }),
         });
         expect(res.status).toBe(400);
         const data = await json(res);
@@ -595,7 +612,9 @@ describe("Admin API", () => {
     it("PUT /knowledge/config rejects minScore out of range", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/config`, {
-          method: "PUT", headers: authHeaders, body: JSON.stringify({ minScore: 5 }),
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ minScore: 5 }),
         });
         expect(res.status).toBe(400);
       });
@@ -604,7 +623,9 @@ describe("Admin API", () => {
     it("PUT /knowledge/config rejects unknown fields", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/config`, {
-          method: "PUT", headers: authHeaders, body: JSON.stringify({ unknownField: "bad" }),
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({ unknownField: "bad" }),
         });
         expect(res.status).toBe(400);
       });
@@ -613,7 +634,8 @@ describe("Admin API", () => {
     it("DELETE /knowledge/documents/:docId returns 404 for non-existent doc", async () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/admin/knowledge/documents/nonexistent`, {
-          method: "DELETE", headers: authHeaders,
+          method: "DELETE",
+          headers: authHeaders,
         });
         expect(res.status).toBe(404);
       });
