@@ -73,7 +73,8 @@ const toApplication = (row: StoredApplication): TalosApplication => ({
   baseUrl: row.base_url,
   status: row.status as TalosApplicationStatus,
   mtlsEnabled: row.mtls_enabled === 1,
-  mtlsConfig: row.mtls_config_json ? JSON.parse(row.mtls_config_json) as MtlsApplicationConfig : null,
+  mtlsConfig: row.mtls_config_json ? (JSON.parse(row.mtls_config_json) as MtlsApplicationConfig) : null,
+  exportRepoUrl: row.export_repo_url ?? null,
   metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
@@ -93,7 +94,7 @@ const toTest = (row: StoredTest): TalosTest => ({
   embeddingId: row.embedding_id,
   generationConfidence: row.generation_confidence,
   codeHash: row.code_hash,
-  tags: row.tags_json ? JSON.parse(row.tags_json) as string[] : [],
+  tags: row.tags_json ? (JSON.parse(row.tags_json) as string[]) : [],
   metadata: JSON.parse(row.metadata_json) as Record<string, unknown>,
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at),
@@ -453,15 +454,16 @@ export class TalosRepository {
 
     // ── mTLS columns migration ──────────────────────────────────────────────
     // Add mTLS columns to talos_applications if they don't exist yet.
-    const cols = this.db
-      .prepare("PRAGMA table_info(talos_applications)")
-      .all() as { name: string }[];
+    const cols = this.db.prepare("PRAGMA table_info(talos_applications)").all() as { name: string }[];
     const colNames = new Set(cols.map((c) => c.name));
     if (!colNames.has("mtls_enabled")) {
       this.db.exec(`ALTER TABLE talos_applications ADD COLUMN mtls_enabled INTEGER NOT NULL DEFAULT 0`);
     }
     if (!colNames.has("mtls_config_json")) {
       this.db.exec(`ALTER TABLE talos_applications ADD COLUMN mtls_config_json TEXT`);
+    }
+    if (!colNames.has("export_repo_url")) {
+      this.db.exec(`ALTER TABLE talos_applications ADD COLUMN export_repo_url TEXT`);
     }
   }
 
@@ -560,6 +562,10 @@ export class TalosRepository {
       updates.push("mtls_config_json = ?");
       values.push(input.mtlsConfig ? JSON.stringify(input.mtlsConfig) : null);
     }
+    if (input.exportRepoUrl !== undefined) {
+      updates.push("export_repo_url = ?");
+      values.push(input.exportRepoUrl);
+    }
 
     if (updates.length === 0) return existing;
 
@@ -567,9 +573,7 @@ export class TalosRepository {
     values.push(now);
     values.push(id);
 
-    const stmt = this.db.prepare(
-      `UPDATE talos_applications SET ${updates.join(", ")} WHERE id = ?`
-    );
+    const stmt = this.db.prepare(`UPDATE talos_applications SET ${updates.join(", ")} WHERE id = ?`);
     stmt.run(...values);
 
     return this.getApplication(id);
@@ -689,9 +693,7 @@ export class TalosRepository {
     values.push(now);
     values.push(id);
 
-    const stmt = this.db.prepare(
-      `UPDATE talos_tests SET ${updates.join(", ")} WHERE id = ?`
-    );
+    const stmt = this.db.prepare(`UPDATE talos_tests SET ${updates.join(", ")} WHERE id = ?`);
     stmt.run(...values);
 
     return this.getTest(id);
@@ -757,9 +759,7 @@ export class TalosRepository {
   }
 
   listRunsByTest(testId: string, limit = 20): TalosTestRun[] {
-    const stmt = this.db.prepare(
-      `SELECT * FROM talos_test_runs WHERE test_id = ? ORDER BY created_at DESC LIMIT ?`
-    );
+    const stmt = this.db.prepare(`SELECT * FROM talos_test_runs WHERE test_id = ? ORDER BY created_at DESC LIMIT ?`);
     const rows = stmt.all(testId, limit) as StoredTestRun[];
     return rows.map(toTestRun);
   }
@@ -808,9 +808,7 @@ export class TalosRepository {
 
     values.push(id);
 
-    const stmt = this.db.prepare(
-      `UPDATE talos_test_runs SET ${updates.join(", ")} WHERE id = ?`
-    );
+    const stmt = this.db.prepare(`UPDATE talos_test_runs SET ${updates.join(", ")} WHERE id = ?`);
     stmt.run(...values);
 
     return this.getTestRun(id);
@@ -851,9 +849,7 @@ export class TalosRepository {
   }
 
   listArtifactsByRun(testRunId: string): TalosTestArtifact[] {
-    const stmt = this.db.prepare(
-      `SELECT * FROM talos_test_artifacts WHERE test_run_id = ? ORDER BY created_at`
-    );
+    const stmt = this.db.prepare(`SELECT * FROM talos_test_artifacts WHERE test_run_id = ? ORDER BY created_at`);
     const rows = stmt.all(testRunId) as StoredArtifact[];
     return rows.map(toArtifact);
   }
@@ -895,9 +891,7 @@ export class TalosRepository {
   }
 
   listRolesByApp(applicationId: string): TalosVaultRole[] {
-    const stmt = this.db.prepare(
-      `SELECT * FROM talos_vault_roles WHERE application_id = ? ORDER BY role_type, name`
-    );
+    const stmt = this.db.prepare(`SELECT * FROM talos_vault_roles WHERE application_id = ? ORDER BY role_type, name`);
     const rows = stmt.all(applicationId) as StoredVaultRole[];
     return rows.map(toVaultRole);
   }
@@ -953,9 +947,7 @@ export class TalosRepository {
     values.push(now);
     values.push(id);
 
-    const stmt = this.db.prepare(
-      `UPDATE talos_vault_roles SET ${updates.join(", ")} WHERE id = ?`
-    );
+    const stmt = this.db.prepare(`UPDATE talos_vault_roles SET ${updates.join(", ")} WHERE id = ?`);
     stmt.run(...values);
 
     return this.getVaultRole(id);
@@ -1164,9 +1156,7 @@ export class TalosRepository {
     values.push(now);
     values.push(id);
 
-    const stmt = this.db.prepare(
-      `UPDATE talos_acceptance_criteria SET ${updates.join(", ")} WHERE id = ?`
-    );
+    const stmt = this.db.prepare(`UPDATE talos_acceptance_criteria SET ${updates.join(", ")} WHERE id = ?`);
     stmt.run(...values);
 
     return this.getAcceptanceCriteria(id);
@@ -1212,9 +1202,7 @@ export class TalosRepository {
   }
 
   getTraceabilityForApp(applicationId: string): TraceabilityLink[] {
-    const stmt = this.db.prepare(
-      `SELECT * FROM talos_traceability WHERE application_id = ? ORDER BY created_at DESC`
-    );
+    const stmt = this.db.prepare(`SELECT * FROM talos_traceability WHERE application_id = ? ORDER BY created_at DESC`);
     const rows = stmt.all(applicationId) as StoredTraceabilityLink[];
     return rows.map(toTraceabilityLink);
   }
@@ -1295,15 +1283,23 @@ export class TalosRepository {
 
   linkCriteriaToTest(criteriaId: string, testId: string): TraceabilityLink | null {
     // Find a traceability link with this criteria that has no test
-    const existing = this.db.prepare(`
+    const existing = this.db
+      .prepare(
+        `
       SELECT * FROM talos_traceability WHERE acceptance_criteria_id = ? AND test_id IS NULL LIMIT 1
-    `).get(criteriaId) as StoredTraceabilityLink | undefined;
+    `
+      )
+      .get(criteriaId) as StoredTraceabilityLink | undefined;
 
     if (existing) {
       const now = this.clock().toISOString();
-      this.db.prepare(`
+      this.db
+        .prepare(
+          `
         UPDATE talos_traceability SET test_id = ?, coverage_status = 'covered', updated_at = ? WHERE id = ?
-      `).run(testId, now, existing.id);
+      `
+        )
+        .run(testId, now, existing.id);
       return this.getTraceabilityLink(existing.id);
     }
 
@@ -1312,10 +1308,14 @@ export class TalosRepository {
     if (!criteria) return null;
 
     // Find a requirement chunk linked to this criteria
-    const reqLink = this.db.prepare(`
+    const reqLink = this.db
+      .prepare(
+        `
       SELECT requirement_chunk_id FROM talos_traceability
       WHERE acceptance_criteria_id = ? LIMIT 1
-    `).get(criteriaId) as { requirement_chunk_id: string } | undefined;
+    `
+      )
+      .get(criteriaId) as { requirement_chunk_id: string } | undefined;
 
     return this.createTraceabilityLink({
       applicationId: criteria.applicationId,
@@ -1332,35 +1332,41 @@ export class TalosRepository {
     const now = this.clock().toISOString();
     const id = randomUUID();
 
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO talos_data_sources (
         id, application_id, label, driver_type, jdbc_url,
         username_vault_ref, password_vault_ref, is_active, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `).run(
-      id,
-      input.applicationId,
-      input.label,
-      input.driverType,
-      input.jdbcUrl,
-      input.usernameVaultRef,
-      input.passwordVaultRef,
-      now,
-      now
-    );
+    `
+      )
+      .run(
+        id,
+        input.applicationId,
+        input.label,
+        input.driverType,
+        input.jdbcUrl,
+        input.usernameVaultRef,
+        input.passwordVaultRef,
+        now,
+        now
+      );
 
     return this.getDataSource(id)!;
   }
 
   getDataSource(id: string): TalosDataSource | null {
-    const row = this.db.prepare(`SELECT * FROM talos_data_sources WHERE id = ?`).get(id) as StoredDataSource | undefined;
+    const row = this.db.prepare(`SELECT * FROM talos_data_sources WHERE id = ?`).get(id) as
+      | StoredDataSource
+      | undefined;
     return row ? toDataSource(row) : null;
   }
 
   getDataSourcesByApp(applicationId: string): TalosDataSource[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM talos_data_sources WHERE application_id = ? ORDER BY label`
-    ).all(applicationId) as StoredDataSource[];
+    const rows = this.db
+      .prepare(`SELECT * FROM talos_data_sources WHERE application_id = ? ORDER BY label`)
+      .all(applicationId) as StoredDataSource[];
     return rows.map(toDataSource);
   }
 
@@ -1372,12 +1378,30 @@ export class TalosRepository {
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    if (input.label !== undefined) { updates.push("label = ?"); values.push(input.label); }
-    if (input.driverType !== undefined) { updates.push("driver_type = ?"); values.push(input.driverType); }
-    if (input.jdbcUrl !== undefined) { updates.push("jdbc_url = ?"); values.push(input.jdbcUrl); }
-    if (input.usernameVaultRef !== undefined) { updates.push("username_vault_ref = ?"); values.push(input.usernameVaultRef); }
-    if (input.passwordVaultRef !== undefined) { updates.push("password_vault_ref = ?"); values.push(input.passwordVaultRef); }
-    if (input.isActive !== undefined) { updates.push("is_active = ?"); values.push(input.isActive ? 1 : 0); }
+    if (input.label !== undefined) {
+      updates.push("label = ?");
+      values.push(input.label);
+    }
+    if (input.driverType !== undefined) {
+      updates.push("driver_type = ?");
+      values.push(input.driverType);
+    }
+    if (input.jdbcUrl !== undefined) {
+      updates.push("jdbc_url = ?");
+      values.push(input.jdbcUrl);
+    }
+    if (input.usernameVaultRef !== undefined) {
+      updates.push("username_vault_ref = ?");
+      values.push(input.usernameVaultRef);
+    }
+    if (input.passwordVaultRef !== undefined) {
+      updates.push("password_vault_ref = ?");
+      values.push(input.passwordVaultRef);
+    }
+    if (input.isActive !== undefined) {
+      updates.push("is_active = ?");
+      values.push(input.isActive ? 1 : 0);
+    }
 
     if (updates.length === 0) return existing;
 
@@ -1400,7 +1424,9 @@ export class TalosRepository {
     const now = this.clock().toISOString();
     const id = randomUUID();
 
-    this.db.prepare(`
+    this.db
+      .prepare(
+        `
       INSERT INTO talos_atlassian_configs (
         id, application_id, deployment_type,
         jira_url, jira_project, jira_username_vault_ref, jira_api_token_vault_ref,
@@ -1409,38 +1435,44 @@ export class TalosRepository {
         confluence_api_token_vault_ref, confluence_personal_token_vault_ref, confluence_ssl_verify,
         is_active, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-    `).run(
-      id,
-      input.applicationId,
-      input.deploymentType,
-      input.jiraUrl ?? "",
-      input.jiraProject ?? "",
-      input.jiraUsernameVaultRef ?? "",
-      input.jiraApiTokenVaultRef ?? "",
-      input.jiraPersonalTokenVaultRef ?? "",
-      input.jiraSslVerify !== false ? 1 : 0,
-      input.confluenceUrl ?? "",
-      JSON.stringify(input.confluenceSpaces ?? []),
-      input.confluenceUsernameVaultRef ?? "",
-      input.confluenceApiTokenVaultRef ?? "",
-      input.confluencePersonalTokenVaultRef ?? "",
-      input.confluenceSslVerify !== false ? 1 : 0,
-      now,
-      now
-    );
+    `
+      )
+      .run(
+        id,
+        input.applicationId,
+        input.deploymentType,
+        input.jiraUrl ?? "",
+        input.jiraProject ?? "",
+        input.jiraUsernameVaultRef ?? "",
+        input.jiraApiTokenVaultRef ?? "",
+        input.jiraPersonalTokenVaultRef ?? "",
+        input.jiraSslVerify !== false ? 1 : 0,
+        input.confluenceUrl ?? "",
+        JSON.stringify(input.confluenceSpaces ?? []),
+        input.confluenceUsernameVaultRef ?? "",
+        input.confluenceApiTokenVaultRef ?? "",
+        input.confluencePersonalTokenVaultRef ?? "",
+        input.confluenceSslVerify !== false ? 1 : 0,
+        now,
+        now
+      );
 
     return this.getAtlassianConfig(id)!;
   }
 
   getAtlassianConfig(id: string): TalosAtlassianConfig | null {
-    const row = this.db.prepare(`SELECT * FROM talos_atlassian_configs WHERE id = ?`).get(id) as StoredAtlassianConfig | undefined;
+    const row = this.db.prepare(`SELECT * FROM talos_atlassian_configs WHERE id = ?`).get(id) as
+      | StoredAtlassianConfig
+      | undefined;
     return row ? toAtlassianConfig(row) : null;
   }
 
   getAtlassianConfigByApp(applicationId: string): TalosAtlassianConfig | null {
-    const row = this.db.prepare(
-      `SELECT * FROM talos_atlassian_configs WHERE application_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
-    ).get(applicationId) as StoredAtlassianConfig | undefined;
+    const row = this.db
+      .prepare(
+        `SELECT * FROM talos_atlassian_configs WHERE application_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+      )
+      .get(applicationId) as StoredAtlassianConfig | undefined;
     return row ? toAtlassianConfig(row) : null;
   }
 
@@ -1452,20 +1484,62 @@ export class TalosRepository {
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    if (input.deploymentType !== undefined) { updates.push("deployment_type = ?"); values.push(input.deploymentType); }
-    if (input.jiraUrl !== undefined) { updates.push("jira_url = ?"); values.push(input.jiraUrl); }
-    if (input.jiraProject !== undefined) { updates.push("jira_project = ?"); values.push(input.jiraProject); }
-    if (input.jiraUsernameVaultRef !== undefined) { updates.push("jira_username_vault_ref = ?"); values.push(input.jiraUsernameVaultRef); }
-    if (input.jiraApiTokenVaultRef !== undefined) { updates.push("jira_api_token_vault_ref = ?"); values.push(input.jiraApiTokenVaultRef); }
-    if (input.jiraPersonalTokenVaultRef !== undefined) { updates.push("jira_personal_token_vault_ref = ?"); values.push(input.jiraPersonalTokenVaultRef); }
-    if (input.jiraSslVerify !== undefined) { updates.push("jira_ssl_verify = ?"); values.push(input.jiraSslVerify ? 1 : 0); }
-    if (input.confluenceUrl !== undefined) { updates.push("confluence_url = ?"); values.push(input.confluenceUrl); }
-    if (input.confluenceSpaces !== undefined) { updates.push("confluence_spaces_json = ?"); values.push(JSON.stringify(input.confluenceSpaces)); }
-    if (input.confluenceUsernameVaultRef !== undefined) { updates.push("confluence_username_vault_ref = ?"); values.push(input.confluenceUsernameVaultRef); }
-    if (input.confluenceApiTokenVaultRef !== undefined) { updates.push("confluence_api_token_vault_ref = ?"); values.push(input.confluenceApiTokenVaultRef); }
-    if (input.confluencePersonalTokenVaultRef !== undefined) { updates.push("confluence_personal_token_vault_ref = ?"); values.push(input.confluencePersonalTokenVaultRef); }
-    if (input.confluenceSslVerify !== undefined) { updates.push("confluence_ssl_verify = ?"); values.push(input.confluenceSslVerify ? 1 : 0); }
-    if (input.isActive !== undefined) { updates.push("is_active = ?"); values.push(input.isActive ? 1 : 0); }
+    if (input.deploymentType !== undefined) {
+      updates.push("deployment_type = ?");
+      values.push(input.deploymentType);
+    }
+    if (input.jiraUrl !== undefined) {
+      updates.push("jira_url = ?");
+      values.push(input.jiraUrl);
+    }
+    if (input.jiraProject !== undefined) {
+      updates.push("jira_project = ?");
+      values.push(input.jiraProject);
+    }
+    if (input.jiraUsernameVaultRef !== undefined) {
+      updates.push("jira_username_vault_ref = ?");
+      values.push(input.jiraUsernameVaultRef);
+    }
+    if (input.jiraApiTokenVaultRef !== undefined) {
+      updates.push("jira_api_token_vault_ref = ?");
+      values.push(input.jiraApiTokenVaultRef);
+    }
+    if (input.jiraPersonalTokenVaultRef !== undefined) {
+      updates.push("jira_personal_token_vault_ref = ?");
+      values.push(input.jiraPersonalTokenVaultRef);
+    }
+    if (input.jiraSslVerify !== undefined) {
+      updates.push("jira_ssl_verify = ?");
+      values.push(input.jiraSslVerify ? 1 : 0);
+    }
+    if (input.confluenceUrl !== undefined) {
+      updates.push("confluence_url = ?");
+      values.push(input.confluenceUrl);
+    }
+    if (input.confluenceSpaces !== undefined) {
+      updates.push("confluence_spaces_json = ?");
+      values.push(JSON.stringify(input.confluenceSpaces));
+    }
+    if (input.confluenceUsernameVaultRef !== undefined) {
+      updates.push("confluence_username_vault_ref = ?");
+      values.push(input.confluenceUsernameVaultRef);
+    }
+    if (input.confluenceApiTokenVaultRef !== undefined) {
+      updates.push("confluence_api_token_vault_ref = ?");
+      values.push(input.confluenceApiTokenVaultRef);
+    }
+    if (input.confluencePersonalTokenVaultRef !== undefined) {
+      updates.push("confluence_personal_token_vault_ref = ?");
+      values.push(input.confluencePersonalTokenVaultRef);
+    }
+    if (input.confluenceSslVerify !== undefined) {
+      updates.push("confluence_ssl_verify = ?");
+      values.push(input.confluenceSslVerify ? 1 : 0);
+    }
+    if (input.isActive !== undefined) {
+      updates.push("is_active = ?");
+      values.push(input.isActive ? 1 : 0);
+    }
 
     if (updates.length === 0) return existing;
 

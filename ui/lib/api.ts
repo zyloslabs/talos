@@ -12,6 +12,7 @@ export interface TalosApplication {
   githubPatRef: string | null;
   baseUrl: string;
   status: "active" | "archived" | "pending";
+  exportRepoUrl: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -692,3 +693,29 @@ export const testAtlassianConnection = (appId: string) =>
   fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/atlassian/test`, {
     method: "POST",
   });
+
+// ── GitHub Export ─────────────────────────────────────────────────────────────
+
+export interface GitHubExportResult {
+  success: boolean;
+  repoUrl: string;
+  filesUpdated: number;
+  created: boolean;
+}
+
+export interface ExportInfo {
+  exportRepoUrl: string | null;
+  lastExportedAt: string | null;
+}
+
+export const exportToGitHub = (
+  appId: string,
+  body: { targetRepo: string; branch: string; createIfNotExists: boolean; pat?: string }
+) =>
+  fetchApi<GitHubExportResult>(`/api/talos/applications/${appId}/export-to-github`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const getExportInfo = (appId: string) =>
+  fetchApi<ExportInfo>(`/api/talos/applications/${appId}/export-info`);

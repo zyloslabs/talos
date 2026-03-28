@@ -27,6 +27,8 @@ import { CopilotScraper } from "./talos/m365/scraper.js";
 import { EphemeralStore } from "./talos/m365/ephemeral.js";
 import { createM365Router } from "./api/m365.js";
 import { parseTalosConfig, createDataSourceInputSchema, atlassianConfigInputSchema } from "./talos/config.js";
+import { ExportEngine } from "./talos/export/export-engine.js";
+import { GitHubExportService } from "./talos/export/github-export-service.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -1019,6 +1021,86 @@ const talosConfig = parseTalosConfig({});
     if (pc.noProxy && !process.env.NO_PROXY) process.env.NO_PROXY = pc.noProxy;
   }
 }
+
+// ── GitHub Export (#354) ─────────────────────────────────────────────────────
+
+app.post("/api/talos/applications/:appId/export-to-github", async (req, res) => {
+  const appId = req.params.appId;
+  const app_ = repo.getApplication(appId);
+  if (!app_) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+
+  const { targetRepo, branch = "main", createIfNotExists = true, pat } = req.body as {
+    targetRepo?: string;
+    branch?: string;
+    createIfNotExists?: boolean;
+    testIds?: string[];
+    pat?: string;
+  };
+
+  if (!targetRepo || !targetRepo.includes("/")) {
+    res.status(400).json({ error: "targetRepo is required and must be in owner/repo format" });
+    return;
+  }
+
+  const [owner, repoName] = targetRepo.split("/", 2);
+
+  const githubPat =
+    pat ??
+    process.env.GITHUB_TOKEN ??
+    process.env.COPILOT_GITHUB_TOKEN ??
+    envManager.getRaw("GITHUB_TOKEN") ??
+    envManager.getRaw("COPILOT_GITHUB_TOKEN");
+
+  if (!githubPat) {
+    res.status(400).json({ error: "No GitHub PAT available. Provide pat in the request body or set GITHUB_TOKEN." });
+    return;
+  }
+
+  try {
+    const exportEngine = new ExportEngine({
+      config: talosConfig.export,
+      repository: repo,
+    });
+
+    const exportResult = await exportEngine.export(appId, { format: "directory", sanitize: true });
+    if (!exportResult.success || !exportResult.outputPath) {
+      res.status(500).json({ error: exportResult.error ?? "Export failed" });
+      return;
+    }
+
+    const files = (exportResult.files ?? []).map((filePath) => {
+      try {
+        const content = readFileSync(join(exportResult.outputPath!, filePath), "utf-8");
+        return { path: filePath, content };
+      } catch {
+        return { path: filePath, content: "" };
+      }
+    });
+
+    const ghService = new GitHubExportService({ pat: githubPat });
+    const { created } = await ghService.ensureRepo(owner, repoName, createIfNotExists as boolean);
+    const { pushedCount, repoUrl } = await ghService.pushFiles(owner, repoName, branch, files);
+
+    repo.updateApplication(appId, { exportRepoUrl: targetRepo });
+    io.emit("export:complete", { applicationId: appId, repoUrl, filesUpdated: pushedCount, created });
+
+    res.json({ success: true, repoUrl, filesUpdated: pushedCount, created });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+app.get("/api/talos/applications/:appId/export-info", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+  res.json({ exportRepoUrl: app_.exportRepoUrl ?? null, lastExportedAt: app_.updatedAt });
+});
 
 // ── M365 Integration (#315) ──────────────────────────────────────────────────
 
