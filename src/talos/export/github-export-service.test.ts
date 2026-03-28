@@ -35,17 +35,23 @@ describe("GitHubExportService", () => {
     });
 
     it("accepts a custom base URL", () => {
-      const svc = new GitHubExportService({ pat: "tok", baseUrl: "http://localhost:8080" });
+      const svc = new GitHubExportService({ pat: "tok", baseUrl: "https://github.example.com" });
       expect(svc).toBeDefined();
     });
 
+    it("rejects http:// baseUrl", () => {
+      expect(() => new GitHubExportService({ pat: "tok", baseUrl: "http://localhost:8080" })).toThrow(
+        "GitHubExportService: baseUrl must use https"
+      );
+    });
+
     it("strips trailing slash from baseUrl", () => {
-      const svc = new GitHubExportService({ pat: "tok", baseUrl: "http://localhost:8080/" });
+      const svc = new GitHubExportService({ pat: "tok", baseUrl: "https://github.example.com/" });
       // Test that ensureRepo uses the stripped URL (no double-slash)
       fetchMock.mockResolvedValueOnce(mockResponse(200, { id: 1 }));
       void svc.ensureRepo("owner", "repo", false);
       const calledUrl = fetchMock.mock.calls[0][0] as string;
-      expect(calledUrl).toBe("http://localhost:8080/repos/owner/repo");
+      expect(calledUrl).toBe("https://github.example.com/repos/owner/repo");
     });
   });
 
@@ -103,18 +109,14 @@ describe("GitHubExportService", () => {
         .mockResolvedValueOnce(mockResponse(422, { message: "Already exists" }));
 
       const svc = new GitHubExportService({ pat: "tok" });
-      await expect(svc.ensureRepo("myorg", "myrepo", true)).rejects.toThrow(
-        "Failed to create repository"
-      );
+      await expect(svc.ensureRepo("myorg", "myrepo", true)).rejects.toThrow("Failed to create repository");
     });
 
     it("throws on unexpected error status", async () => {
       fetchMock.mockResolvedValueOnce(mockResponse(500, { message: "Server Error" }));
 
       const svc = new GitHubExportService({ pat: "tok" });
-      await expect(svc.ensureRepo("myorg", "myrepo", false)).rejects.toThrow(
-        "Failed to check repository"
-      );
+      await expect(svc.ensureRepo("myorg", "myrepo", false)).rejects.toThrow("Failed to check repository");
     });
   });
 
@@ -197,28 +199,20 @@ describe("GitHubExportService", () => {
     });
 
     it("properly encodes file paths with special characters", async () => {
-      fetchMock
-        .mockResolvedValueOnce(mockResponse(404, {}))
-        .mockResolvedValueOnce(mockResponse(201, {}));
+      fetchMock.mockResolvedValueOnce(mockResponse(404, {})).mockResolvedValueOnce(mockResponse(201, {}));
 
       const svc = new GitHubExportService({ pat: "tok" });
-      await svc.pushFiles("owner", "repo", "main", [
-        { path: "tests/my test.spec.ts", content: "x" },
-      ]);
+      await svc.pushFiles("owner", "repo", "main", [{ path: "tests/my test.spec.ts", content: "x" }]);
 
       const getUrl = fetchMock.mock.calls[0][0] as string;
       expect(getUrl).toContain("my%20test.spec.ts");
     });
 
     it("uses branch param in GET and PUT", async () => {
-      fetchMock
-        .mockResolvedValueOnce(mockResponse(404, {}))
-        .mockResolvedValueOnce(mockResponse(201, {}));
+      fetchMock.mockResolvedValueOnce(mockResponse(404, {})).mockResolvedValueOnce(mockResponse(201, {}));
 
       const svc = new GitHubExportService({ pat: "tok" });
-      await svc.pushFiles("owner", "repo", "feature-branch", [
-        { path: "tests/a.spec.ts", content: "test" },
-      ]);
+      await svc.pushFiles("owner", "repo", "feature-branch", [{ path: "tests/a.spec.ts", content: "test" }]);
 
       const getUrl = fetchMock.mock.calls[0][0] as string;
       expect(getUrl).toContain("ref=feature-branch");
