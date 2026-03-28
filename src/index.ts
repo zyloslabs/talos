@@ -1032,7 +1032,12 @@ app.post("/api/talos/applications/:appId/export-to-github", async (req, res) => 
     return;
   }
 
-  const { targetRepo, branch = "main", createIfNotExists = true, pat } = req.body as {
+  const {
+    targetRepo,
+    branch = "main",
+    createIfNotExists = true,
+    pat,
+  } = req.body as {
     targetRepo?: string;
     branch?: string;
     createIfNotExists?: boolean;
@@ -1045,7 +1050,12 @@ app.post("/api/talos/applications/:appId/export-to-github", async (req, res) => 
     return;
   }
 
-  const [owner, repoName] = targetRepo.split("/", 2);
+  const parts = targetRepo.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1] || parts[0].includes("..") || parts[1].includes("..")) {
+    res.status(400).json({ error: "targetRepo must be in 'owner/repo' format with no empty parts" });
+    return;
+  }
+  const [owner, repoName] = parts;
 
   const githubPat =
     pat ??

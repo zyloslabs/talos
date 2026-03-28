@@ -31,6 +31,12 @@ export class GitHubExportService {
   constructor({ pat, baseUrl = "https://api.github.com" }: GitHubExportServiceOptions) {
     if (!pat) throw new Error("GitHub PAT is required");
     this.pat = pat;
+    // Validate baseUrl scheme — only https is allowed for GitHub API calls
+    const parsed = new URL(baseUrl);
+    if (parsed.protocol !== "https:") {
+      throw new Error("GitHubExportService: baseUrl must use https");
+    }
+    // Remove trailing slash for consistent URL construction
     this.baseUrl = baseUrl.replace(/\/$/, "");
   }
 
@@ -47,11 +53,7 @@ export class GitHubExportService {
    * Ensure the repository exists. If it doesn't exist and createIfNotExists is true,
    * it will be created under the authenticated user's account.
    */
-  async ensureRepo(
-    owner: string,
-    repo: string,
-    createIfNotExists: boolean
-  ): Promise<EnsureRepoResult> {
+  async ensureRepo(owner: string, repo: string, createIfNotExists: boolean): Promise<EnsureRepoResult> {
     const checkRes = await fetch(`${this.baseUrl}/repos/${owner}/${repo}`, {
       headers: this.headers,
     });
@@ -132,9 +134,7 @@ export class GitHubExportService {
 
       if (!putRes.ok) {
         const text = await putRes.text();
-        throw new Error(
-          `Failed to push file ${file.path} to ${owner}/${repo}: ${putRes.status} ${text}`
-        );
+        throw new Error(`Failed to push file ${file.path} to ${owner}/${repo}: ${putRes.status} ${text}`);
       }
 
       pushedCount++;

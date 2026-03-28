@@ -39,7 +39,8 @@ function createTestApp() {
   // ── Session endpoints (mirroring index.ts) ──
 
   app.get("/api/talos/sessions", (_req, res) => {
-    const sessions: { id: string; startedAt: string; lastMessageAt: string; messageCount: number; preview: string }[] = [];
+    const sessions: { id: string; startedAt: string; lastMessageAt: string; messageCount: number; preview: string }[] =
+      [];
     try {
       const files = readdirSync(sessionsDir) as string[];
       for (const file of files) {
@@ -52,11 +53,25 @@ function createTestApp() {
         if (lines.length === 0) continue;
         const firstMsg = JSON.parse(lines[0]);
         const lastMsg = JSON.parse(lines[lines.length - 1]);
-        const userMessages = lines.filter((l: string) => { try { return JSON.parse(l).role === "user"; } catch { return false; } });
+        const userMessages = lines.filter((l: string) => {
+          try {
+            return JSON.parse(l).role === "user";
+          } catch {
+            return false;
+          }
+        });
         const preview = userMessages.length > 0 ? JSON.parse(userMessages[0]).content.substring(0, 100) : "";
-        sessions.push({ id, startedAt: firstMsg.timestamp ?? stat.birthtime.toISOString(), lastMessageAt: lastMsg.timestamp ?? stat.mtime.toISOString(), messageCount: lines.length, preview });
+        sessions.push({
+          id,
+          startedAt: firstMsg.timestamp ?? stat.birthtime.toISOString(),
+          lastMessageAt: lastMsg.timestamp ?? stat.mtime.toISOString(),
+          messageCount: lines.length,
+          preview,
+        });
       }
-    } catch { /* empty */ }
+    } catch {
+      /* empty */
+    }
     sessions.sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
     res.json(sessions);
   });
@@ -64,11 +79,23 @@ function createTestApp() {
   app.get("/api/talos/sessions/:id", (req, res) => {
     const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
     const filePath = join(sessionsDir, `${safeName}.jsonl`);
-    if (!existsSync(filePath)) { res.status(404).json({ error: "Session not found" }); return; }
+    if (!existsSync(filePath)) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
     const content = readFileSync(filePath, "utf-8");
-    const messages = content.trim().split("\n").filter(Boolean).map((line: string) => {
-      try { return JSON.parse(line); } catch { return null; }
-    }).filter(Boolean);
+    const messages = content
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line: string) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
     res.json({ id: req.params.id, messages });
   });
 
@@ -76,13 +103,19 @@ function createTestApp() {
 
   app.post("/api/talos/tests/generate", (req, res) => {
     const { applicationId, prompt, testType } = req.body as {
-      applicationId?: string; prompt?: string; testType?: string;
+      applicationId?: string;
+      prompt?: string;
+      testType?: string;
     };
     if (!applicationId || !prompt) {
-      res.status(400).json({ error: "applicationId and prompt are required" }); return;
+      res.status(400).json({ error: "applicationId and prompt are required" });
+      return;
     }
     const app_ = repo.getApplication(applicationId);
-    if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+    if (!app_) {
+      res.status(404).json({ error: "Application not found" });
+      return;
+    }
 
     const testName = `Generated: ${prompt.substring(0, 50)}`;
     const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
@@ -97,7 +130,12 @@ function createTestApp() {
       generationConfidence: 0.75,
     });
 
-    res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence: created.generationConfidence ?? 0.75 });
+    res.status(201).json({
+      id: created.id,
+      code: created.code,
+      name: created.name,
+      confidence: created.generationConfidence ?? 0.75,
+    });
   });
 
   // ── Admin router (for knowledge endpoints) ──
@@ -116,7 +154,7 @@ async function withServer(app: express.Express, fn: (baseUrl: string) => Promise
   try {
     await fn(`http://127.0.0.1:${port}`);
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }
 
@@ -132,7 +170,11 @@ describe("Talos API Endpoints", () => {
   });
 
   afterEach(() => {
-    try { rmSync(sessionsDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      rmSync(sessionsDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── Session Endpoints ──
@@ -155,7 +197,7 @@ describe("Talos API Endpoints", () => {
 
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/talos/sessions`);
-        const data = await res.json() as { id: string }[];
+        const data = (await res.json()) as { id: string }[];
         expect(data).toHaveLength(2);
         expect(data[0].id).toBe("session-b");
         expect(data[1].id).toBe("session-a");
@@ -169,7 +211,7 @@ describe("Talos API Endpoints", () => {
       await withServer(app, async (base) => {
         const res = await fetch(`${base}/api/talos/sessions/test-session`);
         expect(res.status).toBe(200);
-        const data = await res.json() as { messages: unknown[] };
+        const data = (await res.json()) as { messages: unknown[] };
         expect(data.messages).toHaveLength(1);
       });
     });
@@ -221,7 +263,7 @@ describe("Talos API Endpoints", () => {
           body: JSON.stringify({ applicationId: appEntry.id, prompt: "test login flow" }),
         });
         expect(res.status).toBe(201);
-        const data = await res.json() as { id: string; code: string; name: string; confidence: number };
+        const data = (await res.json()) as { id: string; code: string; name: string; confidence: number };
         expect(data.code).toContain("@playwright/test");
         expect(data.confidence).toBe(0.75);
       });
@@ -243,7 +285,7 @@ describe("Talos API Endpoints", () => {
           body: JSON.stringify({ applicationId: appEntry.id, prompt: maliciousPrompt }),
         });
         expect(res.status).toBe(201);
-        const data = await res.json() as { code: string };
+        const data = (await res.json()) as { code: string };
         // The test name should be JSON.stringify'd (double-quoted), not single-quoted template interpolation
         // With JSON.stringify, single quotes in the prompt are safely contained in a double-quoted string
         expect(data.code).toContain('test("Generated:');
@@ -266,12 +308,90 @@ describe("Talos API Endpoints", () => {
           body: JSON.stringify({ applicationId: appEntry.id, prompt: "test homepage" }),
         });
         expect(res.status).toBe(201);
-        const data = await res.json() as { code: string };
+        const data = (await res.json()) as { code: string };
         // page.goto should use JSON.stringify'd (double-quoted) URL, not single-quoted
         // The malicious URL is safely contained inside double quotes
         expect(data.code).toContain('page.goto("https://legit.com');
         // Should NOT use single-quote template interpolation (the old vulnerable pattern)
         expect(data.code).not.toMatch(/page\.goto\('https:/);
+      });
+    });
+  });
+
+  // ── Export to GitHub — targetRepo validation ──
+
+  describe("POST /api/talos/applications/:appId/export-to-github — input validation", () => {
+    function buildExportApp() {
+      const exportApp = express();
+      exportApp.use(express.json());
+      exportApp.post("/api/talos/applications/:appId/export-to-github", (req, res) => {
+        const { targetRepo } = req.body as { targetRepo?: string };
+        if (!targetRepo || !targetRepo.includes("/")) {
+          res.status(400).json({ error: "targetRepo is required and must be in owner/repo format" });
+          return;
+        }
+        const parts = targetRepo.split("/");
+        if (parts.length !== 2 || !parts[0] || !parts[1] || parts[0].includes("..") || parts[1].includes("..")) {
+          res.status(400).json({ error: "targetRepo must be in 'owner/repo' format with no empty parts" });
+          return;
+        }
+        res.status(200).json({ ok: true });
+      });
+      return exportApp;
+    }
+
+    it('rejects "/" with 400', async () => {
+      await withServer(buildExportApp(), async (base) => {
+        const res = await fetch(`${base}/api/talos/applications/app1/export-to-github`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetRepo: "/" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it('rejects "/repo" (missing owner) with 400', async () => {
+      await withServer(buildExportApp(), async (base) => {
+        const res = await fetch(`${base}/api/talos/applications/app1/export-to-github`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetRepo: "/repo" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it('rejects "owner/" (missing repo) with 400', async () => {
+      await withServer(buildExportApp(), async (base) => {
+        const res = await fetch(`${base}/api/talos/applications/app1/export-to-github`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetRepo: "owner/" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it('rejects "owner/repo/extra" (too many segments) with 400', async () => {
+      await withServer(buildExportApp(), async (base) => {
+        const res = await fetch(`${base}/api/talos/applications/app1/export-to-github`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetRepo: "owner/repo/extra" }),
+        });
+        expect(res.status).toBe(400);
+      });
+    });
+
+    it('accepts valid "owner/repo" with 200', async () => {
+      await withServer(buildExportApp(), async (base) => {
+        const res = await fetch(`${base}/api/talos/applications/app1/export-to-github`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetRepo: "owner/repo" }),
+        });
+        expect(res.status).toBe(200);
       });
     });
   });
