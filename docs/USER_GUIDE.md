@@ -1941,4 +1941,35 @@ cd ui && pnpm build
 
 ---
 
+## App Intelligence
+
+The **App Intelligence** panel automatically analyzes your application's repository to detect:
+
+- **Tech Stack** — Frameworks, libraries, build tools, and test runners from package manifests (`package.json`, `pom.xml`, `requirements.txt`, `go.mod`, `Cargo.toml`, `Gemfile`)
+- **Database Connections** — JDBC URLs, native connection strings, Docker Compose DB services, and ORM configs (Prisma, TypeORM, Django)
+- **Test Users** — Environment variables suggesting test credentials (`TEST_USER_*`, `ADMIN_*`, `E2E_*`) and Playwright auth config patterns
+- **Documentation** — READMEs, API specs (OpenAPI/Swagger), guides, contributing docs, and changelogs
+
+### Running a Scan
+
+1. Navigate to the Talos dashboard
+2. Find the **App Intelligence** card for your application
+3. Click **Scan** (or **Rescan** for subsequent runs)
+
+The scanner reads config files from your repository — no AI calls, just regex-based pattern matching.
+
+### Actions
+
+- **Configure** (on detected databases): Navigate to the Data Sources setup to create a JDBC connection
+- **Create Vault Role** (on detected test users): Navigate to the Vault to store credentials securely
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/talos/applications/:appId/intelligence` | Get the latest intelligence report |
+| `POST` | `/api/talos/applications/:appId/intelligence/refresh` | Trigger a new scan |
+
+---
+
 *For architecture details, see [ARCHITECTURE.md](ARCHITECTURE.md).*

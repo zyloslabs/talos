@@ -47,7 +47,11 @@ export class DiscoveryEngine {
   constructor(options: DiscoveryEngineOptions) {
     void options.repository; // Placeholder for future use
     this.config = options.config;
-    this.resolveSecret = options.resolveSecret ?? (async () => { throw new Error("resolveSecret not configured"); });
+    this.resolveSecret =
+      options.resolveSecret ??
+      (async () => {
+        throw new Error("resolveSecret not configured");
+      });
     this.storeChunks = options.storeChunks ?? (async () => {});
     this.clock = options.clock ?? (() => new Date());
 
@@ -117,7 +121,9 @@ export class DiscoveryEngine {
       } else if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
         pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
       } else {
-        throw new Error("No GitHub PAT configured for application (set githubPatRef on the application or GITHUB_PERSONAL_ACCESS_TOKEN in the environment)");
+        throw new Error(
+          "No GitHub PAT configured for application (set githubPatRef on the application or GITHUB_PERSONAL_ACCESS_TOKEN in the environment)"
+        );
       }
 
       // Parse repository URL
@@ -174,10 +180,7 @@ export class DiscoveryEngine {
 
   private parseRepoUrl(url: string): { owner: string; repo: string } {
     // Handle various GitHub URL formats
-    const patterns = [
-      /github\.com[/:]([^/]+)\/([^/.]+)/,
-      /^([^/]+)\/([^/]+)$/,
-    ];
+    const patterns = [/github\.com[/:]([^/]+)\/([^/.]+)/, /^([^/]+)\/([^/]+)$/];
 
     for (const pattern of patterns) {
       const match = url.match(pattern);
@@ -194,15 +197,11 @@ export class DiscoveryEngine {
       if (file.type !== "file") return false;
 
       // Check extension
-      const hasValidExtension = this.config.includeExtensions.some((ext) =>
-        file.path.endsWith(ext)
-      );
+      const hasValidExtension = this.config.includeExtensions.some((ext) => file.path.endsWith(ext));
       if (!hasValidExtension) return false;
 
       // Check exclude patterns
-      const isExcluded = this.config.excludePatterns.some((pattern) =>
-        file.path.includes(pattern)
-      );
+      const isExcluded = this.config.excludePatterns.some((pattern) => file.path.includes(pattern));
       if (isExcluded) return false;
 
       return true;

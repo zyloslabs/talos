@@ -200,10 +200,16 @@ export const jdbcDataSourceConfigSchema = z.object({
   /** Whether this data source integration is enabled */
   enabled: z.boolean().default(false),
   /** JDBC connection URL */
-  jdbcUrl: z.string().default("").refine(
-    (val) => val === "" || /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val),
-    { message: "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)" },
-  ),
+  jdbcUrl: z
+    .string()
+    .default("")
+    .refine(
+      (val) => val === "" || /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val),
+      {
+        message:
+          "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)",
+      }
+    ),
   /** Database driver type */
   driverType: z.enum(["oracle", "postgresql", "mysql", "sqlserver", "sqlite", "other"]).default("postgresql"),
   /** Vault reference for database username */
@@ -255,16 +261,63 @@ export const atlassianConfigSchema = z.object({
 
 export type AtlassianConfig = z.infer<typeof atlassianConfigSchema>;
 
+// ── App Intelligence Schema ───────────────────────────────────────────────────
+
+export const techStackItemSchema = z.object({
+  name: z.string(),
+  version: z.string().optional(),
+  category: z.enum(["framework", "library", "language", "build", "test", "lint", "other"]),
+  source: z.string(),
+});
+
+export const detectedDatabaseSchema = z.object({
+  type: z.string(),
+  connectionPattern: z.string(),
+  source: z.string(),
+  environment: z.string().optional(),
+});
+
+export const detectedTestUserSchema = z.object({
+  variableName: z.string(),
+  source: z.string(),
+  roleHint: z.string().optional(),
+});
+
+export const detectedDocumentSchema = z.object({
+  filePath: z.string(),
+  type: z.enum(["readme", "api-spec", "guide", "contributing", "changelog", "other"]),
+  title: z.string().optional(),
+});
+
+export const detectedConfigFileSchema = z.object({
+  filePath: z.string(),
+  type: z.string(),
+});
+
+export const appIntelligenceReportSchema = z.object({
+  id: z.string(),
+  applicationId: z.string(),
+  techStack: z.array(techStackItemSchema),
+  databases: z.array(detectedDatabaseSchema),
+  testUsers: z.array(detectedTestUserSchema),
+  documentation: z.array(detectedDocumentSchema),
+  configFiles: z.array(detectedConfigFileSchema),
+  scannedAt: z.coerce.date(),
+});
+
 // ── API Input Schemas ─────────────────────────────────────────────────────────
 
 /** Zod schema for validating POST /data-sources request body */
 export const createDataSourceInputSchema = z.object({
   label: z.string().min(1, "label is required"),
   driverType: z.enum(["oracle", "postgresql", "mysql", "sqlserver", "sqlite", "other"]).default("postgresql"),
-  jdbcUrl: z.string().min(1, "jdbcUrl is required").refine(
-    (val) => /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val),
-    { message: "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)" },
-  ),
+  jdbcUrl: z
+    .string()
+    .min(1, "jdbcUrl is required")
+    .refine((val) => /^jdbc:(oracle:thin:@|postgresql:\/\/|mysql:\/\/|sqlserver:\/\/|sqlite:)/i.test(val), {
+      message:
+        "jdbcUrl must start with jdbc: followed by an allowed driver prefix (oracle:thin:@, postgresql://, mysql://, sqlserver://, sqlite:)",
+    }),
   usernameVaultRef: z.string().default(""),
   passwordVaultRef: z.string().default(""),
 });

@@ -60,6 +60,8 @@ import type {
   AcceptanceCriteriaScenario,
   JdbcDriverType,
   AtlassianDeploymentType,
+  AppIntelligenceReport,
+  StoredAppIntelligence,
 } from "./types.js";
 
 // ── Row Converters ────────────────────────────────────────────────────────────
@@ -465,6 +467,19 @@ export class TalosRepository {
     if (!colNames.has("export_repo_url")) {
       this.db.exec(`ALTER TABLE talos_applications ADD COLUMN export_repo_url TEXT`);
     }
+
+    // ── App Intelligence table migration ───────────────────────────────────
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS talos_app_intelligence (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL REFERENCES talos_applications(id) ON DELETE CASCADE,
+        report_json TEXT NOT NULL,
+        scanned_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_talos_app_intelligence_application
+        ON talos_app_intelligence(application_id);
+    `);
   }
 
   // ── Application CRUD ────────────────────────────────────────────────────────
@@ -1553,6 +1568,48 @@ export class TalosRepository {
 
   deleteAtlassianConfig(id: string): boolean {
     const result = this.db.prepare(`DELETE FROM talos_atlassian_configs WHERE id = ?`).run(id);
+    return result.changes > 0;
+  }
+
+  // ── App Intelligence CRUD ────────────────────────────────────────────────────
+
+  saveIntelligenceReport(report: AppIntelligenceReport): AppIntelligenceReport {
+    // Upsert: delete existing report for this application, then insert new one
+    this.db.prepare(`DELETE FROM talos_app_intelligence WHERE application_id = ?`).run(report.applicationId);
+
+    const { id, applicationId, scannedAt, ...rest } = report;
+    const reportJson = JSON.stringify(rest);
+
+    this.db
+      .prepare(
+        `
+      INSERT INTO talos_app_intelligence (id, application_id, report_json, scanned_at)
+      VALUES (?, ?, ?, ?)
+    `
+      )
+      .run(id, applicationId, reportJson, scannedAt.toISOString());
+
+    return report;
+  }
+
+  getIntelligenceReport(applicationId: string): AppIntelligenceReport | null {
+    const row = this.db
+      .prepare(`SELECT * FROM talos_app_intelligence WHERE application_id = ? ORDER BY scanned_at DESC LIMIT 1`)
+      .get(applicationId) as StoredAppIntelligence | undefined;
+
+    if (!row) return null;
+
+    const parsed = JSON.parse(row.report_json) as Omit<AppIntelligenceReport, "id" | "applicationId" | "scannedAt">;
+    return {
+      id: row.id,
+      applicationId: row.application_id,
+      ...parsed,
+      scannedAt: new Date(row.scanned_at),
+    };
+  }
+
+  deleteIntelligenceReport(applicationId: string): boolean {
+    const result = this.db.prepare(`DELETE FROM talos_app_intelligence WHERE application_id = ?`).run(applicationId);
     return result.changes > 0;
   }
 

@@ -21,9 +21,9 @@ describe("TalosRepository", () => {
 
   describe("migrate", () => {
     it("should create all tables", () => {
-      const tables = db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-        .all() as Array<{ name: string }>;
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{
+        name: string;
+      }>;
 
       const tableNames = tables.map((t) => t.name);
       expect(tableNames).toContain("talos_applications");
@@ -482,7 +482,12 @@ describe("TalosRepository", () => {
     });
 
     it("should filter criteria by requirementChunkId", () => {
-      repo.createAcceptanceCriteria({ applicationId: appId, title: "Linked", description: "", requirementChunkId: "chunk-1" });
+      repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "Linked",
+        description: "",
+        requirementChunkId: "chunk-1",
+      });
       repo.createAcceptanceCriteria({ applicationId: appId, title: "Unlinked", description: "" });
 
       const linked = repo.listAcceptanceCriteria(appId, { requirementChunkId: "chunk-1" });
@@ -588,7 +593,12 @@ describe("TalosRepository", () => {
     it("should get coverage report", () => {
       // Create criteria
       const ac = repo.createAcceptanceCriteria({ applicationId: appId, title: "AC1", description: "" });
-      const ac2 = repo.createAcceptanceCriteria({ applicationId: appId, title: "AC2", description: "", status: "implemented" });
+      const ac2 = repo.createAcceptanceCriteria({
+        applicationId: appId,
+        title: "AC2",
+        description: "",
+        status: "implemented",
+      });
 
       // Create traceability links
       repo.createTraceabilityLink({
@@ -747,8 +757,22 @@ describe("TalosRepository", () => {
     });
 
     it("should list data sources by application", () => {
-      repo.createDataSource({ applicationId: appId, label: "DB A", driverType: "postgresql", jdbcUrl: "jdbc:pg://a", usernameVaultRef: "", passwordVaultRef: "" });
-      repo.createDataSource({ applicationId: appId, label: "DB B", driverType: "mysql", jdbcUrl: "jdbc:mysql://b", usernameVaultRef: "", passwordVaultRef: "" });
+      repo.createDataSource({
+        applicationId: appId,
+        label: "DB A",
+        driverType: "postgresql",
+        jdbcUrl: "jdbc:pg://a",
+        usernameVaultRef: "",
+        passwordVaultRef: "",
+      });
+      repo.createDataSource({
+        applicationId: appId,
+        label: "DB B",
+        driverType: "mysql",
+        jdbcUrl: "jdbc:mysql://b",
+        usernameVaultRef: "",
+        passwordVaultRef: "",
+      });
 
       const sources = repo.getDataSourcesByApp(appId);
       expect(sources).toHaveLength(2);
@@ -939,6 +963,129 @@ describe("TalosRepository", () => {
 
       const updated = repo.updateAtlassianConfig(config.id, { isActive: false });
       expect(updated?.isActive).toBe(false);
+    });
+  });
+
+  describe("app intelligence", () => {
+    let appId: string;
+
+    beforeEach(() => {
+      const app = repo.createApplication({
+        name: "Intelligence Test App",
+        repositoryUrl: "https://github.com/test/app",
+        baseUrl: "https://app.test.com",
+      });
+      appId = app.id;
+    });
+
+    it("should save and retrieve an intelligence report", () => {
+      const report = {
+        id: "report-1",
+        applicationId: appId,
+        techStack: [{ name: "React", version: "18.0.0", category: "framework" as const, source: "package.json" }],
+        databases: [{ type: "PostgreSQL", connectionPattern: "postgres://host/db", source: ".env" }],
+        testUsers: [{ variableName: "TEST_USER_EMAIL", source: ".env.example", roleHint: "test-user" }],
+        documentation: [{ filePath: "README.md", type: "readme" as const, title: "README" }],
+        configFiles: [{ filePath: "package.json", type: "npm" }],
+        scannedAt: fixedTime,
+      };
+
+      repo.saveIntelligenceReport(report);
+      const retrieved = repo.getIntelligenceReport(appId);
+
+      expect(retrieved).not.toBeNull();
+      expect(retrieved!.id).toBe("report-1");
+      expect(retrieved!.applicationId).toBe(appId);
+      expect(retrieved!.techStack).toHaveLength(1);
+      expect(retrieved!.techStack[0].name).toBe("React");
+      expect(retrieved!.databases).toHaveLength(1);
+      expect(retrieved!.testUsers).toHaveLength(1);
+      expect(retrieved!.documentation).toHaveLength(1);
+      expect(retrieved!.configFiles).toHaveLength(1);
+      expect(retrieved!.scannedAt).toEqual(fixedTime);
+    });
+
+    it("should upsert — replacing old report on re-save", () => {
+      const report1 = {
+        id: "report-1",
+        applicationId: appId,
+        techStack: [{ name: "React", category: "framework" as const, source: "package.json" }],
+        databases: [],
+        testUsers: [],
+        documentation: [],
+        configFiles: [],
+        scannedAt: fixedTime,
+      };
+
+      const report2 = {
+        id: "report-2",
+        applicationId: appId,
+        techStack: [
+          { name: "React", category: "framework" as const, source: "package.json" },
+          { name: "Vue.js", category: "framework" as const, source: "package.json" },
+        ],
+        databases: [],
+        testUsers: [],
+        documentation: [],
+        configFiles: [],
+        scannedAt: new Date("2026-03-29T00:00:00Z"),
+      };
+
+      repo.saveIntelligenceReport(report1);
+      repo.saveIntelligenceReport(report2);
+
+      const retrieved = repo.getIntelligenceReport(appId);
+      expect(retrieved!.id).toBe("report-2");
+      expect(retrieved!.techStack).toHaveLength(2);
+    });
+
+    it("should return null for app with no report", () => {
+      const result = repo.getIntelligenceReport(appId);
+      expect(result).toBeNull();
+    });
+
+    it("should delete intelligence report", () => {
+      const report = {
+        id: "report-1",
+        applicationId: appId,
+        techStack: [],
+        databases: [],
+        testUsers: [],
+        documentation: [],
+        configFiles: [],
+        scannedAt: fixedTime,
+      };
+
+      repo.saveIntelligenceReport(report);
+      expect(repo.getIntelligenceReport(appId)).not.toBeNull();
+
+      const deleted = repo.deleteIntelligenceReport(appId);
+      expect(deleted).toBe(true);
+      expect(repo.getIntelligenceReport(appId)).toBeNull();
+    });
+
+    it("should cascade delete when application is deleted", () => {
+      const report = {
+        id: "report-1",
+        applicationId: appId,
+        techStack: [],
+        databases: [],
+        testUsers: [],
+        documentation: [],
+        configFiles: [],
+        scannedAt: fixedTime,
+      };
+
+      repo.saveIntelligenceReport(report);
+      repo.deleteApplication(appId);
+      expect(repo.getIntelligenceReport(appId)).toBeNull();
+    });
+
+    it("migration creates talos_app_intelligence table", () => {
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{
+        name: string;
+      }>;
+      expect(tables.map((t) => t.name)).toContain("talos_app_intelligence");
     });
   });
 });

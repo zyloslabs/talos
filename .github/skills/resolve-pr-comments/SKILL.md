@@ -102,6 +102,7 @@ Scanner comments have a distinct format — they link to a code scanning alert p
 - `is_outdated: false` → Code has NOT changed. Finding is **presumed still valid**. Classify as `actionable`.
 - `is_resolved: true` → Explicitly resolved by a reviewer. Can be skipped.
 - **Severity escalation**: CodeQL `High` and `Critical` findings must be prioritized above all human reviewer comments. Fix these first.
+- **CodeQL suppression comments do NOT work**: `// codeql[js/path-injection]` and similar inline comments are ineffective. Always fix the actual code: `path.resolve()` + `startsWith()` containment for path injection, URL hostname validation for SSRF, parameterized queries for SQL injection, `express-rate-limit` for missing rate limiting.
 
 **Triage rules for Copilot review comments:**
 - Copilot comments are suggestions, not authoritative findings. Each must be validated against the actual code context.
