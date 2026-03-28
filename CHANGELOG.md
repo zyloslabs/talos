@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **GitHub Export** (Epic #354): Push AI-generated Playwright test suites from Talos to a user-chosen GitHub repository.
+  - `exportRepoUrl` field added to `TalosApplication` type and `talos_applications` SQLite table via idempotent `ALTER TABLE` migration (#366).
+  - `GitHubExportService` (`src/talos/export/github-export-service.ts`): wraps the GitHub REST API to ensure a repo exists, create it if needed (`POST /user/repos`), and push files with SHA-based conflict-free updates (#367).
+  - `POST /api/talos/applications/:appId/export-to-github` endpoint: orchestrates `ExportEngine` + `GitHubExportService`, resolves PAT from request body / `GITHUB_TOKEN` env, saves `exportRepoUrl`, and emits `export:complete` via Socket.IO (#368).
+  - `GET /api/talos/applications/:appId/export-info` endpoint: returns `exportRepoUrl` and `lastExportedAt` (#368).
+  - `GitHubExportDialog` component (`ui/components/talos/github-export-dialog.tsx`): dialog with target repo, branch, and create-if-not-exists fields. Shows success with a "View on GitHub" link after export (#369).
+  - Export to GitHub button added to the Test Library toolbar (visible when a specific app is selected); export info bar shows the last exported repository when available (#369, #370).
+
 - **Admin Panel Overhaul — MCP Server Management** (Epic #343): Redesigned MCP server management with preset-based provisioning, multi-instance support, and categorized server views.
   - Admin sidebar navigation now uses controlled `SectionCard` with programmatic open/close, replacing hash-based `<a>` links with `<button>` elements and `scrollIntoView` (#344).
   - New `McpPanel` component (`ui/components/talos/mcp-panel.tsx`) extracted from inline admin code with 9 built-in MCP presets: GitHub Cloud, GitHub Enterprise, JDBC, AWS API, Docker, Atlassian, Salesforce, Context7, and Playwright (#345).

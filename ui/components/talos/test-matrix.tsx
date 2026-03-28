@@ -4,26 +4,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   getTests,
   getTestRuns as fetchTestRuns,
   getApplications,
   getVaultRoles,
+  getExportInfo,
   triggerTestRun,
   type TalosTest,
   type TalosTestRun,
@@ -32,17 +21,8 @@ import {
 import { cn, formatDuration, formatRelativeTime } from "@/lib/utils";
 import { useTestRunUpdates } from "@/lib/socket";
 import { useState, useCallback } from "react";
-import {
-  CheckCircle2,
-  Clock,
-  Play,
-  TestTube2,
-  XCircle,
-  AlertCircle,
-  Loader2,
-  Code,
-  Tag,
-} from "lucide-react";
+import { CheckCircle2, Clock, Play, TestTube2, XCircle, AlertCircle, Loader2, Code, Tag, GitBranch, ExternalLink } from "lucide-react";
+import { GitHubExportDialog } from "@/components/talos/github-export-dialog";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
@@ -94,22 +74,14 @@ function TestCard({
           </div>
           <Badge
             variant={
-              latestRun?.status === "passed"
-                ? "success"
-                : latestRun?.status === "failed"
-                ? "destructive"
-                : "secondary"
+              latestRun?.status === "passed" ? "success" : latestRun?.status === "failed" ? "destructive" : "secondary"
             }
           >
-            <StatusIcon
-              className={cn("mr-1 h-3 w-3", latestRun?.status === "running" && "animate-spin")}
-            />
+            <StatusIcon className={cn("mr-1 h-3 w-3", latestRun?.status === "running" && "animate-spin")} />
             {latestRun?.status || "Not Run"}
           </Badge>
         </div>
-        <CardDescription className="line-clamp-2">
-          {test.description || `${test.type} test`}
-        </CardDescription>
+        <CardDescription className="line-clamp-2">{test.description || `${test.type} test`}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -122,9 +94,7 @@ function TestCard({
               <XCircle className="h-4 w-4 text-destructive" />
               <span>{failCount}</span>
             </div>
-            <div className="text-muted-foreground">
-              {passRate}% pass rate
-            </div>
+            <div className="text-muted-foreground">{passRate}% pass rate</div>
           </div>
 
           {test.tags.length > 0 && (
@@ -168,10 +138,7 @@ function TestCard({
                 </SelectContent>
               </Select>
             )}
-            <Button
-              size="sm"
-              onClick={() => onRun(test.id, selectedRole === "none" ? undefined : selectedRole)}
-            >
+            <Button size="sm" onClick={() => onRun(test.id, selectedRole === "none" ? undefined : selectedRole)}>
               <Play className="mr-1 h-3 w-3" />
               Run
             </Button>
@@ -205,18 +172,12 @@ function CodeViewerDialog({
           <DialogDescription>
             {test.type} test · v{test.version}
             {test.generationConfidence !== null && (
-              <span className="ml-2">
-                · AI confidence: {Math.round(test.generationConfidence * 100)}%
-              </span>
+              <span className="ml-2">· AI confidence: {Math.round(test.generationConfidence * 100)}%</span>
             )}
           </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-auto rounded-md">
-          <SyntaxHighlighter
-            language="typescript"
-            style={oneDark}
-            customStyle={{ margin: 0, borderRadius: "0.5rem" }}
-          >
+          <SyntaxHighlighter language="typescript" style={oneDark} customStyle={{ margin: 0, borderRadius: "0.5rem" }}>
             {test.code}
           </SyntaxHighlighter>
         </div>
@@ -230,6 +191,7 @@ export function TestMatrix() {
   const [selectedApp, setSelectedApp] = useState<string>("all");
   const [selectedType, setSelectedType] = useState<string>("all");
   const [codeViewerTest, setCodeViewerTest] = useState<TalosTest | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
 
   const { data: apps = [] } = useQuery({
     queryKey: ["applications"],
@@ -249,6 +211,12 @@ export function TestMatrix() {
   const { data: vaultRoles = [] } = useQuery({
     queryKey: ["vaultRoles", selectedApp],
     queryFn: () => getVaultRoles(selectedApp === "all" ? undefined : selectedApp),
+  });
+
+  const { data: exportInfo } = useQuery({
+    queryKey: ["export-info", selectedApp],
+    queryFn: () => getExportInfo(selectedApp),
+    enabled: selectedApp !== "all",
   });
 
   const runMutation = useMutation({
@@ -282,11 +250,30 @@ export function TestMatrix() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Test Library</h1>
-          <p className="text-muted-foreground">
-            Manage and run your generated test cases
-          </p>
+          <p className="text-muted-foreground">Manage and run your generated test cases</p>
         </div>
+        {selectedApp !== "all" && (
+          <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
+            <GitBranch className="mr-2 h-4 w-4" />
+            Export to GitHub
+          </Button>
+        )}
       </div>
+
+      {selectedApp !== "all" && exportInfo?.exportRepoUrl && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Last exported to:</span>
+          <a
+            href={`https://github.com/${exportInfo.exportRepoUrl}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 font-medium text-foreground hover:underline"
+          >
+            {exportInfo.exportRepoUrl}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4">
         <Select value={selectedApp} onValueChange={setSelectedApp}>
@@ -331,9 +318,7 @@ export function TestMatrix() {
         <Card className="p-12 text-center">
           <TestTube2 className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-4 text-lg font-semibold">No tests found</h3>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Run discovery on an application to generate test cases.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">Run discovery on an application to generate test cases.</p>
         </Card>
       )}
 
@@ -341,6 +326,13 @@ export function TestMatrix() {
         test={codeViewerTest}
         open={!!codeViewerTest}
         onOpenChange={(open) => !open && setCodeViewerTest(null)}
+      />
+
+      <GitHubExportDialog
+        applicationId={selectedApp}
+        currentExportRepo={exportInfo?.exportRepoUrl ?? undefined}
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
       />
     </div>
   );
