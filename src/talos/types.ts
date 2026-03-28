@@ -21,6 +21,8 @@ export type TalosApplication = {
   mtlsEnabled: boolean;
   /** mTLS configuration (vault references for certs/keys) */
   mtlsConfig: MtlsApplicationConfig | null;
+  /** GitHub repository URL where tests were last exported */
+  exportRepoUrl?: string | null;
   /** JSON metadata for custom fields */
   metadata: Record<string, unknown>;
   createdAt: Date;
@@ -48,7 +50,19 @@ export type CreateApplicationInput = {
 };
 
 export type UpdateApplicationInput = Partial<
-  Pick<TalosApplication, "name" | "description" | "repositoryUrl" | "githubPatRef" | "baseUrl" | "status" | "mtlsEnabled" | "mtlsConfig" | "metadata">
+  Pick<
+    TalosApplication,
+    | "name"
+    | "description"
+    | "repositoryUrl"
+    | "githubPatRef"
+    | "baseUrl"
+    | "status"
+    | "mtlsEnabled"
+    | "mtlsConfig"
+    | "exportRepoUrl"
+    | "metadata"
+  >
 >;
 
 // ── Test ──────────────────────────────────────────────────────────────────────
@@ -99,7 +113,21 @@ export type CreateTestInput = {
 };
 
 export type UpdateTestInput = Partial<
-  Pick<TalosTest, "name" | "description" | "type" | "code" | "version" | "status" | "pomDependencies" | "selectors" | "generationConfidence" | "tags" | "metadata" | "updatedAt">
+  Pick<
+    TalosTest,
+    | "name"
+    | "description"
+    | "type"
+    | "code"
+    | "version"
+    | "status"
+    | "pomDependencies"
+    | "selectors"
+    | "generationConfidence"
+    | "tags"
+    | "metadata"
+    | "updatedAt"
+  >
 >;
 
 // ── Test Run ──────────────────────────────────────────────────────────────────
@@ -150,7 +178,10 @@ export type CreateTestRunInput = {
 };
 
 export type UpdateTestRunInput = Partial<
-  Pick<TalosTestRun, "status" | "durationMs" | "errorMessage" | "errorStack" | "retryAttempt" | "startedAt" | "completedAt" | "metadata">
+  Pick<
+    TalosTestRun,
+    "status" | "durationMs" | "errorMessage" | "errorStack" | "retryAttempt" | "startedAt" | "completedAt" | "metadata"
+  >
 >;
 
 // ── Test Artifact ─────────────────────────────────────────────────────────────
@@ -218,12 +249,23 @@ export type CreateVaultRoleInput = {
 };
 
 export type UpdateVaultRoleInput = Partial<
-  Pick<TalosVaultRole, "name" | "description" | "usernameRef" | "passwordRef" | "additionalRefs" | "isActive" | "metadata">
+  Pick<
+    TalosVaultRole,
+    "name" | "description" | "usernameRef" | "passwordRef" | "additionalRefs" | "isActive" | "metadata"
+  >
 >;
 
 // ── RAG Types ─────────────────────────────────────────────────────────────────
 
-export type TalosChunkType = "code" | "test" | "documentation" | "config" | "schema" | "requirement" | "api_spec" | "user_story";
+export type TalosChunkType =
+  | "code"
+  | "test"
+  | "documentation"
+  | "config"
+  | "schema"
+  | "requirement"
+  | "api_spec"
+  | "user_story";
 
 /** Link to a related artifact (test, requirement, etc.) */
 export type ArtifactLink = {
@@ -296,7 +338,15 @@ export type DiscoveryJob = {
 
 // ── Healing Types ─────────────────────────────────────────────────────────────
 
-export type HealingStatus = "pending" | "analyzing" | "healing" | "completed" | "failed" | "rejected" | "succeeded" | "in-progress";
+export type HealingStatus =
+  | "pending"
+  | "analyzing"
+  | "healing"
+  | "completed"
+  | "failed"
+  | "rejected"
+  | "succeeded"
+  | "in-progress";
 
 export type HealingAttempt = {
   id: string;
@@ -388,6 +438,7 @@ export type StoredApplication = {
   status: string;
   mtls_enabled: number;
   mtls_config_json: string | null;
+  export_repo_url: string | null;
   metadata_json: string;
   created_at: string;
   updated_at: string;
@@ -502,7 +553,19 @@ export type CreateAcceptanceCriteriaInput = {
 };
 
 export type UpdateAcceptanceCriteriaInput = Partial<
-  Pick<TalosAcceptanceCriteria, "requirementChunkId" | "title" | "description" | "scenarios" | "preconditions" | "dataRequirements" | "nfrTags" | "status" | "confidence" | "tags">
+  Pick<
+    TalosAcceptanceCriteria,
+    | "requirementChunkId"
+    | "title"
+    | "description"
+    | "scenarios"
+    | "preconditions"
+    | "dataRequirements"
+    | "nfrTags"
+    | "status"
+    | "confidence"
+    | "tags"
+  >
 >;
 
 export type StoredAcceptanceCriteria = {
@@ -691,4 +754,3 @@ export type StoredAtlassianConfig = {
   created_at: string;
   updated_at: string;
 };
-
