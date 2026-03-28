@@ -142,7 +142,7 @@ const initRag = async () => {
   ragPipeline = new RagPipeline({
     vectorDbConfig: { ...talosConfig.vectorDb, path: VECTORDB_DIR },
     embeddingConfig: { ...talosConfig.embedding, provider: "github-models" },
-    openaiApiKey: githubToken,
+    apiKey: githubToken,
   });
 
   await ragPipeline.initialize();
@@ -207,11 +207,60 @@ initRag().catch((err) => {
   );
 });
 
+// ── URL Validation ───────────────────────────────────────────────────────────
+
+// When true, skip private/loopback range checks (for local dev). Still requires http/https scheme.
+const ALLOW_PRIVATE_URLS = process.env.TALOS_ALLOW_PRIVATE_URLS === "true";
+
+/**
+ * Validates that a URL is safe to use as a Playwright test target.
+ * Rejects non-http(s) schemes, loopback, RFC-1918, and APIPA addresses.
+ * Set TALOS_ALLOW_PRIVATE_URLS=true to permit private/loopback addresses in dev.
+ */
+function validateBaseUrl(urlStr: string): { valid: boolean; reason?: string } {
+  let url: URL;
+  try {
+    url = new URL(urlStr);
+  } catch {
+    return { valid: false, reason: "Invalid URL format" };
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { valid: false, reason: "Only http and https URLs are allowed" };
+  }
+
+  if (ALLOW_PRIVATE_URLS) {
+    return { valid: true };
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  // Block loopback
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return { valid: false, reason: "Loopback addresses are not allowed" };
+  }
+
+  // Block RFC-1918 private ranges and APIPA (169.254.x.x)
+  const privateRanges = [
+    /^10\.\d+\.\d+\.\d+$/,
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+    /^192\.168\.\d+\.\d+$/,
+    /^169\.254\.\d+\.\d+$/,
+  ];
+
+  if (privateRanges.some((r) => r.test(hostname))) {
+    return { valid: false, reason: "Private network addresses are not allowed" };
+  }
+
+  return { valid: true };
+}
+
 // ── Session Persistence Helpers ───────────────────────────────────────────────
 
 function appendSessionMessage(conversationId: string, message: { role: string; content: string; timestamp: string }) {
   const safeName = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
+  // TODO: add rate limiting per client IP before production deployment
   appendFileSync(filePath, JSON.stringify(message) + "\n", "utf-8");
 }
 
@@ -263,13 +312,26 @@ app.post("/api/talos/applications", (req, res) => {
     res.status(400).json({ error: "name, repositoryUrl, and baseUrl are required" });
     return;
   }
+  const urlCheck = validateBaseUrl(baseUrl);
+  if (!urlCheck.valid) {
+    res.status(400).json({ error: `Invalid baseUrl: ${urlCheck.reason}` });
+    return;
+  }
   const created = repo.createApplication({ name, description, repositoryUrl, baseUrl, githubPatRef });
   io.emit("application:created", created);
   res.status(201).json(created);
 });
 
 app.patch("/api/talos/applications/:id", (req, res) => {
-  const updated = repo.updateApplication(req.params.id, req.body as Parameters<typeof repo.updateApplication>[1]);
+  const body = req.body as Parameters<typeof repo.updateApplication>[1] & { baseUrl?: string };
+  if (body.baseUrl !== undefined) {
+    const urlCheck = validateBaseUrl(body.baseUrl);
+    if (!urlCheck.valid) {
+      res.status(400).json({ error: `Invalid baseUrl: ${urlCheck.reason}` });
+      return;
+    }
+  }
+  const updated = repo.updateApplication(req.params.id, body);
   if (!updated) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -895,17 +957,12 @@ function bumpPatch(version: string): string {
   return "1.0.1";
 }
 
-// ── AI Test Explanation (Epic C) ──────────────────────────────────────────────
+// ── Test Explanation (#353) ───────────────────────────────────────────────────
 
 app.post("/api/talos/tests/:id/explain", async (req, res) => {
-  const test = repo.getTest(req.params.id);
-  if (!test) {
-    res.status(404).json({ error: "Test not found" });
-    return;
-  }
+  const { selection } = req.body as { selection?: unknown };
 
-  const { selection } = req.body as { selection?: string };
-
+  // Guard against prompt injection via oversized or malicious selections
   if (selection !== undefined) {
     if (typeof selection !== "string") {
       res.status(400).json({ error: "selection must be a string" });
@@ -917,28 +974,32 @@ app.post("/api/talos/tests/:id/explain", async (req, res) => {
     }
   }
 
-  const codeToExplain = selection ?? test.code;
-
-  if (!copilot) {
-    res.json({ explanation: "AI explanation not available — Copilot is not configured." });
+  const test = repo.getTest(req.params.id);
+  if (!test) {
+    res.status(404).json({ error: "Test not found" });
     return;
   }
 
-  const systemPrompt = `You are a QA expert. Explain what this Playwright test is doing in plain English, suitable for a QA engineer or product owner who doesn't code. Be concise (3-6 sentences). Cover: what feature it tests, what actions it takes, what it asserts. Do not include code in your response.`;
+  const codeToExplain = typeof selection === "string" && selection.length > 0 ? selection : test.code;
 
-  const userPrompt = selection
-    ? `Explain this code selection from a Playwright test:\n\n${codeToExplain}`
-    : `Explain this Playwright test:\n\`\`\`typescript\n${codeToExplain}\n\`\`\``;
+  if (!copilot) {
+    res.json({ explanation: "Copilot SDK is not configured. Go to Admin > Auth to set up authentication." });
+    return;
+  }
 
   try {
+    const systemPrompt =
+      "You are an expert Playwright test explainer. Explain what the provided test code does in clear, concise terms.";
+    const userPrompt = `Explain this Playwright test:\n\`\`\`typescript\n${codeToExplain}\n\`\`\``;
+
     let explanation = "";
     for await (const chunk of copilot.chat(userPrompt, {
       systemMessage: { mode: "replace", content: systemPrompt },
-      conversationId: `explain-${req.params.id}-${Date.now()}`,
     })) {
       explanation += chunk;
     }
-    res.json({ explanation: explanation.trim() });
+
+    res.json({ explanation });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: `Explanation failed: ${errMsg}` });
@@ -991,6 +1052,7 @@ app.get("/api/talos/sessions", (_req, res) => {
 
 app.get("/api/talos/sessions/:id", (req, res) => {
   const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  // codeql[js/path-injection] - safeName is sanitized via replace(/[^a-zA-Z0-9_-]/g, "_")
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
   if (!existsSync(filePath)) {
     res.status(404).json({ error: "Session not found" });
@@ -1016,6 +1078,7 @@ app.get("/api/talos/sessions/:id", (req, res) => {
 
 app.delete("/api/talos/sessions/:id", (req, res) => {
   const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  // codeql[js/path-injection] - safeName is sanitized via replace(/[^a-zA-Z0-9_-]/g, "_")
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
   if (!existsSync(filePath)) {
     res.status(404).json({ error: "Session not found" });

@@ -1162,6 +1162,32 @@ Verification run (trigger: "healing-verification")
 HealingAttempt recorded (audit trail)
 ```
 
+### Pipeline Implementation (v2)
+
+As of this version, all orchestration steps are wired to real engine implementations:
+
+| Step | Engine | Fallback |
+|------|--------|---------|
+| `discover` | `DiscoveryEngine` → `GitHubMcpClient` | Emits warning, step result includes `reason: "Discovery engine not configured"` |
+| `index` | `RagPipeline.indexChunks()` via `EmbeddingService` | Skipped with `{ indexed: 0, reason: "RAG not configured" }` |
+| `generate` | `TestGenerator.generate()` with RAG context | Falls back to direct Copilot chat if TestGenerator unavailable |
+| `execute` | `PlaywrightRunner.executeTest()` | DB records created with pending status if runner unavailable |
+
+#### Embedding Provider
+
+Talos uses the **GitHub Models REST API** for embeddings — no separate OpenAI API key is required. The same GitHub PAT used by the Copilot SDK is reused for embedding requests to `https://models.github.ai/inference/embeddings` with model `openai/text-embedding-3-small`.
+
+Set `TALOS_ALLOW_PRIVATE_URLS=true` to allow using `http://localhost` application URLs in development.
+
+#### AI Generation Pipeline
+
+Test generation uses `@github/copilot-sdk` exclusively:
+1. `CopilotWrapperService.chat()` is the entry point for all LLM requests
+2. `RagPipeline.search()` retrieves relevant code context chunks
+3. `PromptBuilder` constructs structured prompts combining RAG context + user request
+4. `TestGenerator` validates generated code via `CodeValidator`
+5. Tests below the confidence threshold (80%) are stored as `draft` status
+
 ### Export Pipeline
 
 ```

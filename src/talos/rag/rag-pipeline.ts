@@ -16,8 +16,8 @@ import type { ChunkResult } from "../discovery/file-chunker.js";
 export type RagPipelineOptions = {
   vectorDbConfig: VectorDbConfig;
   embeddingConfig: EmbeddingConfig;
-  /** OpenAI API key for embeddings */
-  openaiApiKey?: string;
+  /** API key for the embedding provider (e.g. GitHub PAT for GitHub Models) */
+  apiKey?: string;
 };
 
 export type RagContext = {
@@ -39,7 +39,7 @@ export class RagPipeline {
 
     this.embeddingService = new EmbeddingService({
       config: options.embeddingConfig,
-      apiKey: options.openaiApiKey,
+      apiKey: options.apiKey,
     });
   }
 
