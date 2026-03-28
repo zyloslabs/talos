@@ -14,9 +14,11 @@ vi.mock("next-themes", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  getApplications: vi.fn().mockResolvedValue([
-    { id: "app-1", name: "Test App", repositoryUrl: "https://github.com/test/app", baseUrl: "https://test.app" },
-  ]),
+  getApplications: vi
+    .fn()
+    .mockResolvedValue([
+      { id: "app-1", name: "Test App", repositoryUrl: "https://github.com/test/app", baseUrl: "https://test.app" },
+    ]),
   createApplication: vi.fn().mockResolvedValue({ id: "app-2", name: "New App" }),
   getVaultRoles: vi.fn().mockResolvedValue([]),
   createVaultRole: vi.fn().mockResolvedValue({ id: "role-1", name: "Admin", roleType: "admin" }),

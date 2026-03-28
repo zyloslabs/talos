@@ -15,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - `GET /api/talos/applications/:appId/export-info` endpoint: returns `exportRepoUrl` and `lastExportedAt` (#368).
   - `GitHubExportDialog` component (`ui/components/talos/github-export-dialog.tsx`): dialog with target repo, branch, and create-if-not-exists fields. Shows success with a "View on GitHub" link after export (#369).
   - Export to GitHub button added to the Test Library toolbar (visible when a specific app is selected); export info bar shows the last exported repository when available (#369, #370).
+- **Monaco Editor + AI Test Explanation** (Epic C, #355): Replaced `react-syntax-highlighter` with Monaco Editor (the VS Code engine) for viewing and editing test code, and added an AI-powered "Explain Test" side panel powered by GitHub Copilot.
+  - Installed `@monaco-editor/react` with SSR-safe dynamic import via `ui/components/talos/lazy-monaco.tsx` (#371).
+  - `useMonacoTheme()` hook in `ui/lib/monaco.ts` that returns `"vs-dark"` or `"vs"` based on the active theme (#371).
+  - `TestCodeViewer` component (`ui/components/talos/test-code-viewer.tsx`) with Monaco Editor, read-only mode with Edit/Save/Cancel toggle, Cmd+S shortcut, selection-change callback, line count display, and TypeScript syntax highlighting (#372).
+  - `TestExplainPanel` component (`ui/components/talos/test-explain-panel.tsx`) — collapsible AI explanation panel with "Explain Test" and "Explain Selection" buttons, loading skeletons, and error handling (#374).
+  - `POST /api/talos/tests/:id/explain` endpoint accepts optional `selection` body field; streams explanation from GitHub Copilot with fallback when Copilot is not configured (#373).
+  - `updateTest` and `explainTest` functions added to `ui/lib/api.ts` (#375).
+  - `TestMatrix` code viewer dialog replaced with two-panel layout: Monaco-based `TestCodeViewer` (left) + `TestExplainPanel` (right), mobile-responsive via `flex-col md:flex-row` (#375).
+  - `Skeleton` UI component added at `ui/components/ui/skeleton.tsx` (#374).
 
 - **Admin Panel Overhaul — MCP Server Management** (Epic #343): Redesigned MCP server management with preset-based provisioning, multi-instance support, and categorized server views.
   - Admin sidebar navigation now uses controlled `SectionCard` with programmatic open/close, replacing hash-based `<a>` links with `<button>` elements and `scrollIntoView` (#344).

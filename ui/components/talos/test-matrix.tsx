@@ -14,6 +14,7 @@ import {
   getVaultRoles,
   getExportInfo,
   triggerTestRun,
+  updateTest,
   type TalosTest,
   type TalosTestRun,
   type TalosVaultRole,
@@ -21,10 +22,22 @@ import {
 import { cn, formatDuration, formatRelativeTime } from "@/lib/utils";
 import { useTestRunUpdates } from "@/lib/socket";
 import { useState, useCallback } from "react";
-import { CheckCircle2, Clock, Play, TestTube2, XCircle, AlertCircle, Loader2, Code, Tag, GitBranch, ExternalLink } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  Play,
+  TestTube2,
+  XCircle,
+  AlertCircle,
+  Loader2,
+  Code,
+  Tag,
+  GitBranch,
+  ExternalLink,
+} from "lucide-react";
 import { GitHubExportDialog } from "@/components/talos/github-export-dialog";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { TestCodeViewer } from "@/components/talos/test-code-viewer";
+import { TestExplainPanel } from "@/components/talos/test-explain-panel";
 
 const statusIcons: Record<string, React.ElementType> = {
   passed: CheckCircle2,
@@ -162,11 +175,19 @@ function CodeViewerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const queryClient = useQueryClient();
+  const [selectedCode, setSelectedCode] = useState<string | undefined>(undefined);
+
   if (!test) return null;
+
+  const handleSave = async (code: string) => {
+    await updateTest(test.id, { code });
+    queryClient.invalidateQueries({ queryKey: ["tests"] });
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{test.name}</DialogTitle>
           <DialogDescription>
@@ -176,10 +197,19 @@ function CodeViewerDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-1 overflow-auto rounded-md">
-          <SyntaxHighlighter language="typescript" style={oneDark} customStyle={{ margin: 0, borderRadius: "0.5rem" }}>
-            {test.code}
-          </SyntaxHighlighter>
+        <div className="flex flex-col md:flex-row gap-4 min-h-0 flex-1 overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-0">
+            <TestCodeViewer
+              testId={test.id}
+              code={test.code}
+              height="500px"
+              onSave={handleSave}
+              onSelectionChange={setSelectedCode}
+            />
+          </div>
+          <div className="w-full md:w-72 shrink-0">
+            <TestExplainPanel testId={test.id} selectedCode={selectedCode} />
+          </div>
         </div>
       </DialogContent>
     </Dialog>
