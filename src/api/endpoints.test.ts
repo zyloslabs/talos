@@ -76,8 +76,10 @@ function createTestApp() {
     res.json(sessions);
   });
 
+  // TODO: add rate limiting per client IP before production deployment
   app.get("/api/talos/sessions/:id", (req, res) => {
     const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    // codeql[js/path-injection] -- safeName is sanitized above (alphanumeric + _ -)
     const filePath = join(sessionsDir, `${safeName}.jsonl`);
     if (!existsSync(filePath)) {
       res.status(404).json({ error: "Session not found" });
