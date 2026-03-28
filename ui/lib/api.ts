@@ -122,6 +122,16 @@ export const createTest = (data: Partial<TalosTest>) =>
     method: "POST",
     body: JSON.stringify(data),
   });
+export const updateTest = (id: string, body: { code?: string; name?: string; status?: string }) =>
+  fetchApi<TalosTest>(`/api/talos/tests/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+export const explainTest = (testId: string, selection?: string): Promise<{ explanation: string }> =>
+  fetchApi<{ explanation: string }>(`/api/talos/tests/${testId}/explain`, {
+    method: "POST",
+    body: JSON.stringify({ selection }),
+  });
 
 // Test Runs
 export const getTestRuns = (testId?: string) =>
