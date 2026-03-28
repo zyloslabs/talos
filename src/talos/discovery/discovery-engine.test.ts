@@ -131,7 +131,8 @@ describe("DiscoveryEngine", () => {
       config: discoveryConfig,
     });
     // Access private method
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+      .parseRepoUrl;
     const result = parse.call(engine, "https://github.com/myorg/myrepo");
     expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
   });
@@ -141,7 +142,8 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+      .parseRepoUrl;
     const result = parse.call(engine, "git@github.com:myorg/myrepo.git");
     expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
   });
@@ -151,7 +153,8 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+      .parseRepoUrl;
     const result = parse.call(engine, "myorg/myrepo");
     expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
   });
@@ -161,8 +164,41 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } }).parseRepoUrl;
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+      .parseRepoUrl;
     expect(() => parse.call(engine, "")).toThrow("Invalid repository URL");
+  });
+
+  it("uses GITHUB_PERSONAL_ACCESS_TOKEN env var when app has no githubPatRef", async () => {
+    const prev = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    process.env.GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_fake_env_token";
+    try {
+      const engine = new DiscoveryEngine({
+        repository: repo,
+        config: discoveryConfig,
+        // no resolveSecret needed since we fall back to env var
+      });
+
+      const app = repo.createApplication({
+        name: "EnvPAT App",
+        repositoryUrl: "https://github.com/fake/repo",
+        baseUrl: "https://example.com",
+        // no githubPatRef — should use env var
+      });
+
+      const job = await engine.startDiscovery(app);
+      // Wait for background task to attempt and fail at network level (not PAT check)
+      await new Promise((r) => setTimeout(r, 100));
+      const progress = engine.getProgress(job.id);
+      // Whatever the final status, the error should not be about missing PAT
+      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+    } finally {
+      if (prev === undefined) {
+        delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GITHUB_PERSONAL_ACCESS_TOKEN = prev;
+      }
+    }
   });
 
   it("filterFiles respects includeExtensions and excludePatterns", () => {
@@ -170,7 +206,11 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const filter = (engine as unknown as { filterFiles: (files: { path: string; type: string; size: number }[]) => { path: string }[] }).filterFiles;
+    const filter = (
+      engine as unknown as {
+        filterFiles: (files: { path: string; type: string; size: number }[]) => { path: string }[];
+      }
+    ).filterFiles;
 
     const files = [
       { path: "src/app.ts", type: "file", size: 100 },

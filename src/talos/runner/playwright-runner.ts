@@ -115,19 +115,25 @@ export class PlaywrightRunner {
         // Resolve vault refs to file paths and verify they exist
         const { access } = await import("node:fs/promises");
         if (mtls.clientCertVaultRef) {
-          try { await access(mtls.clientCertVaultRef); } catch {
+          try {
+            await access(mtls.clientCertVaultRef);
+          } catch {
             throw new Error(`mTLS client certificate not found at: ${mtls.clientCertVaultRef}`);
           }
           certEntry.certPath = mtls.clientCertVaultRef;
         }
         if (mtls.clientKeyVaultRef) {
-          try { await access(mtls.clientKeyVaultRef); } catch {
+          try {
+            await access(mtls.clientKeyVaultRef);
+          } catch {
             throw new Error(`mTLS client key not found at: ${mtls.clientKeyVaultRef}`);
           }
           certEntry.keyPath = mtls.clientKeyVaultRef;
         }
         if (mtls.pfxVaultRef) {
-          try { await access(mtls.pfxVaultRef); } catch {
+          try {
+            await access(mtls.pfxVaultRef);
+          } catch {
             throw new Error(`mTLS PFX file not found at: ${mtls.pfxVaultRef}`);
           }
           certEntry.pfxPath = mtls.pfxVaultRef;
@@ -193,10 +199,7 @@ export class PlaywrightRunner {
           const files = await fs.readdir(videoDir);
           for (const file of files) {
             if (file.endsWith(".webm")) {
-              const videoArtifact = await this.artifactManager.saveVideo(
-                testRun.id,
-                `${videoDir}/${file}`
-              );
+              const videoArtifact = await this.artifactManager.saveVideo(testRun.id, `${videoDir}/${file}`);
               result.artifacts.videos.push(videoArtifact.id);
             }
           }
@@ -282,11 +285,7 @@ export class PlaywrightRunner {
   /**
    * Create test execution context.
    */
-  private createTestContext(
-    page: PlaywrightPage,
-    testRunId: string,
-    result: TestExecutionResult
-  ): TestContext {
+  private createTestContext(page: PlaywrightPage, testRunId: string, result: TestExecutionResult): TestContext {
     return {
       page,
       expect: createExpect(),

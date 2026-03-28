@@ -48,6 +48,16 @@ type AuthState = {
 // Permission types
 export type PermissionHandler = typeof approveAll;
 
+export type SdkAttachment = {
+  type: "file" | "directory" | "selection";
+  path: string;
+  displayName?: string;
+  languageId?: string;
+  startLine?: number;
+  endLine?: number;
+  content?: string;
+};
+
 export type ChatOptions = {
   tools?: ToolDefinition[];
   model?: string;
@@ -55,6 +65,7 @@ export type ChatOptions = {
   systemMessage?: { mode: "append" | "replace"; content: string };
   reasoningEffort?: ReasoningEffort;
   onToolCall?: (tool: string, args: unknown) => void;
+  attachments?: SdkAttachment[];
 };
 
 // ── SDK Session abstraction ──
@@ -63,7 +74,7 @@ type CopilotSessionLike = {
   readonly sessionId: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   on: (event: string, handler: (event: any) => void) => () => void;
-  sendAndWait: (input: { prompt: string }, timeout?: number) => Promise<unknown>;
+  sendAndWait: (input: { prompt: string; attachments?: SdkAttachment[] }, timeout?: number) => Promise<unknown>;
   destroy: () => Promise<void>;
 };
 
@@ -97,6 +108,7 @@ export interface CopilotWrapper {
   getSessionUsage(sessionId: string): TokenUsage | null;
   clearSessionUsage(sessionId: string): TokenUsage | null;
   hasGithubToken(): boolean;
+  getGithubToken(): Promise<string | null>;
   reinit(token?: string): Promise<void>;
 }
 
@@ -372,7 +384,10 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     );
 
     session
-      .sendAndWait({ prompt: message }, this.sendAndWaitTimeoutMs)
+      .sendAndWait(
+        { prompt: message, ...(options?.attachments ? { attachments: options.attachments } : {}) },
+        this.sendAndWaitTimeoutMs
+      )
       .then(() => {
         queue.end();
       })
@@ -463,6 +478,12 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
 
   hasGithubToken(): boolean {
     return !!this.githubToken;
+  }
+
+  async getGithubToken(): Promise<string | null> {
+    if (this.githubToken) return this.githubToken;
+    const state = await readAuthState(this.authPath);
+    return state?.token ?? null;
   }
 
   async reinit(token?: string): Promise<void> {

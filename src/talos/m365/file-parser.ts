@@ -129,7 +129,7 @@ export async function parsePptx(buffer: Buffer): Promise<string> {
           .map((row) =>
             (row.children ?? [])
               .filter((c) => c.type === "cell")
-              .map((c) => (c.text ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " ")),
+              .map((c) => (c.text ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " "))
           );
         if (rows.length > 0) {
           const mdTable = rowsToMarkdownTable(rows);
@@ -172,7 +172,12 @@ export function rowsToMarkdownTable(rows: string[][]): string {
   const normalized = rows.map((row) => {
     const padded = [...row];
     while (padded.length < maxCols) padded.push("");
-    return padded.map((cell) => String(cell ?? "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, " "));
+    return padded.map((cell) =>
+      String(cell ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/\|/g, "\\|")
+        .replace(/\n/g, " ")
+    );
   });
 
   if (normalized.length === 0) return "";

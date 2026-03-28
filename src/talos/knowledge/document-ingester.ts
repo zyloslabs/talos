@@ -85,11 +85,7 @@ export class DocumentIngester {
    * Ingest a Markdown document.
    * Splits by sections (## headings) and paragraphs with 10-15% overlap.
    */
-  async ingestMarkdown(
-    appId: string,
-    content: string,
-    metadata: DocMetadata
-  ): Promise<IngestResult> {
+  async ingestMarkdown(appId: string, content: string, metadata: DocMetadata): Promise<IngestResult> {
     const docId = `doc:${appId}:${metadata.fileName}:${metadata.version ?? "latest"}`;
     const chunkType = chunkTypeForDocType(metadata.docType);
     const sections = this.splitMarkdownSections(content);
@@ -143,11 +139,7 @@ export class DocumentIngester {
    * Ingest an OpenAPI spec.
    * Creates one chunk per operation (path + method).
    */
-  async ingestOpenAPI(
-    appId: string,
-    content: string,
-    metadata: DocMetadata
-  ): Promise<IngestResult> {
+  async ingestOpenAPI(appId: string, content: string, metadata: DocMetadata): Promise<IngestResult> {
     const docId = `doc:${appId}:${metadata.fileName}:${metadata.version ?? "latest"}`;
     const operations = this.extractOpenAPIOperations(content, metadata);
 
@@ -276,26 +268,30 @@ export class DocumentIngester {
       }
     } catch {
       // If parsing fails, treat the whole document as a single chunk
-      return [{
-        content,
-        path: "/",
-        method: "unknown",
-        operationId: "full-spec",
-        startLine: 1,
-        endLine: content.split("\n").length,
-      }];
+      return [
+        {
+          content,
+          path: "/",
+          method: "unknown",
+          operationId: "full-spec",
+          startLine: 1,
+          endLine: content.split("\n").length,
+        },
+      ];
     }
 
     const paths = spec.paths as Record<string, Record<string, unknown>> | undefined;
     if (!paths) {
-      return [{
-        content,
-        path: "/",
-        method: "unknown",
-        operationId: "full-spec",
-        startLine: 1,
-        endLine: content.split("\n").length,
-      }];
+      return [
+        {
+          content,
+          path: "/",
+          method: "unknown",
+          operationId: "full-spec",
+          startLine: 1,
+          endLine: content.split("\n").length,
+        },
+      ];
     }
 
     const operations: Array<{
@@ -426,22 +422,24 @@ export class DocumentIngester {
     const hash = contentHash(schemaContent);
     const tags = ["database", "schema", dataSourceLabel.toLowerCase().replace(/\s+/g, "-")];
 
-    const chunks: ChunkResult[] = [{
-      content: `## Table: ${tableName}\n\nData Source: ${dataSourceLabel}\n\n${schemaContent}`,
-      filePath: `schema/${dataSourceLabel}/${tableName}`,
-      startLine: 0,
-      endLine: 0,
-      type: "schema" as const,
-      contentHash: hash,
-      metadata: {
-        stableId,
-        docId,
-        chunkType: "schema" as const,
+    const chunks: ChunkResult[] = [
+      {
+        content: `## Table: ${tableName}\n\nData Source: ${dataSourceLabel}\n\n${schemaContent}`,
+        filePath: `schema/${dataSourceLabel}/${tableName}`,
+        startLine: 0,
+        endLine: 0,
+        type: "schema" as const,
         contentHash: hash,
-        tags,
-        sourceVersion: "live",
+        metadata: {
+          stableId,
+          docId,
+          chunkType: "schema" as const,
+          contentHash: hash,
+          tags,
+          sourceVersion: "live",
+        },
       },
-    }];
+    ];
 
     const result = await this.ragPipeline.indexChunks(appId, chunks);
     return {
@@ -473,22 +471,24 @@ export class DocumentIngester {
 
     const fullContent = `## ${title}\n\nSource: ${source.toUpperCase()} ${itemKey}\n\n${content}`;
 
-    const chunks: ChunkResult[] = [{
-      content: fullContent,
-      filePath: `${source}/${itemKey}`,
-      startLine: 0,
-      endLine: 0,
-      type: chunkType as TalosChunkType,
-      contentHash: hash,
-      metadata: {
-        stableId: docId,
-        docId,
-        chunkType,
+    const chunks: ChunkResult[] = [
+      {
+        content: fullContent,
+        filePath: `${source}/${itemKey}`,
+        startLine: 0,
+        endLine: 0,
+        type: chunkType as TalosChunkType,
         contentHash: hash,
-        tags,
-        sourceVersion: "live",
+        metadata: {
+          stableId: docId,
+          docId,
+          chunkType,
+          contentHash: hash,
+          tags,
+          sourceVersion: "live",
+        },
       },
-    }];
+    ];
 
     const result = await this.ragPipeline.indexChunks(appId, chunks);
     return {

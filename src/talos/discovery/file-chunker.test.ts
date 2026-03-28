@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  FileChunker,
-  createSlidingWindowChunks,
-  createStructuralChunks,
-} from "./file-chunker.js";
+import { FileChunker, createSlidingWindowChunks, createStructuralChunks } from "./file-chunker.js";
 
 describe("FileChunker", () => {
   const chunker = new FileChunker();
@@ -50,6 +46,27 @@ function farewell(name: string): string {
 
       expect(chunks).toHaveLength(1);
       expect(chunks[0].content).toBe(content);
+    });
+
+    it("detects test chunk type for .test.ts files", () => {
+      const content = `test('should work', () => { expect(1).toBe(1); });`;
+      const chunks = chunker.chunk("app.test.ts", content, "app-1");
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks[0].type).toBe("test");
+    });
+
+    it("detects config chunk type for .json files", () => {
+      const content = `{ "name": "myapp", "version": "1.0.0" }`;
+      const chunks = chunker.chunk("settings.json", content, "app-1");
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks[0].type).toBe("config");
+    });
+
+    it("detects schema chunk type for schema files", () => {
+      const content = `export type UserSchema = { id: string; name: string; };`;
+      const chunks = chunker.chunk("user-schema.ts", content, "app-1");
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks[0].type).toBe("schema");
     });
   });
 });
@@ -95,6 +112,14 @@ describe("createSlidingWindowChunks", () => {
     });
 
     expect(chunks).toHaveLength(1);
+  });
+
+  it("returns empty array for empty content", () => {
+    const chunks = createSlidingWindowChunks("", {
+      filePath: "test.txt",
+      applicationId: "app-1",
+    });
+    expect(chunks).toHaveLength(0);
   });
 });
 

@@ -60,12 +60,14 @@ const ERROR_PATTERNS: Array<{
       const selectorMatch = error.match(/locator\(['"]([^'"]+)['"]\)/);
       return {
         rootCause: "Element did not appear within the timeout period",
-        affectedElements: selectorMatch
-          ? [{ selector: selectorMatch[1], type: "locator" }]
-          : [],
+        affectedElements: selectorMatch ? [{ selector: selectorMatch[1], type: "locator" }] : [],
         suggestedFixes: [
           { type: "add-wait", description: "Add explicit wait before interaction", confidence: 0.7 },
-          { type: "update-selector", description: "Verify selector is correct for current page state", confidence: 0.6 },
+          {
+            type: "update-selector",
+            description: "Verify selector is correct for current page state",
+            confidence: 0.6,
+          },
         ],
       };
     },
@@ -78,9 +80,7 @@ const ERROR_PATTERNS: Array<{
       const selectorMatch = error.match(/locator\(['"]([^'"]+)['"]\)/);
       return {
         rootCause: `Selector matched ${count} elements instead of exactly one`,
-        affectedElements: selectorMatch
-          ? [{ selector: selectorMatch[1], type: "locator" }]
-          : [],
+        affectedElements: selectorMatch ? [{ selector: selectorMatch[1], type: "locator" }] : [],
         suggestedFixes: [
           { type: "update-selector", description: "Make selector more specific", confidence: 0.8 },
           { type: "update-logic", description: "Use .first() or .nth() if intentional", confidence: 0.5 },
@@ -139,9 +139,7 @@ const ERROR_PATTERNS: Array<{
       const urlMatch = error.match(/goto\(['"]([^'"]+)['"]\)/);
       return {
         rootCause: "Page navigation failed",
-        affectedElements: urlMatch
-          ? [{ selector: urlMatch[1], type: "navigation" }]
-          : [],
+        affectedElements: urlMatch ? [{ selector: urlMatch[1], type: "navigation" }] : [],
         suggestedFixes: [
           { type: "manual-review", description: "Verify URL is correct and accessible", confidence: 0.8 },
           { type: "add-retry", description: "Add retry for transient failures", confidence: 0.5 },
@@ -177,7 +175,7 @@ export class FailureAnalyzer {
       const match = fullError.match(pattern);
       if (match) {
         const details = extractDetails(match, fullError);
-        
+
         // Find related failures
         const relatedFailures = await this.findRelatedFailures(testRun, category);
 
@@ -187,7 +185,7 @@ export class FailureAnalyzer {
           confidence: 0.8,
           rootCause: details.rootCause ?? "Unknown root cause",
           affectedElements: details.affectedElements ?? [],
-          suggestedFixes: (details.suggestedFixes ?? []).map(fix => ({
+          suggestedFixes: (details.suggestedFixes ?? []).map((fix) => ({
             ...fix,
             confidence: fix.confidence ?? 0.5,
           })),
@@ -208,9 +206,7 @@ export class FailureAnalyzer {
       confidence: 0.3,
       rootCause: errorMessage || "Unknown error",
       affectedElements: this.extractSelectorsFromStack(errorStack),
-      suggestedFixes: [
-        { type: "manual-review", description: "Manual review required", confidence: 0.9 },
-      ],
+      suggestedFixes: [{ type: "manual-review", description: "Manual review required", confidence: 0.9 }],
       relatedFailures: [],
       metadata: { errorMessage, errorStack },
     };
@@ -236,24 +232,19 @@ export class FailureAnalyzer {
   /**
    * Find similar past failures.
    */
-  private async findRelatedFailures(
-    testRun: TalosTestRun,
-    category: FailureCategory
-  ): Promise<string[]> {
+  private async findRelatedFailures(testRun: TalosTestRun, category: FailureCategory): Promise<string[]> {
     const test = this.repository.getTest(testRun.testId);
     if (!test) return [];
 
     // Get recent runs of the same test that failed
     const recentRuns = this.repository.getTestRunsByTest(testRun.testId, 20);
-    const failedRuns = recentRuns.filter(
-      run => run.id !== testRun.id && run.status === "failed"
-    );
+    const failedRuns = recentRuns.filter((run) => run.id !== testRun.id && run.status === "failed");
 
     // Filter to similar error patterns
     const related: string[] = [];
     for (const run of failedRuns) {
       if (!run.errorMessage) continue;
-      
+
       // Simple similarity: same category
       for (const { pattern, category: patternCategory } of ERROR_PATTERNS) {
         if (patternCategory === category && pattern.test(run.errorMessage)) {
@@ -271,7 +262,7 @@ export class FailureAnalyzer {
    */
   private extractSelectorsFromStack(stack: string): AffectedElement[] {
     const elements: AffectedElement[] = [];
-    
+
     // Look for locator patterns
     const locatorMatches = stack.matchAll(/locator\(['"]([^'"]+)['"]\)/g);
     for (const match of locatorMatches) {
@@ -306,13 +297,13 @@ export class FailureAnalyzer {
     const byCategory: Record<FailureCategory, number> = {
       "selector-changed": 0,
       "element-not-found": 0,
-      "timeout": 0,
+      timeout: 0,
       "assertion-failed": 0,
       "network-error": 0,
       "authentication-error": 0,
       "navigation-error": 0,
       "script-error": 0,
-      "unknown": 0,
+      unknown: 0,
     };
 
     const selectorCounts = new Map<string, number>();

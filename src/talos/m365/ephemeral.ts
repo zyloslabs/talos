@@ -82,7 +82,7 @@ export class EphemeralStore {
           } catch {
             return { name, ageMs: 0 };
           }
-        }),
+        })
       );
     } catch {
       return [];
@@ -92,9 +92,7 @@ export class EphemeralStore {
   async cleanupOlderThan(ageMs: number): Promise<number> {
     const files = await this.listFilesWithAge();
     const toDelete = files.filter((f) => f.ageMs >= ageMs);
-    await Promise.all(
-      toDelete.map((f) => rm(join(this.docsDir, f.name), { force: true })),
-    );
+    await Promise.all(toDelete.map((f) => rm(join(this.docsDir, f.name), { force: true })));
     return toDelete.length;
   }
 

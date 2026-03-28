@@ -19,15 +19,7 @@ export type Replacement = {
   line?: number;
 };
 
-export type ReplacementType =
-  | "password"
-  | "api-key"
-  | "token"
-  | "secret"
-  | "credential"
-  | "url"
-  | "email"
-  | "phone";
+export type ReplacementType = "password" | "api-key" | "token" | "secret" | "credential" | "url" | "email" | "phone";
 
 export type SanitizationOptions = {
   replaceUrls?: boolean;
@@ -57,7 +49,7 @@ const SENSITIVE_PATTERNS: Array<{
       return `.fill(${selectorMatch?.[1] ?? "selector"}, process.env.TEST_PASSWORD_${i})`;
     },
   },
-  
+
   // API Keys
   {
     pattern: /api[_-]?key\s*[:=]\s*['"]([^'"]+)['"]/gi,
@@ -69,7 +61,7 @@ const SENSITIVE_PATTERNS: Array<{
     type: "api-key",
     replacementTemplate: (_, i) => `process.env.TEST_API_KEY_${i}`,
   },
-  
+
   // Tokens
   {
     pattern: /token\s*[:=]\s*['"]([^'"]+)['"]/gi,
@@ -86,14 +78,14 @@ const SENSITIVE_PATTERNS: Array<{
     type: "token",
     replacementTemplate: (_, i) => `process.env.TEST_JWT_${i}`,
   },
-  
+
   // Secrets
   {
     pattern: /secret\s*[:=]\s*['"]([^'"]+)['"]/gi,
     type: "secret",
     replacementTemplate: (_, i) => `secret: process.env.TEST_SECRET_${i}`,
   },
-  
+
   // Generic credentials
   {
     pattern: /credential[s]?\s*[:=]\s*['"]([^'"]+)['"]/gi,
@@ -131,12 +123,12 @@ export class CredentialSanitizer {
     // Process sensitive patterns
     for (const { pattern, type, replacementTemplate } of SENSITIVE_PATTERNS) {
       const globalPattern = new RegExp(pattern.source, pattern.flags);
-      
+
       const matches = sanitizedCode.matchAll(globalPattern);
       for (const match of matches) {
         const original = match[0];
         const replacement = replacementTemplate(original, replacementIndex);
-        
+
         replacements.push({
           original,
           replacement,
@@ -153,11 +145,11 @@ export class CredentialSanitizer {
     if (this.options.customPatterns) {
       for (const { pattern, type, replacement } of this.options.customPatterns) {
         const globalPattern = new RegExp(pattern.source, pattern.flags);
-        
+
         const matches = sanitizedCode.matchAll(globalPattern);
         for (const match of matches) {
           const original = match[0];
-          
+
           replacements.push({
             original,
             replacement,
@@ -176,7 +168,7 @@ export class CredentialSanitizer {
       for (const match of urlMatches) {
         const original = match[0];
         const replacement = `\${process.env.${this.options.envVarPrefix}_BASE_URL}`;
-        
+
         replacements.push({
           original,
           replacement,
@@ -195,7 +187,7 @@ export class CredentialSanitizer {
       for (const match of emailMatches) {
         const original = match[0];
         const replacement = `\${process.env.${this.options.envVarPrefix}_EMAIL_${emailIndex}}`;
-        
+
         replacements.push({
           original,
           replacement,
@@ -232,14 +224,14 @@ export class CredentialSanitizer {
     ];
 
     const seen = new Set<string>();
-    
+
     for (const replacement of replacements) {
       // Extract env var name from replacement
       const envVarMatch = replacement.replacement.match(/process\.env\.(\w+)/);
       if (envVarMatch && !seen.has(envVarMatch[1])) {
         const envVar = envVarMatch[1];
         seen.add(envVar);
-        
+
         lines.push(`# ${replacement.type}`);
         lines.push(`${envVar}=your_${replacement.type}_here`);
         lines.push("");
@@ -252,9 +244,7 @@ export class CredentialSanitizer {
   /**
    * Detect potential secrets that weren't caught by patterns.
    */
-  private detectPotentialSecrets(
-    code: string
-  ): Array<{ line: number; hint: string }> {
+  private detectPotentialSecrets(code: string): Array<{ line: number; hint: string }> {
     const results: Array<{ line: number; hint: string }> = [];
     const lines = code.split("\n");
 
@@ -302,15 +292,15 @@ export class CredentialSanitizer {
    */
   private hasHighEntropy(str: string): boolean {
     if (str.length < 16) return false;
-    
+
     // Count character types
     const hasUpper = /[A-Z]/.test(str);
     const hasLower = /[a-z]/.test(str);
     const hasDigit = /\d/.test(str);
     const hasSpecial = /[^A-Za-z0-9]/.test(str);
-    
+
     const typeCount = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length;
-    
+
     // High entropy if >= 3 char types and no common patterns
     if (typeCount >= 3) {
       // Exclude common non-secret patterns
@@ -320,7 +310,7 @@ export class CredentialSanitizer {
       }
       return true;
     }
-    
+
     return false;
   }
 

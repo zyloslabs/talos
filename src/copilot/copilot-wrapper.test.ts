@@ -91,16 +91,20 @@ describe("CopilotWrapperService", () => {
         start: vi.fn(async () => {}),
         createSession: vi.fn(async () => mockSession),
         stop: vi.fn(async () => []),
-        startDeviceAuth: vi.fn(async (): Promise<DeviceAuthInfo> => ({
-          verificationUri: "https://github.com/login/device",
-          userCode: "ABCD-1234",
-        })),
+        startDeviceAuth: vi.fn(
+          async (): Promise<DeviceAuthInfo> => ({
+            verificationUri: "https://github.com/login/device",
+            userCode: "ABCD-1234",
+          })
+        ),
         waitForAuth: vi.fn(async () => ({ token: "test-token", expiresAt: Date.now() + 3600000 })),
-        listModels: vi.fn(async (): Promise<CopilotModel[]> => [
-          { id: "gpt-4.1" },
-          { id: "claude-sonnet-4" },
-        ]),
-        getAuthStatus: vi.fn(async (): Promise<{ isAuthenticated: boolean; authType?: string }> => ({ isAuthenticated: true, authType: "device" })),
+        listModels: vi.fn(async (): Promise<CopilotModel[]> => [{ id: "gpt-4.1" }, { id: "claude-sonnet-4" }]),
+        getAuthStatus: vi.fn(
+          async (): Promise<{ isAuthenticated: boolean; authType?: string }> => ({
+            isAuthenticated: true,
+            authType: "device",
+          })
+        ),
       },
     };
   }
@@ -147,7 +151,9 @@ describe("CopilotWrapperService", () => {
     const wrapper = new CopilotWrapperService({ client });
     // Force a session to be created
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { conversationId: "destroy-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { conversationId: "destroy-test" })) {
+      /* consume */
+    }
     expect(wrapper.hasSession("destroy-test")).toBe(true);
     await wrapper.destroySession("destroy-test");
     expect(wrapper.hasSession("destroy-test")).toBe(false);
@@ -186,10 +192,12 @@ describe("CopilotWrapperService", () => {
 
   it("listModels caches reasoning capability and returns models", async () => {
     const { client } = createMockClient();
-    client.listModels = vi.fn(async (): Promise<CopilotModel[]> => [
-      { id: "gpt-4.1", capabilities: { supports: { reasoningEffort: false } } },
-      { id: "o3-mini", capabilities: { supports: { reasoningEffort: true } } },
-    ]);
+    client.listModels = vi.fn(
+      async (): Promise<CopilotModel[]> => [
+        { id: "gpt-4.1", capabilities: { supports: { reasoningEffort: false } } },
+        { id: "o3-mini", capabilities: { supports: { reasoningEffort: true } } },
+      ]
+    );
     const wrapper = new CopilotWrapperService({ client });
     const models = await wrapper.listModels();
     expect(models).toHaveLength(2);
@@ -203,7 +211,9 @@ describe("CopilotWrapperService", () => {
     const wrapper = new CopilotWrapperService({ client, defaultReasoningEffort: "high" });
     // Consume chat — model is gpt-4.1 (does not support reasoning)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { model: "gpt-4.1", conversationId: "no-reason" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { model: "gpt-4.1", conversationId: "no-reason" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(callArgs.reasoningEffort).toBeUndefined();
   });
@@ -212,7 +222,9 @@ describe("CopilotWrapperService", () => {
     const { client } = createMockClient();
     const wrapper = new CopilotWrapperService({ client, defaultReasoningEffort: "high" });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { model: "o3-mini", conversationId: "with-reason" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { model: "o3-mini", conversationId: "with-reason" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(callArgs.reasoningEffort).toBe("high");
   });
@@ -231,7 +243,9 @@ describe("CopilotWrapperService", () => {
       riskLevel: "low" as const,
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { tools: [tool], conversationId: "tools-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { tools: [tool], conversationId: "tools-test" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(Array.isArray(callArgs.tools)).toBe(true);
     expect(callArgs.tools).toHaveLength(1);
@@ -241,24 +255,32 @@ describe("CopilotWrapperService", () => {
     const { client } = createMockClient();
     const wrapper = new CopilotWrapperService({ client });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { conversationId: "perm-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { conversationId: "perm-test" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(typeof callArgs.onPermissionRequest).toBe("function");
   });
 
   it("throws when startFailed and chat is called", async () => {
     const { client } = createMockClient();
-    client.start = vi.fn(async () => { throw new Error("SDK unavailable"); });
+    client.start = vi.fn(async () => {
+      throw new Error("SDK unavailable");
+    });
     const wrapper = new CopilotWrapperService({ client });
     await expect(async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      for await (const _ of wrapper.chat("Hi")) { /* consume */ }
+      for await (const _ of wrapper.chat("Hi")) {
+        /* consume */
+      }
     }).rejects.toThrow("Copilot SDK failed to start");
   });
 
   it("throws when startFailed and listModels is called", async () => {
     const { client } = createMockClient();
-    client.start = vi.fn(async () => { throw new Error("SDK unavailable"); });
+    client.start = vi.fn(async () => {
+      throw new Error("SDK unavailable");
+    });
     const wrapper = new CopilotWrapperService({ client });
     await expect(wrapper.listModels()).rejects.toThrow("Copilot SDK failed to start");
   });
@@ -292,7 +314,9 @@ describe("CopilotWrapperService", () => {
       riskLevel: "low" as const,
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { tools: [errorTool], conversationId: "err-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { tools: [errorTool], conversationId: "err-test" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     // Since defineTool is mocked as passthrough, handler is our closure
     const handler = callArgs.tools?.[0]?.handler as ((args: unknown) => Promise<string>) | undefined;
@@ -311,12 +335,16 @@ describe("CopilotWrapperService", () => {
       description: "A tool that throws",
       inputSchema: { type: "object" as const },
       zodSchema: {} as never,
-      handler: async () => { throw new Error("boom"); },
+      handler: async () => {
+        throw new Error("boom");
+      },
       category: "testing" as const,
       riskLevel: "low" as const,
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { tools: [throwingTool], conversationId: "throw-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { tools: [throwingTool], conversationId: "throw-test" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     const handler = callArgs.tools?.[0]?.handler as ((args: unknown) => Promise<string>) | undefined;
     expect(handler).toBeDefined();
@@ -340,7 +368,9 @@ describe("CopilotWrapperService", () => {
       riskLevel: "low" as const,
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { tools: [dummyTool], onToolCall, conversationId: "callback-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { tools: [dummyTool], onToolCall, conversationId: "callback-test" })) {
+      /* consume */
+    }
     const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
     const handler = callArgs.tools?.[0]?.handler as ((args: unknown) => Promise<string>) | undefined;
     expect(handler).toBeDefined();
@@ -355,10 +385,14 @@ describe("CopilotWrapperService", () => {
     const wrapper = new CopilotWrapperService({ client });
     // First call
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("First", { conversationId: "reuse-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("First", { conversationId: "reuse-test" })) {
+      /* consume */
+    }
     // Second call — should reuse the session
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Second", { conversationId: "reuse-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Second", { conversationId: "reuse-test" })) {
+      /* consume */
+    }
     // createSession should only have been called once
     expect((client.createSession as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
   });
@@ -367,7 +401,9 @@ describe("CopilotWrapperService", () => {
     const { client, session } = createMockClient();
     const wrapper = new CopilotWrapperService({ client });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { conversationId: "clear-test" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { conversationId: "clear-test" })) {
+      /* consume */
+    }
     expect(wrapper.hasSession("clear-test")).toBe(true);
     await wrapper.clearAllSessions();
     expect(wrapper.hasSession("clear-test")).toBe(false);
@@ -384,9 +420,9 @@ describe("CopilotWrapperService", () => {
 
   it("modelSupportsReasoning returns false from cache after listModels for non-reasoning model", async () => {
     const { client } = createMockClient();
-    client.listModels = vi.fn(async (): Promise<CopilotModel[]> => [
-      { id: "gpt-4.1", capabilities: { supports: { reasoningEffort: false } } },
-    ]);
+    client.listModels = vi.fn(
+      async (): Promise<CopilotModel[]> => [{ id: "gpt-4.1", capabilities: { supports: { reasoningEffort: false } } }]
+    );
     const wrapper = new CopilotWrapperService({ client });
     await wrapper.listModels();
     expect(wrapper.modelSupportsReasoning("gpt-4.1")).toBe(false);
@@ -414,7 +450,9 @@ describe("CopilotWrapperService", () => {
           handlers.get(event)!.push(handler);
           return () => {};
         },
-        async sendAndWait() { throw new Error("SDK connection lost"); },
+        async sendAndWait() {
+          throw new Error("SDK connection lost");
+        },
         destroy: vi.fn(async () => {}),
       };
     });
@@ -461,7 +499,9 @@ describe("CopilotWrapperService", () => {
     wrapper.on("tool:call", (e) => toolCallEvents.push(e));
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { onToolCall, conversationId: "tc-conv" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { onToolCall, conversationId: "tc-conv" })) {
+      /* consume */
+    }
     expect(onToolCall).toHaveBeenCalledWith("my-tool", { arg: "val" });
     expect(toolCallEvents[0]).toMatchObject({ tool: "my-tool", args: { arg: "val" } });
   });
@@ -485,9 +525,106 @@ describe("CopilotWrapperService", () => {
     const { client } = createMockClient();
     const wrapper = new CopilotWrapperService({ client });
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for await (const _ of wrapper.chat("Hi", { conversationId: "usage-clear" })) { /* consume */ }
+    for await (const _ of wrapper.chat("Hi", { conversationId: "usage-clear" })) {
+      /* consume */
+    }
     const usage = wrapper.clearSessionUsage("usage-clear");
     expect(usage).not.toBeNull();
     expect(wrapper.getSessionUsage("usage-clear")).toBeNull();
+  });
+
+  // ── getGithubToken() tests ──
+
+  it("getGithubToken returns env token when githubToken is set", async () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client, githubToken: "ghp_envtoken123" });
+    const token = await wrapper.getGithubToken();
+    expect(token).toBe("ghp_envtoken123");
+  });
+
+  it("getGithubToken reads from auth file when no env token available", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const tmpPath = path.join(os.tmpdir(), `talos-auth-test-${Date.now()}.json`);
+    await fs.writeFile(tmpPath, JSON.stringify({ token: "ghp_fromfile" }), { mode: 0o600 });
+
+    const { client } = createMockClient();
+    const origToken = process.env.GITHUB_TOKEN;
+    const origCopilotToken = process.env.COPILOT_GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.COPILOT_GITHUB_TOKEN;
+
+    const wrapper = new CopilotWrapperService({ client, authPath: tmpPath });
+    const token = await wrapper.getGithubToken();
+    expect(token).toBe("ghp_fromfile");
+
+    await fs.unlink(tmpPath).catch(() => {});
+    if (origToken !== undefined) process.env.GITHUB_TOKEN = origToken;
+    if (origCopilotToken !== undefined) process.env.COPILOT_GITHUB_TOKEN = origCopilotToken;
+  });
+
+  it("getGithubToken returns null when neither env token nor auth file exists", async () => {
+    const { client } = createMockClient();
+    const origToken = process.env.GITHUB_TOKEN;
+    const origCopilotToken = process.env.COPILOT_GITHUB_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.COPILOT_GITHUB_TOKEN;
+
+    const wrapper = new CopilotWrapperService({ client, authPath: "/tmp/nonexistent-talos-auth-xyz.json" });
+    const token = await wrapper.getGithubToken();
+    expect(token).toBeNull();
+
+    if (origToken !== undefined) process.env.GITHUB_TOKEN = origToken;
+    if (origCopilotToken !== undefined) process.env.COPILOT_GITHUB_TOKEN = origCopilotToken;
+  });
+
+  // ── attachments passthrough tests ──
+
+  it("chat passes attachments to sendAndWait when provided in options", async () => {
+    const { client } = createMockClient();
+    const sendAndWaitSpy = vi.fn(async function (this: unknown) {
+      return {};
+    });
+    (client.createSession as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => ({
+      sessionId: "attach-session",
+      on: (_event: string, _handler: unknown) => () => {},
+      sendAndWait: sendAndWaitSpy,
+      destroy: vi.fn(async () => {}),
+    }));
+
+    const wrapper = new CopilotWrapperService({ client });
+    const attachments = [{ type: "file" as const, path: "/src/app.ts", content: "export default {}" }];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of wrapper.chat("Hi", { conversationId: "attach-test", attachments })) {
+      /* consume */
+    }
+
+    expect(sendAndWaitSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: "Hi", attachments }),
+      expect.any(Number)
+    );
+  });
+
+  it("chat does not include attachments key in sendAndWait when not provided", async () => {
+    const { client } = createMockClient();
+    const sendAndWaitSpy = vi.fn(async function (this: unknown) {
+      return {};
+    });
+    (client.createSession as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => ({
+      sessionId: "no-attach-session",
+      on: (_event: string, _handler: unknown) => () => {},
+      sendAndWait: sendAndWaitSpy,
+      destroy: vi.fn(async () => {}),
+    }));
+
+    const wrapper = new CopilotWrapperService({ client });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of wrapper.chat("Hi", { conversationId: "no-attach-test" })) {
+      /* consume */
+    }
+
+    const callArg = (sendAndWaitSpy.mock.calls as unknown as [Record<string, unknown>][])[0]?.[0] ?? {};
+    expect("attachments" in callArg).toBe(false);
   });
 });

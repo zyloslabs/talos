@@ -38,15 +38,27 @@ export type ValidationOptions = {
 
 const BANNED_PATTERNS = [
   { pattern: /eval\s*\(/g, message: "Use of eval() is not allowed", code: "no-eval" },
-  { pattern: /Function\s*\(/g, message: "Dynamic Function constructor is not allowed", code: "no-function-constructor" },
+  {
+    pattern: /Function\s*\(/g,
+    message: "Dynamic Function constructor is not allowed",
+    code: "no-function-constructor",
+  },
   { pattern: /require\s*\(/g, message: "Use ES imports instead of require()", code: "no-require" },
   { pattern: /process\.exit/g, message: "process.exit() should not be used in tests", code: "no-process-exit" },
   { pattern: /child_process/g, message: "child_process module is not allowed", code: "no-child-process" },
-  { pattern: /fs\.(unlink|rmdir|rm)\s*\(/g, message: "File deletion is not allowed in tests", code: "no-file-deletion" },
+  {
+    pattern: /fs\.(unlink|rmdir|rm)\s*\(/g,
+    message: "File deletion is not allowed in tests",
+    code: "no-file-deletion",
+  },
 ];
 
 const REQUIRED_PATTERNS = [
-  { pattern: /expect\s*\(|toBe|toEqual|toContain|toMatch/g, message: "Test should contain assertions", code: "require-assertions" },
+  {
+    pattern: /expect\s*\(|toBe|toEqual|toContain|toMatch/g,
+    message: "Test should contain assertions",
+    code: "require-assertions",
+  },
 ];
 
 const PLAYWRIGHT_APIS = [
@@ -66,8 +78,16 @@ const PLAYWRIGHT_APIS = [
 
 const DEPRECATED_PATTERNS = [
   { pattern: /page\.\$\(/g, message: "Use page.locator() instead of page.$()", code: "deprecated-dollar-selector" },
-  { pattern: /page\.\$\$\(/g, message: "Use page.locator() instead of page.$$()", code: "deprecated-dollar-double-selector" },
-  { pattern: /page\.waitForTimeout\(/g, message: "Avoid hard waits, use waitForSelector or expect conditions", code: "no-hard-wait" },
+  {
+    pattern: /page\.\$\$\(/g,
+    message: "Use page.locator() instead of page.$$()",
+    code: "deprecated-dollar-double-selector",
+  },
+  {
+    pattern: /page\.waitForTimeout\(/g,
+    message: "Avoid hard waits, use waitForSelector or expect conditions",
+    code: "no-hard-wait",
+  },
 ];
 
 // ── Code Validator ────────────────────────────────────────────────────────────
@@ -202,7 +222,7 @@ export class CodeValidator {
     }
 
     // Check for common patterns and suggest improvements
-    if (code.includes('querySelector') || code.includes('querySelectorAll')) {
+    if (code.includes("querySelector") || code.includes("querySelectorAll")) {
       suggestions.push("Consider using Playwright locators (getByRole, getByTestId) instead of querySelector");
     }
 
