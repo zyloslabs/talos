@@ -24,6 +24,13 @@ export type PushFilesResult = {
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+/** Validates GitHub owner/repo names — alphanumeric, hyphens, underscores, dots; max 100 chars. */
+function validateSlug(value: string, label: string): void {
+  if (!value || value.length > 100 || !/^[a-zA-Z0-9._-]+$/.test(value)) {
+    throw new Error(`Invalid ${label}: must be 1-100 alphanumeric/hyphen/underscore/dot characters`);
+  }
+}
+
 export class GitHubExportService {
   private pat: string;
   private baseUrl: string;
@@ -50,11 +57,28 @@ export class GitHubExportService {
   }
 
   /**
+   * Build a URL scoped to this.baseUrl and verify the hostname hasn't been
+   * altered by path-traversal or other manipulation.
+   */
+  private buildUrl(path: string): string {
+    const url = new URL(path, this.baseUrl);
+    const expected = new URL(this.baseUrl);
+    if (url.hostname !== expected.hostname) {
+      throw new Error(`URL hostname mismatch: got ${url.hostname}, expected ${expected.hostname}`);
+    }
+    return url.href;
+  }
+
+  /**
    * Ensure the repository exists. If it doesn't exist and createIfNotExists is true,
    * it will be created under the authenticated user's account.
    */
   async ensureRepo(owner: string, repo: string, createIfNotExists: boolean): Promise<EnsureRepoResult> {
-    const checkRes = await fetch(`${this.baseUrl}/repos/${owner}/${repo}`, {
+    validateSlug(owner, "owner");
+    validateSlug(repo, "repo");
+
+    const checkUrl = this.buildUrl(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+    const checkRes = await fetch(checkUrl, {
       headers: this.headers,
     });
 
@@ -63,7 +87,8 @@ export class GitHubExportService {
     }
 
     if (checkRes.status === 404 && createIfNotExists) {
-      const createRes = await fetch(`${this.baseUrl}/user/repos`, {
+      const createUrl = this.buildUrl("/user/repos");
+      const createRes = await fetch(createUrl, {
         method: "POST",
         headers: this.headers,
         body: JSON.stringify({
@@ -100,11 +125,15 @@ export class GitHubExportService {
     branch: string,
     files: Array<{ path: string; content: string }>
   ): Promise<PushFilesResult> {
+    validateSlug(owner, "owner");
+    validateSlug(repo, "repo");
     let pushedCount = 0;
 
     for (const file of files) {
       const encodedPath = file.path.split("/").map(encodeURIComponent).join("/");
-      const contentsUrl = `${this.baseUrl}/repos/${owner}/${repo}/contents/${encodedPath}`;
+      const contentsUrl = this.buildUrl(
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`
+      );
 
       // Get existing SHA for updates
       let existingSha: string | undefined;

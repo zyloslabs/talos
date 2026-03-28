@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import express from "express";
 import Database from "better-sqlite3";
 import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync, statSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import crypto from "node:crypto";
 import { TalosRepository } from "../talos/repository.js";
@@ -76,11 +76,14 @@ function createTestApp() {
     res.json(sessions);
   });
 
-  // TODO: add rate limiting per client IP before production deployment
   app.get("/api/talos/sessions/:id", (req, res) => {
     const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    // codeql[js/path-injection] -- safeName is sanitized above (alphanumeric + _ -)
-    const filePath = join(sessionsDir, `${safeName}.jsonl`);
+    const filePath = resolve(sessionsDir, `${safeName}.jsonl`);
+    // Path containment: ensure resolved path stays within sessionsDir
+    if (!filePath.startsWith(resolve(sessionsDir) + "/")) {
+      res.status(400).json({ error: "Invalid session ID" });
+      return;
+    }
     if (!existsSync(filePath)) {
       res.status(404).json({ error: "Session not found" });
       return;

@@ -222,4 +222,27 @@ describe("GitHubExportService", () => {
       expect(body.branch).toBe("feature-branch");
     });
   });
+
+  describe("input validation", () => {
+    it("rejects invalid owner in ensureRepo", async () => {
+      const svc = new GitHubExportService({ pat: "tok" });
+      await expect(svc.ensureRepo("../evil", "repo", false)).rejects.toThrow("Invalid owner");
+    });
+
+    it("rejects invalid repo in ensureRepo", async () => {
+      const svc = new GitHubExportService({ pat: "tok" });
+      await expect(svc.ensureRepo("owner", "re po/bad", false)).rejects.toThrow("Invalid repo");
+    });
+
+    it("rejects empty owner in pushFiles", async () => {
+      const svc = new GitHubExportService({ pat: "tok" });
+      await expect(svc.pushFiles("", "repo", "main", [])).rejects.toThrow("Invalid owner");
+    });
+
+    it("rejects overly long repo name", async () => {
+      const svc = new GitHubExportService({ pat: "tok" });
+      const longName = "a".repeat(101);
+      await expect(svc.ensureRepo("owner", longName, false)).rejects.toThrow("Invalid repo");
+    });
+  });
 });
