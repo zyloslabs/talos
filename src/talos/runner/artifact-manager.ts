@@ -199,7 +199,7 @@ export class ArtifactManager {
 
     try {
       const entries = await fs.readdir(this.basePath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
 
@@ -231,10 +231,10 @@ export class ArtifactManager {
 
     try {
       const entries = await fs.readdir(this.basePath, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        
+
         const runDir = path.join(this.basePath, entry.name);
         totalBytes += await this.getDirSize(runDir);
         runCount++;

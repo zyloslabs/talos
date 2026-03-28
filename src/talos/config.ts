@@ -26,7 +26,7 @@ export type VectorDbConfig = z.infer<typeof vectorDbConfigSchema>;
 
 export const embeddingConfigSchema = z.object({
   /** Embedding provider */
-  provider: z.enum(["openai", "local"]).default("openai"),
+  provider: z.enum(["openai", "local", "github-models"]).default("github-models"),
   /** Model name */
   model: z.string().default("text-embedding-3-small"),
   /** Embedding dimensions */

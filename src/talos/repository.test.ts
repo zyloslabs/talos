@@ -1088,4 +1088,243 @@ describe("TalosRepository", () => {
       expect(tables.map((t) => t.name)).toContain("talos_app_intelligence");
     });
   });
+
+  // ── Untested methods coverage ──────────────────────────────────────────────
+
+  describe("getApplicationByName", () => {
+    it("returns application when found by name", () => {
+      repo.createApplication({ name: "Named App", baseUrl: "https://named.com" });
+      const found = repo.getApplicationByName("Named App");
+      expect(found).not.toBeNull();
+      expect(found?.name).toBe("Named App");
+    });
+
+    it("returns null when name not found", () => {
+      expect(repo.getApplicationByName("Nonexistent App")).toBeNull();
+    });
+  });
+
+  describe("listApplications with status filter", () => {
+    it("returns only apps matching the given status", () => {
+      const app1 = repo.createApplication({ name: "Active App" });
+      const app2 = repo.createApplication({ name: "Archived App" });
+      repo.updateApplication(app1.id, { status: "active" });
+      repo.updateApplication(app2.id, { status: "archived" });
+      const activeApps = repo.listApplications("active");
+      expect(activeApps.some((a) => a.name === "Active App")).toBe(true);
+      expect(activeApps.every((a) => a.status === "active")).toBe(true);
+    });
+  });
+
+  describe("updateApplication — all optional fields", () => {
+    it("updates all optional fields at once", () => {
+      const app = repo.createApplication({ name: "Full Update" });
+      const updated = repo.updateApplication(app.id, {
+        description: "Updated description",
+        repositoryUrl: "https://github.com/new/repo",
+        githubPatRef: "vault:new-pat",
+        baseUrl: "https://new.base.url",
+        status: "active",
+        metadata: { key: "value" },
+        mtlsEnabled: true,
+        mtlsConfig: { clientCertVaultRef: "vault:cert", clientKeyVaultRef: "vault:key" },
+      });
+      expect(updated?.description).toBe("Updated description");
+      expect(updated?.repositoryUrl).toBe("https://github.com/new/repo");
+      expect(updated?.mtlsEnabled).toBe(true);
+    });
+
+    it("returns existing when no fields provided", () => {
+      const app = repo.createApplication({ name: "No Change" });
+      const result = repo.updateApplication(app.id, {});
+      expect(result?.name).toBe("No Change");
+    });
+  });
+
+  describe("listRunsByApp", () => {
+    it("lists all test runs for application", () => {
+      const app = repo.createApplication({ name: "Runs App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "ci" });
+      const runs = repo.listRunsByApp(app.id);
+      expect(runs).toHaveLength(2);
+    });
+
+    it("respects limit parameter", () => {
+      const app = repo.createApplication({ name: "Limit App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      for (let i = 0; i < 5; i++) {
+        repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      }
+      const runs = repo.listRunsByApp(app.id, 3);
+      expect(runs).toHaveLength(3);
+    });
+  });
+
+  describe("getTestRun", () => {
+    it("returns test run by ID", () => {
+      const app = repo.createApplication({ name: "App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      const fetched = repo.getTestRun(run.id);
+      expect(fetched?.id).toBe(run.id);
+    });
+
+    it("returns null for unknown ID", () => {
+      expect(repo.getTestRun("nonexistent")).toBeNull();
+    });
+  });
+
+  describe("updateTestRun — all optional fields", () => {
+    it("updates all optional fields", () => {
+      const app = repo.createApplication({ name: "App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      const now = new Date();
+      const updated = repo.updateTestRun(run.id, {
+        status: "failed",
+        durationMs: 1234,
+        errorMessage: "Something broke",
+        errorStack: "at line 1",
+        retryAttempt: 1,
+        startedAt: now,
+        completedAt: now,
+        metadata: { info: "test" },
+      });
+      expect(updated?.status).toBe("failed");
+      expect(updated?.durationMs).toBe(1234);
+      expect(updated?.errorMessage).toBe("Something broke");
+    });
+
+    it("returns existing when no fields provided", () => {
+      const app = repo.createApplication({ name: "App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      const result = repo.updateTestRun(run.id, {});
+      expect(result?.id).toBe(run.id);
+    });
+
+    it("returns null for unknown run", () => {
+      expect(repo.updateTestRun("nonexistent", { status: "passed" })).toBeNull();
+    });
+  });
+
+  describe("getArtifact", () => {
+    it("returns null for unknown ID", () => {
+      expect(repo.getArtifact("nonexistent")).toBeNull();
+    });
+  });
+
+  describe("listRolesByApp", () => {
+    it("lists vault roles ordered by type and name", () => {
+      const app = repo.createApplication({ name: "App" });
+      repo.createVaultRole({
+        applicationId: app.id,
+        name: "Admin",
+        roleType: "admin",
+        usernameRef: "u",
+        passwordRef: "p",
+      });
+      repo.createVaultRole({
+        applicationId: app.id,
+        name: "User",
+        roleType: "user",
+        usernameRef: "u",
+        passwordRef: "p",
+      });
+      const roles = repo.listRolesByApp(app.id);
+      expect(roles).toHaveLength(2);
+    });
+  });
+
+  describe("updateVaultRole", () => {
+    it("updates vault role fields", () => {
+      const app = repo.createApplication({ name: "App" });
+      const role = repo.createVaultRole({
+        applicationId: app.id,
+        name: "Role",
+        roleType: "admin",
+        usernameRef: "v:user",
+        passwordRef: "v:pass",
+      });
+      const updated = repo.updateVaultRole(role.id, {
+        name: "Updated Role",
+        usernameRef: "v:user2",
+        passwordRef: "v:pass2",
+        isActive: false,
+        description: "Updated",
+        additionalRefs: { otherRef: "v:other" },
+        metadata: { version: 2 },
+      });
+      expect(updated?.name).toBe("Updated Role");
+      expect(updated?.isActive).toBe(false);
+    });
+
+    it("returns existing when no fields provided", () => {
+      const app = repo.createApplication({ name: "App" });
+      const role = repo.createVaultRole({
+        applicationId: app.id,
+        name: "Role",
+        roleType: "admin",
+        usernameRef: "u",
+        passwordRef: "p",
+      });
+      const result = repo.updateVaultRole(role.id, {});
+      expect(result?.id).toBe(role.id);
+    });
+
+    it("returns null for unknown role", () => {
+      expect(repo.updateVaultRole("nonexistent", { name: "x" })).toBeNull();
+    });
+  });
+
+  describe("getApplicationStats", () => {
+    it("returns stats with runs", () => {
+      const app = repo.createApplication({ name: "Stats App" });
+      const test = repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+      const passRun = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "ci" });
+      repo.updateTestRun(passRun.id, { status: "passed" });
+
+      const stats = repo.getApplicationStats(app.id);
+      expect(stats.totalTests).toBe(1);
+      expect(stats.totalRuns).toBe(2);
+      expect(stats.passedRuns).toBe(1);
+      expect(stats.lastRunAt).not.toBeNull();
+    });
+
+    it("returns zeros and null for empty application", () => {
+      const app = repo.createApplication({ name: "Empty Stats" });
+      const stats = repo.getApplicationStats(app.id);
+      expect(stats.totalTests).toBe(0);
+      expect(stats.totalRuns).toBe(0);
+      expect(stats.lastRunAt).toBeNull();
+    });
+  });
+
+  describe("getTraceabilityLink", () => {
+    it("returns null for unknown ID", () => {
+      expect(repo.getTraceabilityLink("nonexistent")).toBeNull();
+    });
+
+    it("returns link by ID", () => {
+      const app = repo.createApplication({ name: "App" });
+      const link = repo.createTraceabilityLink({ applicationId: app.id, requirementChunkId: "req-1" });
+      const fetched = repo.getTraceabilityLink(link.id);
+      expect(fetched?.id).toBe(link.id);
+    });
+  });
+
+  describe("listTestsByApp with status filter", () => {
+    it("filters tests by status", () => {
+      const app = repo.createApplication({ name: "Filter App" });
+      const t1 = repo.createTest({ applicationId: app.id, name: "Draft", code: "test()", type: "e2e" });
+      const t2 = repo.createTest({ applicationId: app.id, name: "Active", code: "test()", type: "e2e" });
+      repo.updateTest(t2.id, { status: "active" });
+      const drafts = repo.getTestsByApplication(app.id, "draft");
+      expect(drafts.some((t) => t.id === t1.id)).toBe(true);
+      expect(drafts.every((t) => t.status === "draft")).toBe(true);
+    });
+  });
 });

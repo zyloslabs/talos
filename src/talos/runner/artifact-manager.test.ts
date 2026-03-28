@@ -36,7 +36,11 @@ describe("ArtifactManager", () => {
   });
 
   afterEach(async () => {
-    try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch { /* */ }
+    try {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* */
+    }
   });
 
   it("initialize creates base directory", async () => {
@@ -45,7 +49,11 @@ describe("ArtifactManager", () => {
   });
 
   it("save writes file and creates DB record", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -64,7 +72,11 @@ describe("ArtifactManager", () => {
   });
 
   it("saveScreenshot saves with correct type", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -73,7 +85,11 @@ describe("ArtifactManager", () => {
   });
 
   it("saveLog saves text content", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -83,7 +99,11 @@ describe("ArtifactManager", () => {
   });
 
   it("getContent retrieves saved content", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -100,17 +120,30 @@ describe("ArtifactManager", () => {
   });
 
   it("getFullPath returns absolute path", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
-    const artifact = await manager.save({ testRunId: run.id, type: "screenshot", content: Buffer.from("x"), fileName: "s.png" });
+    const artifact = await manager.save({
+      testRunId: run.id,
+      type: "screenshot",
+      content: Buffer.from("x"),
+      fileName: "s.png",
+    });
     const fullPath = manager.getFullPath(artifact);
     expect(path.isAbsolute(fullPath)).toBe(true);
   });
 
   it("deleteByRun removes run directory", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -122,7 +155,11 @@ describe("ArtifactManager", () => {
   });
 
   it("getStorageUsage returns stats", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -145,8 +182,50 @@ describe("ArtifactManager", () => {
     expect(result.deleted).toBeGreaterThanOrEqual(1);
   });
 
+  it("cleanup skips recent directories and files in basePath", async () => {
+    // Create a recent run directory (mtime = now, not old)
+    const recentRunDir = path.join(tmpDir, "recent-run");
+    await fs.mkdir(path.join(recentRunDir, "screenshot"), { recursive: true });
+    await fs.writeFile(path.join(recentRunDir, "screenshot", "y.png"), "img");
+    // Do NOT change mtime — it's recent, should be skipped
+
+    // Create a plain file directly in basePath (non-directory entry)
+    await fs.writeFile(path.join(tmpDir, "stray-file.txt"), "stray");
+
+    const result = await manager.cleanup();
+    // Recent dir should NOT be deleted
+    expect(result.deleted).toBe(0);
+
+    // Confirm recent dir still exists
+    await expect(fs.stat(recentRunDir)).resolves.toBeDefined();
+  });
+
+  it("getStorageUsage skips non-directory entries in basePath", async () => {
+    // Create a run directory with a log file
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
+    const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
+    const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
+    await manager.save({ testRunId: run.id, type: "log", content: Buffer.from("log"), fileName: "log.txt" });
+
+    // Place a plain file directly in basePath — should be skipped
+    await fs.writeFile(path.join(tmpDir, "orphan.txt"), "orphan data");
+
+    const usage = await manager.getStorageUsage();
+    // runCount should only count actual run directories, not the orphan file
+    expect(usage.runCount).toBe(1);
+    expect(usage.totalBytes).toBeGreaterThan(0);
+  });
+
   it("saveScreenshot auto-appends .png when name lacks the extension", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -157,7 +236,11 @@ describe("ArtifactManager", () => {
   });
 
   it("saveVideo saves video artifact from path", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
@@ -170,12 +253,21 @@ describe("ArtifactManager", () => {
   });
 
   it("getContent returns null when artifact file is missing from disk", async () => {
-    const app = repo.createApplication({ name: "A", repositoryUrl: "https://github.com/a/b", baseUrl: "https://a.com" });
+    const app = repo.createApplication({
+      name: "A",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test()", type: "e2e" });
     const run = repo.createTestRun({ testId: test.id, applicationId: app.id, trigger: "manual" });
 
     // Save artifact, then delete the file
-    const artifact = await manager.save({ testRunId: run.id, type: "screenshot", content: Buffer.from("x"), fileName: "s.png" });
+    const artifact = await manager.save({
+      testRunId: run.id,
+      type: "screenshot",
+      content: Buffer.from("x"),
+      fileName: "s.png",
+    });
     const fullPath = manager.getFullPath(artifact);
     await fs.unlink(fullPath);
 

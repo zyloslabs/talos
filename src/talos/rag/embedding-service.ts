@@ -44,6 +44,9 @@ export class EmbeddingService {
     if (this.config.provider === "openai") {
       return this.embedOpenAI(text);
     }
+    if (this.config.provider === "github-models") {
+      return this.embedGitHubModels(text);
+    }
     throw new Error(`Unsupported embedding provider: ${this.config.provider}`);
   }
 
@@ -53,6 +56,9 @@ export class EmbeddingService {
   async embedBatch(texts: string[]): Promise<BatchEmbeddingResult> {
     if (this.config.provider === "openai") {
       return this.embedBatchOpenAI(texts);
+    }
+    if (this.config.provider === "github-models") {
+      return this.embedBatchGitHubModels(texts);
     }
     throw new Error(`Unsupported embedding provider: ${this.config.provider}`);
   }
@@ -77,6 +83,98 @@ export class EmbeddingService {
 
     const denominator = Math.sqrt(normA) * Math.sqrt(normB);
     return denominator === 0 ? 0 : dotProduct / denominator;
+  }
+
+  // ── GitHub Models Implementation ──────────────────────────────────────────
+
+  private async embedGitHubModels(text: string): Promise<EmbeddingResult> {
+    if (!this.apiKey) {
+      throw new Error("GitHub token (API key) not configured");
+    }
+
+    const response = await fetch("https://models.github.ai/inference/embeddings", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "X-GitHub-Api-Version": "2026-03-10",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/text-embedding-3-small",
+        input: [text],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`GitHub Models embeddings API error: ${response.status} ${error}`);
+    }
+
+    const data = (await response.json()) as {
+      data: Array<{ embedding: number[] }>;
+      model: string;
+      usage: { total_tokens: number };
+    };
+
+    return {
+      embedding: data.data[0].embedding,
+      model: data.model,
+      tokenCount: data.usage.total_tokens,
+    };
+  }
+
+  private async embedBatchGitHubModels(texts: string[]): Promise<BatchEmbeddingResult> {
+    if (!this.apiKey) {
+      throw new Error("GitHub token (API key) not configured");
+    }
+
+    // Split into batches
+    const batches: string[][] = [];
+    for (let i = 0; i < texts.length; i += this.config.batchSize) {
+      batches.push(texts.slice(i, i + this.config.batchSize));
+    }
+
+    const allEmbeddings: number[][] = [];
+    let totalTokens = 0;
+    let model = "";
+
+    for (const batch of batches) {
+      const response = await fetch("https://models.github.ai/inference/embeddings", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "X-GitHub-Api-Version": "2026-03-10",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "openai/text-embedding-3-small",
+          input: batch,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`GitHub Models embeddings API error: ${response.status} ${error}`);
+      }
+
+      const data = (await response.json()) as {
+        data: Array<{ embedding: number[]; index: number }>;
+        model: string;
+        usage: { total_tokens: number };
+      };
+
+      // Sort by index to maintain order
+      const sortedData = data.data.sort((a, b) => a.index - b.index);
+      allEmbeddings.push(...sortedData.map((d) => d.embedding));
+      totalTokens += data.usage.total_tokens;
+      model = data.model;
+    }
+
+    return {
+      embeddings: allEmbeddings,
+      model,
+      totalTokens,
+    };
   }
 
   // ── OpenAI Implementation ───────────────────────────────────────────────────

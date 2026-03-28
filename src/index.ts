@@ -29,6 +29,14 @@ import { createM365Router } from "./api/m365.js";
 import { parseTalosConfig, createDataSourceInputSchema, atlassianConfigInputSchema } from "./talos/config.js";
 import { ExportEngine } from "./talos/export/export-engine.js";
 import { GitHubExportService } from "./talos/export/github-export-service.js";
+import { RagPipeline } from "./talos/rag/rag-pipeline.js";
+import { DiscoveryEngine } from "./talos/discovery/discovery-engine.js";
+import { ArtifactManager } from "./talos/runner/artifact-manager.js";
+import { CredentialInjector } from "./talos/runner/credential-injector.js";
+import { PlaywrightRunner } from "./talos/runner/playwright-runner.js";
+import { TestGenerator } from "./talos/generator/test-generator.js";
+import type { ChunkResult } from "./talos/discovery/file-chunker.js";
+import type { TalosChunk } from "./talos/types.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -63,9 +71,15 @@ const PORT = parseInt(process.env.PORT ?? "3000", 10);
 const DATA_DIR = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
 const DB_PATH = join(DATA_DIR, "talos.db");
 const SESSIONS_DIR = join(DATA_DIR, "sessions");
+const VECTORDB_DIR = join(DATA_DIR, "vectordb");
 
 mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(SESSIONS_DIR, { recursive: true });
+mkdirSync(VECTORDB_DIR, { recursive: true });
+
+// ── Talos Config (hoisted — needed by RAG and engine init) ────────────────────
+
+const talosConfig = parseTalosConfig({});
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
@@ -109,11 +123,144 @@ try {
   console.warn("[talos] CopilotWrapper initialization failed — AI chat will be unavailable");
 }
 
+// ── RAG Infrastructure ────────────────────────────────────────────────────────
+
+let ragPipeline: RagPipeline | undefined;
+let discoveryEngine: DiscoveryEngine | undefined;
+let playwrightRunner: PlaywrightRunner | undefined;
+let testGenerator: TestGenerator | undefined;
+
+// Temporary per-app chunk buffer used by the orchestration pipeline
+const discoveredChunksBuffer = new Map<string, ChunkResult[]>();
+
+const initRag = async () => {
+  const githubToken = copilot ? await (copilot as CopilotWrapperService).getGithubToken() : undefined;
+  if (!githubToken) {
+    console.warn("[RAG] GitHub token not available — RAG features will be disabled");
+    return;
+  }
+  ragPipeline = new RagPipeline({
+    vectorDbConfig: { ...talosConfig.vectorDb, path: VECTORDB_DIR },
+    embeddingConfig: { ...talosConfig.embedding, provider: "github-models" },
+    apiKey: githubToken,
+  });
+
+  await ragPipeline.initialize();
+
+  // DiscoveryEngine wired to store chunks in per-app buffer for pipeline indexing
+  discoveryEngine = new DiscoveryEngine({
+    repository: repo,
+    config: talosConfig.discovery,
+    storeChunks: async (applicationId: string, chunks: TalosChunk[]) => {
+      const existing = discoveredChunksBuffer.get(applicationId) ?? [];
+      discoveredChunksBuffer.set(applicationId, [...existing, ...(chunks as unknown as ChunkResult[])]);
+    },
+  });
+
+  const artifactManager = new ArtifactManager({
+    config: talosConfig.artifacts,
+    repository: repo,
+  });
+  await artifactManager.initialize();
+
+  const credentialInjector = new CredentialInjector({
+    repository: repo,
+    resolveSecret: async (ref: string) => {
+      // Resolve vault secret references from environment variables (fallback stub)
+      const envKey = ref.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase();
+      const value = process.env[envKey];
+      if (!value) throw new Error(`Secret not found: ${ref}`);
+      return value;
+    },
+  });
+
+  playwrightRunner = new PlaywrightRunner({
+    config: talosConfig.runner,
+    repository: repo,
+    artifactManager,
+    credentialInjector,
+  });
+
+  const capturedCopilot = copilot;
+  testGenerator = new TestGenerator({
+    config: talosConfig.generator,
+    repository: repo,
+    ragPipeline,
+    generateWithLLM: async (systemPrompt: string, userPrompt: string): Promise<string> => {
+      if (!capturedCopilot) throw new Error("Copilot not available for test generation");
+      let result = "";
+      for await (const chunk of capturedCopilot.chat(userPrompt, {
+        systemMessage: { mode: "replace", content: systemPrompt },
+      })) {
+        result += chunk;
+      }
+      return result;
+    },
+  });
+
+  console.log("[RAG] Initialized with GitHub Models embeddings provider");
+};
+
+initRag().catch((err) => {
+  console.warn(
+    `[RAG] Initialization failed — RAG features disabled: ${err instanceof Error ? err.message : String(err)}`
+  );
+});
+
+// ── URL Validation ───────────────────────────────────────────────────────────
+
+// When true, skip private/loopback range checks (for local dev). Still requires http/https scheme.
+const ALLOW_PRIVATE_URLS = process.env.TALOS_ALLOW_PRIVATE_URLS === "true";
+
+/**
+ * Validates that a URL is safe to use as a Playwright test target.
+ * Rejects non-http(s) schemes, loopback, RFC-1918, and APIPA addresses.
+ * Set TALOS_ALLOW_PRIVATE_URLS=true to permit private/loopback addresses in dev.
+ */
+function validateBaseUrl(urlStr: string): { valid: boolean; reason?: string } {
+  let url: URL;
+  try {
+    url = new URL(urlStr);
+  } catch {
+    return { valid: false, reason: "Invalid URL format" };
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return { valid: false, reason: "Only http and https URLs are allowed" };
+  }
+
+  if (ALLOW_PRIVATE_URLS) {
+    return { valid: true };
+  }
+
+  const hostname = url.hostname.toLowerCase();
+
+  // Block loopback
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
+    return { valid: false, reason: "Loopback addresses are not allowed" };
+  }
+
+  // Block RFC-1918 private ranges and APIPA (169.254.x.x)
+  const privateRanges = [
+    /^10\.\d+\.\d+\.\d+$/,
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+    /^192\.168\.\d+\.\d+$/,
+    /^169\.254\.\d+\.\d+$/,
+  ];
+
+  if (privateRanges.some((r) => r.test(hostname))) {
+    return { valid: false, reason: "Private network addresses are not allowed" };
+  }
+
+  return { valid: true };
+}
+
 // ── Session Persistence Helpers ───────────────────────────────────────────────
 
 function appendSessionMessage(conversationId: string, message: { role: string; content: string; timestamp: string }) {
   const safeName = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
+  // TODO: add rate limiting per client IP before production deployment
   appendFileSync(filePath, JSON.stringify(message) + "\n", "utf-8");
 }
 
@@ -165,13 +312,26 @@ app.post("/api/talos/applications", (req, res) => {
     res.status(400).json({ error: "name, repositoryUrl, and baseUrl are required" });
     return;
   }
+  const urlCheck = validateBaseUrl(baseUrl);
+  if (!urlCheck.valid) {
+    res.status(400).json({ error: `Invalid baseUrl: ${urlCheck.reason}` });
+    return;
+  }
   const created = repo.createApplication({ name, description, repositoryUrl, baseUrl, githubPatRef });
   io.emit("application:created", created);
   res.status(201).json(created);
 });
 
 app.patch("/api/talos/applications/:id", (req, res) => {
-  const updated = repo.updateApplication(req.params.id, req.body as Parameters<typeof repo.updateApplication>[1]);
+  const body = req.body as Parameters<typeof repo.updateApplication>[1] & { baseUrl?: string };
+  if (body.baseUrl !== undefined) {
+    const urlCheck = validateBaseUrl(body.baseUrl);
+    if (!urlCheck.valid) {
+      res.status(400).json({ error: `Invalid baseUrl: ${urlCheck.reason}` });
+      return;
+    }
+  }
+  const updated = repo.updateApplication(req.params.id, body);
   if (!updated) {
     res.status(404).json({ error: "Not found" });
     return;
@@ -653,6 +813,39 @@ app.post("/api/talos/tests/generate", async (req, res) => {
   io.emit("generation:started", { generationId, applicationId });
 
   try {
+    // ── Path 1: TestGenerator (RAG-backed) ──────────────────────────────────
+    if (testGenerator) {
+      io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 20 });
+      const genResult = await testGenerator.generate({
+        applicationId,
+        request: prompt,
+        name: `Generated: ${prompt.substring(0, 50)}`,
+        tags: ["ai-generated"],
+        framework: "playwright",
+        style: "tdd",
+      });
+      if (genResult.success && genResult.test) {
+        const confidence = genResult.test.generationConfidence ?? 0.85;
+        io.emit("generation:complete", {
+          generationId,
+          testId: genResult.test.id,
+          confidence,
+        });
+        res.status(201).json({
+          id: genResult.test.id,
+          code: genResult.test.code,
+          name: genResult.test.name,
+          confidence,
+        });
+        return;
+      }
+      // Fall through to raw Copilot if TestGenerator failed
+      if (!copilot) {
+        throw new Error(genResult.error ?? "Test generation failed");
+      }
+    }
+
+    // ── Path 2: Raw Copilot (direct LLM, no RAG) ───────────────────────────
     if (!copilot) {
       // Fallback: generate a template test when Copilot is unavailable
       io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 30 });
@@ -764,17 +957,12 @@ function bumpPatch(version: string): string {
   return "1.0.1";
 }
 
-// ── AI Test Explanation (Epic C) ──────────────────────────────────────────────
+// ── Test Explanation (#353) ───────────────────────────────────────────────────
 
 app.post("/api/talos/tests/:id/explain", async (req, res) => {
-  const test = repo.getTest(req.params.id);
-  if (!test) {
-    res.status(404).json({ error: "Test not found" });
-    return;
-  }
+  const { selection } = req.body as { selection?: unknown };
 
-  const { selection } = req.body as { selection?: string };
-
+  // Guard against prompt injection via oversized or malicious selections
   if (selection !== undefined) {
     if (typeof selection !== "string") {
       res.status(400).json({ error: "selection must be a string" });
@@ -786,28 +974,32 @@ app.post("/api/talos/tests/:id/explain", async (req, res) => {
     }
   }
 
-  const codeToExplain = selection ?? test.code;
-
-  if (!copilot) {
-    res.json({ explanation: "AI explanation not available — Copilot is not configured." });
+  const test = repo.getTest(req.params.id);
+  if (!test) {
+    res.status(404).json({ error: "Test not found" });
     return;
   }
 
-  const systemPrompt = `You are a QA expert. Explain what this Playwright test is doing in plain English, suitable for a QA engineer or product owner who doesn't code. Be concise (3-6 sentences). Cover: what feature it tests, what actions it takes, what it asserts. Do not include code in your response.`;
+  const codeToExplain = typeof selection === "string" && selection.length > 0 ? selection : test.code;
 
-  const userPrompt = selection
-    ? `Explain this code selection from a Playwright test:\n\n${codeToExplain}`
-    : `Explain this Playwright test:\n\`\`\`typescript\n${codeToExplain}\n\`\`\``;
+  if (!copilot) {
+    res.json({ explanation: "Copilot SDK is not configured. Go to Admin > Auth to set up authentication." });
+    return;
+  }
 
   try {
+    const systemPrompt =
+      "You are an expert Playwright test explainer. Explain what the provided test code does in clear, concise terms.";
+    const userPrompt = `Explain this Playwright test:\n\`\`\`typescript\n${codeToExplain}\n\`\`\``;
+
     let explanation = "";
     for await (const chunk of copilot.chat(userPrompt, {
       systemMessage: { mode: "replace", content: systemPrompt },
-      conversationId: `explain-${req.params.id}-${Date.now()}`,
     })) {
       explanation += chunk;
     }
-    res.json({ explanation: explanation.trim() });
+
+    res.json({ explanation });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: `Explanation failed: ${errMsg}` });
@@ -860,6 +1052,7 @@ app.get("/api/talos/sessions", (_req, res) => {
 
 app.get("/api/talos/sessions/:id", (req, res) => {
   const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  // codeql[js/path-injection] - safeName is sanitized via replace(/[^a-zA-Z0-9_-]/g, "_")
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
   if (!existsSync(filePath)) {
     res.status(404).json({ error: "Session not found" });
@@ -885,6 +1078,7 @@ app.get("/api/talos/sessions/:id", (req, res) => {
 
 app.delete("/api/talos/sessions/:id", (req, res) => {
   const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+  // codeql[js/path-injection] - safeName is sanitized via replace(/[^a-zA-Z0-9_-]/g, "_")
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
   if (!existsSync(filePath)) {
     res.status(404).json({ error: "Session not found" });
@@ -927,35 +1121,131 @@ async function runOrchestrationPipeline(run: OrchestrationRun, appRecord: Return
     try {
       switch (step.name) {
         case "discover": {
-          const jobId = `discovery-${run.applicationId}-${Date.now()}`;
-          io.emit("discovery:started", { jobId, applicationId: run.applicationId });
-          step.result = { jobId };
+          if (!discoveryEngine) {
+            step.result = { jobId: null, chunks: [], reason: "Discovery engine not configured" };
+            break;
+          }
+          // Clear any previous chunks for this app before discovery
+          discoveredChunksBuffer.delete(run.applicationId);
+
+          const discoveryJob = await discoveryEngine.startDiscovery(appRecord);
+          io.emit("discovery:started", { jobId: discoveryJob.id, applicationId: run.applicationId });
+
+          // Poll until completed or failed (max 10min)
+          const MAX_WAIT_MS = 10 * 60 * 1000;
+          const POLL_INTERVAL_MS = 2000;
+          const pollStart = Date.now();
+          let progress = discoveryEngine.getProgress(discoveryJob.id);
+          while (progress && progress.status !== "completed" && progress.status !== "failed") {
+            if (Date.now() - pollStart > MAX_WAIT_MS) {
+              throw new Error("Discovery timed out after 10 minutes");
+            }
+            await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+            progress = discoveryEngine.getProgress(discoveryJob.id);
+            io.emit("orchestration:discovery-progress", {
+              runId: run.runId,
+              jobId: discoveryJob.id,
+              ...progress,
+            });
+          }
+
+          if (progress?.status === "failed") {
+            throw new Error(progress.errorMessage ?? "Discovery failed");
+          }
+
+          step.result = {
+            jobId: discoveryJob.id,
+            filesDiscovered: progress?.filesDiscovered ?? 0,
+            chunksCreated: progress?.chunksCreated ?? 0,
+            chunks: discoveredChunksBuffer.get(run.applicationId) ?? [],
+          };
           break;
         }
         case "index": {
-          step.result = { indexed: 0, skipped: 0 };
+          const discoverResult = run.steps.find((s) => s.name === "discover")?.result as
+            | { chunks?: ChunkResult[] }
+            | undefined;
+          const chunks = discoverResult?.chunks ?? [];
+          if (!ragPipeline || chunks.length === 0) {
+            step.result = {
+              indexed: 0,
+              skipped: chunks.length,
+              reason: ragPipeline ? "no chunks from discovery" : "RAG not configured",
+            };
+            break;
+          }
+          const indexResult = await ragPipeline.indexChunks(run.applicationId, chunks);
+          step.result = { indexed: indexResult.indexed, skipped: indexResult.skipped };
           break;
         }
         case "generate": {
-          const tests = repo.listTestsByApp(run.applicationId);
-          step.result = { testsGenerated: 0, existingTests: tests.length };
+          if (!testGenerator) {
+            step.result = { testsGenerated: 0, reason: "Test generator not configured" };
+            break;
+          }
+          // Generate one test for the application's main navigation flows
+          const genResult = await testGenerator.generate({
+            applicationId: run.applicationId,
+            request: `Generate a comprehensive ${appRecord.name} smoke test that navigates key user flows`,
+            tags: ["ai-generated", "orchestration"],
+          });
+          if (genResult.success && genResult.test) {
+            io.emit("test:created", genResult.test);
+          }
+          step.result = { testsGenerated: genResult.success ? 1 : 0, error: genResult.error };
           break;
         }
         case "execute": {
           const tests = repo.listTestsByApp(run.applicationId);
-          const results: { testId: string; status: string }[] = [];
+          if (!playwrightRunner || tests.length === 0) {
+            const results: { testId: string; status: string }[] = [];
+            for (const test of tests) {
+              const runRecord = repo.createTestRun({
+                testId: test.id,
+                applicationId: run.applicationId,
+                trigger: "ci",
+                triggeredBy: "ci",
+                browser: "chromium",
+              });
+              results.push({ testId: test.id, status: runRecord.status });
+              io.emit("talos:test-run-update", { id: runRecord.id, status: runRecord.status });
+            }
+            step.result = {
+              runs: results,
+              reason: playwrightRunner ? undefined : "Playwright runner not configured",
+            };
+            break;
+          }
+          const runResults: { testId: string; runId: string; status: string }[] = [];
           for (const test of tests) {
-            const runRecord = repo.createTestRun({
+            const testRunRecord = repo.createTestRun({
               testId: test.id,
               applicationId: run.applicationId,
               trigger: "ci",
               triggeredBy: "ci",
-              browser: "chromium",
+              browser: talosConfig.runner.defaultBrowser,
             });
-            results.push({ testId: test.id, status: runRecord.status });
-            io.emit("talos:test-run-update", { id: runRecord.id, status: runRecord.status });
+            try {
+              const execResult = await playwrightRunner.executeTest(test, testRunRecord, {
+                application: appRecord,
+              });
+              const updated = repo.updateTestRun(testRunRecord.id, {
+                status: execResult.status,
+                completedAt: new Date(),
+                durationMs: execResult.durationMs,
+                errorMessage: execResult.errorMessage,
+                errorStack: execResult.errorStack,
+              });
+              runResults.push({ testId: test.id, runId: testRunRecord.id, status: execResult.status });
+              io.emit("talos:test-run-update", { id: testRunRecord.id, status: updated?.status ?? execResult.status });
+            } catch (execErr) {
+              const errMsg = execErr instanceof Error ? execErr.message : String(execErr);
+              repo.updateTestRun(testRunRecord.id, { status: "failed", errorMessage: errMsg, completedAt: new Date() });
+              runResults.push({ testId: test.id, runId: testRunRecord.id, status: "failed" });
+              io.emit("talos:test-run-update", { id: testRunRecord.id, status: "failed" });
+            }
           }
-          step.result = { runs: results };
+          step.result = { runs: runResults };
           break;
         }
         default:
@@ -1119,10 +1409,6 @@ app.get("/api/talos/stats", (_req, res) => {
     passRate: Math.round(passRate * 100) / 100,
   });
 });
-
-// ── Talos Config ──────────────────────────────────────────────────────────────
-
-const talosConfig = parseTalosConfig({});
 
 // ── Corporate Proxy (#321) ────────────────────────────────────────────────────
 // Apply proxy environment variables from config. These affect globalAgent and
