@@ -43,13 +43,22 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
         setProgress(null);
       }),
     ];
-    return () => { unsubs.forEach((fn) => fn()); };
+    return () => {
+      unsubs.forEach((fn) => fn());
+    };
   }, [step, subscribe]);
 
   const genMutation = useMutation({
     mutationFn: () => generateTest({ applicationId: selectedApp, prompt, model: model || undefined, testType }),
-    onSuccess: (data) => { setGenerated(data); setStep("review"); setProgress(null); },
-    onError: () => { setStep("configure"); setProgress(null); },
+    onSuccess: (data) => {
+      setGenerated(data);
+      setStep("review");
+      setProgress(null);
+    },
+    onError: () => {
+      setStep("configure");
+      setProgress(null);
+    },
   });
 
   const handleGenerate = () => {
@@ -74,12 +83,18 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
 
   const stageLabel = (stage: string) => {
     switch (stage) {
-      case "building-prompt": return "Building prompt with RAG context…";
-      case "calling-llm": return "Calling AI model…";
-      case "generating": return "Generating test code…";
-      case "validating": return "Validating generated code…";
-      case "creating-test": return "Saving test…";
-      default: return "Processing…";
+      case "building-prompt":
+        return "Building prompt with RAG context…";
+      case "calling-llm":
+        return "Calling AI model…";
+      case "generating":
+        return "Generating test code…";
+      case "validating":
+        return "Validating generated code…";
+      case "creating-test":
+        return "Saving test…";
+      default:
+        return "Processing…";
     }
   };
 
@@ -92,14 +107,21 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
             <Wand2 className="h-5 w-5 text-primary" />
             <h2 className="font-semibold">Generate Test with AI</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}><X className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Step Indicator */}
         <div className="flex gap-2 p-4 border-b">
           {(["describe", "configure", "generating", "review"] as WizardStep[]).map((s, i) => (
-            <div key={s} className={`flex items-center gap-1 text-xs ${step === s ? "text-primary font-medium" : "text-muted-foreground"}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${step === s ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+            <div
+              key={s}
+              className={`flex items-center gap-1 text-xs ${step === s ? "text-primary font-medium" : "text-muted-foreground"}`}
+            >
+              <span
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${step === s ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+              >
                 {i + 1}
               </span>
               <span className="capitalize">{s}</span>
@@ -121,7 +143,9 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
                 />
               </div>
               <div className="flex justify-end">
-                <Button onClick={() => setStep("configure")} disabled={!prompt.trim()}>Next</Button>
+                <Button onClick={() => setStep("configure")} disabled={!prompt.trim()}>
+                  Next
+                </Button>
               </div>
             </>
           )}
@@ -138,7 +162,9 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
                   >
                     <option value="">Select application...</option>
                     {(apps as TalosApplication[] | undefined)?.map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -146,7 +172,12 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
                   <label className="text-sm font-medium">Test Type</label>
                   <div className="flex gap-2 mt-1">
                     {["e2e", "smoke", "regression", "accessibility"].map((t) => (
-                      <Button key={t} size="sm" variant={testType === t ? "default" : "outline"} onClick={() => setTestType(t)}>
+                      <Button
+                        key={t}
+                        size="sm"
+                        variant={testType === t ? "default" : "outline"}
+                        onClick={() => setTestType(t)}
+                      >
                         {t}
                       </Button>
                     ))}
@@ -160,8 +191,12 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
                 </div>
               </div>
               <div className="flex justify-between">
-                <Button variant="ghost" onClick={() => setStep("describe")}>Back</Button>
-                <Button onClick={handleGenerate} disabled={!selectedApp}>Generate</Button>
+                <Button variant="ghost" onClick={() => setStep("describe")}>
+                  Back
+                </Button>
+                <Button onClick={handleGenerate} disabled={!selectedApp}>
+                  Generate
+                </Button>
               </div>
             </>
           )}
@@ -191,7 +226,9 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">{generated.name}</h3>
-                  <span className="text-xs text-muted-foreground">Confidence: {Math.round(generated.confidence * 100)}%</span>
+                  <span className="text-xs text-muted-foreground">
+                    Confidence: {Math.round(generated.confidence * 100)}%
+                  </span>
                 </div>
                 <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto max-h-[300px] overflow-y-auto">
                   {generated.code}
@@ -199,12 +236,16 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
               </div>
               <div className="flex justify-between">
                 <Button variant="ghost" onClick={handleReset}>
-                  <RotateCcw className="h-3 w-3 mr-1" />Start Over
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Start Over
                 </Button>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={onClose}>Reject</Button>
+                  <Button variant="outline" onClick={onClose}>
+                    Reject
+                  </Button>
                   <Button onClick={handleAccept}>
-                    <Check className="h-3 w-3 mr-1" />Accept
+                    <Check className="h-3 w-3 mr-1" />
+                    Accept
                   </Button>
                 </div>
               </div>
