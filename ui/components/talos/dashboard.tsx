@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
 import { useState } from "react";
+import { AppIntelligencePanel } from "@/components/talos/app-intelligence-panel";
 import {
   Dialog,
   DialogContent,
@@ -24,16 +25,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  BarChart3,
-  CheckCircle2,
-  Clock,
-  FolderGit2,
-  Plus,
-  RefreshCw,
-  TestTube2,
-  XCircle,
-} from "lucide-react";
+import { BarChart3, CheckCircle2, Clock, FolderGit2, Plus, RefreshCw, TestTube2, XCircle } from "lucide-react";
 
 function StatCard({
   title,
@@ -60,21 +52,13 @@ function StatCard({
   );
 }
 
-function ApplicationCard({
-  app,
-  onScan,
-}: {
-  app: TalosApplication;
-  onScan: (id: string) => void;
-}) {
+function ApplicationCard({ app, onScan }: { app: TalosApplication; onScan: (id: string) => void }) {
   return (
     <Card className="animate-slide-in">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">{app.name}</CardTitle>
-          <Badge variant={app.status === "active" ? "success" : "secondary"}>
-            {app.status}
-          </Badge>
+          <Badge variant={app.status === "active" ? "success" : "secondary"}>{app.status}</Badge>
         </div>
         <CardDescription>{app.description || "No description"}</CardDescription>
       </CardHeader>
@@ -102,7 +86,11 @@ function ApplicationCard({
   );
 }
 
-function AddApplicationDialog({ onAdd }: { onAdd: (data: { name: string; repositoryUrl?: string; baseUrl?: string }) => void }) {
+function AddApplicationDialog({
+  onAdd,
+}: {
+  onAdd: (data: { name: string; repositoryUrl?: string; baseUrl?: string }) => void;
+}) {
   const [name, setName] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
@@ -110,7 +98,11 @@ function AddApplicationDialog({ onAdd }: { onAdd: (data: { name: string; reposit
 
   const handleSubmit = () => {
     if (name.trim()) {
-      onAdd({ name: name.trim(), repositoryUrl: repositoryUrl.trim() || undefined, baseUrl: baseUrl.trim() || undefined });
+      onAdd({
+        name: name.trim(),
+        repositoryUrl: repositoryUrl.trim() || undefined,
+        baseUrl: baseUrl.trim() || undefined,
+      });
       setName("");
       setRepositoryUrl("");
       setBaseUrl("");
@@ -136,12 +128,7 @@ function AddApplicationDialog({ onAdd }: { onAdd: (data: { name: string; reposit
             <label htmlFor="name" className="text-sm font-medium">
               Application Name
             </label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Application"
-            />
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="My Application" />
           </div>
           <div className="space-y-2">
             <label htmlFor="repositoryUrl" className="text-sm font-medium">
@@ -215,9 +202,7 @@ export function Dashboard() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Overview of your test automation environment
-          </p>
+          <p className="text-muted-foreground">Overview of your test automation environment</p>
         </div>
         <AddApplicationDialog onAdd={handleAddApplication} />
       </div>
@@ -229,18 +214,8 @@ export function Dashboard() {
           description="Total registered apps"
           icon={FolderGit2}
         />
-        <StatCard
-          title="Tests"
-          value={displayStats.tests}
-          description="Generated test cases"
-          icon={TestTube2}
-        />
-        <StatCard
-          title="Recent Runs"
-          value={displayStats.recentRuns}
-          description="Last 24 hours"
-          icon={BarChart3}
-        />
+        <StatCard title="Tests" value={displayStats.tests} description="Generated test cases" icon={TestTube2} />
+        <StatCard title="Recent Runs" value={displayStats.recentRuns} description="Last 24 hours" icon={BarChart3} />
         <StatCard
           title="Pass Rate"
           value={`${displayStats.passRate}%`}
@@ -252,18 +227,21 @@ export function Dashboard() {
       <div>
         <h2 className="mb-4 text-xl font-semibold">Applications</h2>
         {apps && apps.length > 0 ? (
-          <div className="test-grid">
+          <div className="space-y-6">
+            <div className="test-grid">
+              {apps.map((app) => (
+                <ApplicationCard key={app.id} app={app} onScan={handleScan} />
+              ))}
+            </div>
             {apps.map((app) => (
-              <ApplicationCard key={app.id} app={app} onScan={handleScan} />
+              <AppIntelligencePanel key={`intel-${app.id}`} appId={app.id} />
             ))}
           </div>
         ) : (
           <Card className="p-12 text-center">
             <FolderGit2 className="mx-auto h-12 w-12 text-muted-foreground" />
             <h3 className="mt-4 text-lg font-semibold">No applications yet</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Get started by adding your first application to test.
-            </p>
+            <p className="mt-2 text-sm text-muted-foreground">Get started by adding your first application to test.</p>
           </Card>
         )}
       </div>

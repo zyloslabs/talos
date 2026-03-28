@@ -230,6 +230,26 @@ Update only when changes affect how a future agent would navigate or build this 
 5. Add inline review comments using `mcp_github_add_comment_to_pending_review`
    - If MCP tool fails, fall back to: `gh pr create` via terminal
 
+### Step 6.5: CI & CodeQL Verification
+
+After the PR is created and pushed, GitHub Actions will run CI checks including CodeQL static analysis. These checks catch vulnerabilities that local tools cannot detect.
+
+1. **Wait for checks to complete**: Poll with `gh pr checks {PR_NUMBER}` every 30 seconds, or use `gh pr checks {PR_NUMBER} --watch`
+2. **Check CodeQL specifically**: Look for `Analyze (javascript-typescript)` and `CodeQL` jobs in the check output
+3. **If CodeQL finds issues**:
+   - Fetch alerts: `gh api repos/{owner}/{repo}/code-scanning/alerts?ref={branch}&state=open` or check for `github-advanced-security` bot comments on the PR
+   - **Do NOT use comment-based suppressions** — `// codeql[js/path-injection]` and similar inline comments are **ineffective**. CodeQL requires actual code fixes:
+     - **Path injection**: `path.resolve()` + `startsWith(allowedBase + "/")` containment
+     - **SSRF**: Validate URLs against hostname allowlist, validate user slugs with strict regex
+     - **Missing rate limiting**: Add `express-rate-limit` middleware
+     - **Incomplete string escaping**: Handle all special characters in the context (HTML, SQL, shell)
+     - **Uncontrolled data in path**: Sanitize + resolve + containment check, never just regex-validate
+   - Fix each finding, run tests, commit, and push
+4. **Verify all checks pass**: `gh pr checks {PR_NUMBER}` must show every job as `pass` (api, ui, CodeQL, Analyze)
+5. **If non-CodeQL checks fail** (lint, test, build): Fix those before proceeding
+
+> **Hard gate**: Do not proceed to Step 7 until ALL CI checks are green. A PR with open CodeQL alerts is not ready for review.
+
 ### Step 7: Handoff
 
 Present to the user:
@@ -237,6 +257,7 @@ Present to the user:
 - **Issues to close** — numbered list
 - **Coverage** — statement/branch/function/line percentages (all must be ≥80%)
 - **Security** — clean scan or findings with status
+- **CI status** — all checks passing (including CodeQL)
 
 Then state:
 > **PR created and self-reviewed. All issues listed for closure. Please review. Type 'Next' when ready for the next epic.**

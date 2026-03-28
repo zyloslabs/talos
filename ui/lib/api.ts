@@ -170,6 +170,23 @@ export const deleteVaultRole = (id: string) => fetchApi<void>(`/api/talos/vault-
 export const triggerDiscovery = (applicationId: string) =>
   fetchApi<{ jobId: string }>(`/api/talos/applications/${applicationId}/discover`, { method: "POST" });
 
+// App Intelligence
+export interface AppIntelligenceReport {
+  id: string;
+  applicationId: string;
+  techStack: { name: string; version?: string; category: string; source: string }[];
+  databases: { type: string; connectionPattern: string; source: string; environment?: string }[];
+  testUsers: { variableName: string; source: string; roleHint?: string }[];
+  documentation: { filePath: string; type: string; title?: string }[];
+  configFiles: { filePath: string; type: string }[];
+  scannedAt: string;
+}
+
+export const getIntelligenceReport = (appId: string) =>
+  fetchApi<AppIntelligenceReport>(`/api/talos/applications/${appId}/intelligence`);
+export const refreshIntelligenceReport = (appId: string) =>
+  fetchApi<AppIntelligenceReport>(`/api/talos/applications/${appId}/intelligence/refresh`, { method: "POST" });
+
 // Stats
 export interface TalosStats {
   applications: number;
@@ -727,5 +744,4 @@ export const exportToGitHub = (
     body: JSON.stringify(body),
   });
 
-export const getExportInfo = (appId: string) =>
-  fetchApi<ExportInfo>(`/api/talos/applications/${appId}/export-info`);
+export const getExportInfo = (appId: string) => fetchApi<ExportInfo>(`/api/talos/applications/${appId}/export-info`);
