@@ -294,7 +294,8 @@ function createTestEnv() {
 
   function appendSessionMessage(convId: string, msg: { role: string; content: string; timestamp: string }) {
     const safeName = convId.replace(/[^a-zA-Z0-9_-]/g, "_");
-    appendFileSync(join(sessionsDir, `${safeName}.jsonl`), JSON.stringify(msg) + "\n", "utf-8");
+    // TODO: add rate limiting per client IP before production deployment
+    appendFileSync(join(sessionsDir, `${safeName}.jsonl`), JSON.stringify(msg) + "\n", "utf-8"); // codeql[js/path-injection]
   }
 
   app.get("/api/talos/sessions", (_req, res) => {
@@ -332,7 +333,7 @@ function createTestEnv() {
 
   app.get("/api/talos/sessions/:id", (req, res) => {
     const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const fp = join(sessionsDir, `${safeName}.jsonl`);
+    const fp = join(sessionsDir, `${safeName}.jsonl`); // codeql[js/path-injection]
     if (!existsSync(fp)) {
       res.status(404).json({ error: "Not found" });
       return;
@@ -354,7 +355,7 @@ function createTestEnv() {
 
   app.delete("/api/talos/sessions/:id", (req, res) => {
     const safeName = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const fp = join(sessionsDir, `${safeName}.jsonl`);
+    const fp = join(sessionsDir, `${safeName}.jsonl`); // codeql[js/path-injection]
     if (!existsSync(fp)) {
       res.status(404).json({ error: "Not found" });
       return;
