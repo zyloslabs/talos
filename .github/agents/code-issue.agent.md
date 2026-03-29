@@ -14,6 +14,7 @@ tools:
   - github/*
   - context7/*
   - chrome-devtools/*
+  - playwright/*
   - cve-search-mcp/*
   - tavily/*
 ---
@@ -36,6 +37,7 @@ You are an Autonomous Senior Developer Agent. You systematically resolve GitHub 
 - Use `#tool:mcp_context7_resolve-library-id` and `#tool:mcp_context7_query-docs` for API and library documentation lookups
 - Use `#tool:mcp_github_issue_read` and other github tools for all GitHub operations (issues, PRs, branches, reviews)
 - Use chrome-devtools tools for UI testing and visual verification when applicable
+- Use playwright tools (`browser_navigate`, `browser_snapshot`, `browser_take_screenshot`, etc.) for live headed browser interaction to verify UI changes
 - **Web search**: prefer `#tool:mcp_tavily_tavily_search` for researching patterns, debugging, and unfamiliar APIs. Fall back to `#tool:fetch_webpage` when Tavily is unavailable or for fetching a specific known URL
 - If GitHub MCP tools fail, fall back to `git` and `gh` CLI commands in terminal
 

@@ -19,7 +19,7 @@ This skill drives the **UI Vision** agent through a structured walkthrough of a 
 
 ## Agent
 
-Execute with the **UI Vision** agent (`ui-vision.agent.md`), which has browser control, Chrome DevTools MCP, and GitHub MCP tools enabled.
+Execute with the **UI Vision** agent (`ui-vision.agent.md`), which has Playwright MCP (real headed Chrome), and GitHub MCP tools enabled.
 
 ## Prerequisites
 
@@ -76,15 +76,15 @@ Before starting, the agent must confirm it has:
    2. Should I use any specific test data for the form fields?
    ```
 3. Verify the target app is reachable:
-   - Use `read_page` or `open_browser_page` to check connectivity
+   - Use `browser_navigate` to check connectivity
    - If the app is down, report it to the user and stop
 
 ### Step 2: LAUNCH
 
-1. Open the browser to the target URL using `open_browser_page`
-2. Take an initial screenshot with `screenshot_page`
-3. Read the page content with `read_page` to establish baseline state
-4. Check the browser console via Chrome DevTools for any pre-existing errors
+1. Navigate to the target URL using `browser_navigate`
+2. Take an initial screenshot with `browser_take_screenshot`
+3. Get an accessibility snapshot with `browser_snapshot` to establish element refs and baseline state
+4. Check the browser console via `browser_console_messages` for any pre-existing errors
 5. Note the initial state in your walkthrough log:
    ```
    ## Walkthrough: {scenario description}
@@ -101,21 +101,26 @@ For each step in the scenario, follow this cycle:
 Before executing, state what you're about to do:
 > "Step 3: Clicking the 'Save Settings' button to submit the form"
 
-#### 3b. Execute
-Use the appropriate browser tool:
-- `click_element` — for buttons, links, tabs, checkboxes, radio buttons
-- `type_in_page` — for text fields, search boxes, text areas
-- `navigate_page` — for URL navigation
-- `hover_element` — for hover-triggered menus, tooltips
-- `handle_dialog` — for browser dialogs (alert, confirm, prompt)
+#### 3b. Snapshot
+**Always call `browser_snapshot` first** to get the current accessibility tree with `ref` attributes. Use these refs to target elements for interaction. Never guess element selectors or refs from previous snapshots — the page state may have changed.
 
-#### 3c. Wait
-Allow the page to settle after the action. Playwright/browser tools auto-wait, but for API-triggered updates:
-- Use `read_page` to check if content has updated
-- Use Chrome DevTools network inspection if waiting for a specific API call
+#### 3c. Execute
+Use the appropriate Playwright MCP tool with the `ref` from the snapshot:
+- `browser_click` — for buttons, links, tabs, checkboxes, radio buttons (pass `ref`)
+- `browser_type` — for text fields, search boxes, text areas (pass `ref` and text)
+- `browser_navigate` — for URL navigation
+- `browser_hover` — for hover-triggered menus, tooltips (pass `ref`)
+- `browser_select_option` — for dropdown selections (pass `ref` and value)
+- `browser_press_key` — for keyboard input (Enter, Tab, Escape)
+- `browser_handle_dialog` — for browser dialogs (alert, confirm, prompt)
 
-#### 3d. Screenshot
-**Always** take a screenshot after each significant action:
+#### 3d. Wait
+Allow the page to settle after the action. Playwright auto-waits for most interactions, but for API-triggered updates:
+- Call `browser_snapshot` again to check if content has updated
+- Use `browser_network_requests` to verify API calls completed
+
+#### 3e. Screenshot
+**Always** take a screenshot with `browser_take_screenshot` after each significant action:
 - Page navigation
 - Form submission
 - Modal/dialog open or close
@@ -123,9 +128,9 @@ Allow the page to settle after the action. Playwright/browser tools auto-wait, b
 - Error state appearance
 - Success confirmation
 
-#### 3e. Validate
+#### 3f. Validate
 Check that the result matches expectations:
-- Use `read_page` to extract text content
+- Use `browser_snapshot` to extract the accessibility tree and text content
 - Compare against expected behavior from the scenario
 - Check for:
   - Correct page title / heading
@@ -135,11 +140,11 @@ Check that the result matches expectations:
   - Navigation to correct URL
   - No layout breakage
 
-#### 3f. Console Check
-Periodically check Chrome DevTools console for:
+#### 3g. Console Check
+After each significant action, check `browser_console_messages` for:
 - JavaScript errors (`Error`, `TypeError`, `ReferenceError`)
 - Unhandled promise rejections
-- Failed network requests (4xx, 5xx)
+- Failed network requests (use `browser_network_requests` for 4xx, 5xx)
 - Deprecation warnings (note but don't flag as bugs)
 
 #### 3g. Bug Logging
@@ -223,11 +228,12 @@ If bugs were found during the walkthrough:
 
 After Code Issue has fixed the bugs and pushed:
 
-1. Refresh the browser or navigate back to the target URL
+1. Navigate back to the target URL using `browser_navigate`
 2. Re-execute **only the steps that had bugs** (not the entire walkthrough)
 3. For each previously-failing step:
-   - Execute the same action
-   - Screenshot the result
+   - Call `browser_snapshot` to get fresh element refs
+   - Execute the same action using Playwright MCP tools
+   - `browser_take_screenshot` the result
    - Validate the fix resolves the reported issue
 4. Report re-test results:
    ```
@@ -263,3 +269,5 @@ When called by the Orchestrator as an optional phase:
 - **Verify persistence** — After saving data, navigate away and come back to confirm it persists
 - **Test error states** — Deliberately trigger errors (bad input, network issues) to verify error handling
 - **Check accessibility** — Note if interactive elements lack labels or focus indicators (flag as Low severity)
+- **Snapshot before every interaction** — Always call `browser_snapshot` to get fresh `ref` attributes. Stale refs from previous snapshots will fail.
+- **Console after every API call** — Use `browser_console_messages` and `browser_network_requests` after form submissions to catch silent failures

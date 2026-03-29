@@ -15,6 +15,7 @@ tools:
   - context7/*
   - cve-search-mcp/*
   - github/*
+  - playwright/*
   - tavily/*
 handoffs:
   - label: Fix Review Comments
