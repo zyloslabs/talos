@@ -12,6 +12,9 @@ coverage/
 # Runtime data directory
 .talos/
 
+# Playwright browser profile (Copilot 365 persistent auth)
+.browser-data/
+
 # Log files
 *.log
 .talos-*.log
