@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **Setup Wizard UX & Discovery** (Epic #412): Comprehensive validation, Socket.IO wiring, and UX polish across the setup wizard.
+  - **#413** — Skip button in Atlassian step now uses `variant="outline"` consistently with all other Skip buttons in the wizard.
+  - **#417** — Register App step: `Create Application` button now requires all three fields (name, repoUrl, baseUrl); inline URL format validation for `repositoryUrl` and `baseUrl` (must start with `http://` or `https://`); inline error display when the create API call fails.
+  - **#414** — Upload Docs step: replaced boolean `isIngesting` with `ingestingCount` counter to correctly handle concurrent multi-file uploads — the Continue button now stays disabled until ALL in-flight ingestion requests complete, not just the last one to finish.
+  - **#415** — Upload Docs step: Continue button label is now context-aware — "Skip This Step →" when no files are uploaded, "Continue (N file(s) uploaded)" when files are done, and a spinner while ingestion is in progress.
+  - **#419** — Discovery step: no longer treats HTTP 200 as "complete". The step now subscribes to Socket.IO events (`discovery:progress`, `discovery:complete`, `discovery:error`) and shows real-time progress (phase, percentage, message). Completion state shows actual file/chunk counts. Events are filtered by `jobId` to avoid cross-app interference. A 5-minute timeout fires if no completion event arrives.
+  - **#416** — Generate Tests step: added "Go to Test Library" navigation button after successful test generation, and a "Skip & Go to Test Library →" link so users can exit the wizard without generating tests.
+
 ### Added
 
 - **Session Mode Orchestration** (Epic #391): Multi-agent orchestration with two execution modes — Session (~2 API calls via SDK subagent delegation) and Task (N+1 parallel background tasks).

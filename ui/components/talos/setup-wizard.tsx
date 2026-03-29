@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSocket } from "@/lib/socket";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +58,7 @@ import {
   Database,
   Plus,
   Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -216,12 +219,17 @@ function RegisterAppStep({
 }) {
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [repoUrlError, setRepoUrlError] = useState<string | null>(null);
   const [branch, setBranch] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
   const [mtlsEnabled, setMtlsEnabled] = useState(false);
   const [mtlsCert, setMtlsCert] = useState("");
   const [mtlsKey, setMtlsKey] = useState("");
   const [mtlsCa, setMtlsCa] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const isValidUrl = (url: string) => url.startsWith("http://") || url.startsWith("https://");
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
 
@@ -229,6 +237,7 @@ function RegisterAppStep({
     mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) =>
       createApplication(data as Partial<TalosApplication>),
     onSuccess: (app) => onComplete(app.id),
+    onError: (error: Error) => setCreateError(error.message || "Failed to create application"),
   });
 
   const handleCreate = () => {
@@ -283,21 +292,37 @@ function RegisterAppStep({
       )}
       <div className="space-y-3">
         <Input placeholder="Application name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input
-          placeholder="Repository URL (https://github.com/...)"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-        />
+        <div className="space-y-1">
+          <Input
+            placeholder="Repository URL (https://github.com/...)"
+            value={repoUrl}
+            onChange={(e) => {
+              setRepoUrl(e.target.value);
+              setRepoUrlError(
+                e.target.value && !isValidUrl(e.target.value) ? "Must start with http:// or https://" : null
+              );
+            }}
+          />
+          {repoUrlError && <p className="text-xs text-red-500">{repoUrlError}</p>}
+        </div>
         <Input
           placeholder="Branch (leave empty for default branch)"
           value={branch}
           onChange={(e) => setBranch(e.target.value)}
         />
-        <Input
-          placeholder="Base URL (https://staging.example.com)"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-        />
+        <div className="space-y-1">
+          <Input
+            placeholder="Base URL (https://staging.example.com)"
+            value={baseUrl}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+              setBaseUrlError(
+                e.target.value && !isValidUrl(e.target.value) ? "Must start with http:// or https://" : null
+              );
+            }}
+          />
+          {baseUrlError && <p className="text-xs text-red-500">{baseUrlError}</p>}
+        </div>
 
         {/* mTLS Toggle (#324) */}
         <div className="rounded-lg border p-4 space-y-3">
@@ -348,10 +373,19 @@ function RegisterAppStep({
           )}
         </div>
 
-        <Button onClick={handleCreate} disabled={!name || createMutation.isPending}>
+        <Button
+          onClick={handleCreate}
+          disabled={!name || !repoUrl || !baseUrl || !!repoUrlError || !!baseUrlError || createMutation.isPending}
+        >
           {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Create Application
         </Button>
+        {createError && (
+          <div className="flex items-center gap-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {createError}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -364,7 +398,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
     { name: string; status: "pending" | "ingesting" | "done" | "error"; chunks?: number }[]
   >([]);
   const [docType, setDocType] = useState<string>("prd");
-  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestingCount, setIngestingCount] = useState(0);
   const [activeTab, setActiveTab] = useState<"local" | "m365">("local");
   const [m365Query, setM365Query] = useState("");
   const [m365Results, setM365Results] = useState<M365SearchResult[]>([]);
@@ -397,7 +431,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
                 : "markdown";
 
           setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "ingesting" } : f)));
-          setIsIngesting(true);
+          setIngestingCount((c) => c + 1);
 
           try {
             const result = await ingestDocument(appId, { content, format, fileName: file.name, docType });
@@ -407,7 +441,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
           } catch {
             setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "error" } : f)));
           } finally {
-            setIsIngesting(false);
+            setIngestingCount((c) => c - 1);
           }
         };
         reader.readAsText(file);
@@ -442,14 +476,19 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
         const ft = result.fileType && result.fileType !== "unknown" ? result.fileType : "docx";
         const docName = result.title || `m365-${Date.now()}`;
         setFiles((prev) => [...prev, { name: docName, status: "ingesting" }]);
-        const fetched = await m365Fetch(result.url, ft);
-        const ingested = await ingestDocument(appId, {
-          content: fetched.content,
-          format: "markdown",
-          fileName: `${docName}.md`,
-          docType,
-        });
-        return { name: docName, chunks: ingested.chunksCreated };
+        setIngestingCount((c) => c + 1);
+        try {
+          const fetched = await m365Fetch(result.url, ft);
+          const ingested = await ingestDocument(appId, {
+            content: fetched.content,
+            format: "markdown",
+            fileName: `${docName}.md`,
+            docType,
+          });
+          return { name: docName, chunks: ingested.chunksCreated };
+        } finally {
+          setIngestingCount((c) => c - 1);
+        }
       })
     );
 
@@ -620,8 +659,23 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
         </div>
       )}
 
-      <Button onClick={onComplete} disabled={isIngesting}>
-        Continue <ChevronRight className="ml-2 h-4 w-4" />
+      <Button onClick={onComplete} disabled={ingestingCount > 0}>
+        {ingestingCount > 0 ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...
+          </>
+        ) : (
+          (() => {
+            const completedCount = files.filter((f) => f.status === "done").length;
+            return completedCount > 0 ? (
+              `Continue (${completedCount} file${completedCount !== 1 ? "s" : ""} uploaded)`
+            ) : (
+              <>
+                Skip This Step <ChevronRight className="ml-2 h-4 w-4" />
+              </>
+            );
+          })()
+        )}
       </Button>
     </div>
   );
@@ -713,33 +767,111 @@ function VaultRolesStep({ appId, onComplete }: { appId: string; onComplete: () =
 
 function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
   const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "running" | "done">("idle");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ phase: string; progress: number; message: string } | null>(null);
+  const [discoveryResult, setDiscoveryResult] = useState<{ filesDiscovered: number; chunksCreated: number } | null>(
+    null
+  );
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { subscribe } = useSocket();
 
   const discoverMutation = useMutation({
     mutationFn: () => triggerDiscovery(appId),
-    onMutate: () => setDiscoveryStatus("running"),
-    onSuccess: () => setDiscoveryStatus("done"),
+    onMutate: () => {
+      setDiscoveryStatus("running");
+      setErrorMsg(null);
+      setProgress(null);
+    },
+    onSuccess: (data) => setJobId(data.jobId),
     onError: () => setDiscoveryStatus("idle"),
   });
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    const timeoutId = setTimeout(
+      () => {
+        setDiscoveryStatus((status) => {
+          if (status === "running") {
+            setErrorMsg("Discovery timed out — the scan may still be running in the background");
+            return "idle";
+          }
+          return status;
+        });
+      },
+      5 * 60 * 1000
+    );
+
+    const unsubProgress = subscribe<{ jobId: string; phase: string; progress: number; message: string }>(
+      "discovery:progress",
+      (data) => {
+        if (data.jobId !== jobId) return;
+        setProgress({ phase: data.phase, progress: data.progress, message: data.message });
+      }
+    );
+
+    const unsubComplete = subscribe<{ jobId: string; filesDiscovered: number; chunksCreated: number }>(
+      "discovery:complete",
+      (data) => {
+        if (data.jobId !== jobId) return;
+        setDiscoveryStatus("done");
+        setDiscoveryResult({ filesDiscovered: data.filesDiscovered, chunksCreated: data.chunksCreated });
+        clearTimeout(timeoutId);
+      }
+    );
+
+    const unsubError = subscribe<{ jobId: string; error: string }>("discovery:error", (data) => {
+      if (data.jobId !== jobId) return;
+      setDiscoveryStatus("idle");
+      setErrorMsg(data.error);
+      clearTimeout(timeoutId);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      unsubProgress();
+      unsubComplete();
+      unsubError();
+    };
+  }, [jobId, subscribe]);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Crawl your repository to index source code for test generation context.
       </p>
+      {errorMsg && (
+        <div className="flex items-center gap-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
       {discoveryStatus === "idle" && (
         <Button onClick={() => discoverMutation.mutate()}>
           <Sparkles className="mr-2 h-4 w-4" /> Start Discovery
         </Button>
       )}
       {discoveryStatus === "running" && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Discovery in progress...
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {progress?.message ?? "Discovery in progress..."}
+          </div>
+          {progress && (
+            <p className="text-xs text-muted-foreground">
+              {progress.phase}
+              {progress.progress > 0 && ` — ${progress.progress}%`}
+            </p>
+          )}
         </div>
       )}
       {discoveryStatus === "done" && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-green-600">
-            <CheckCircle2 className="h-4 w-4" /> Discovery complete
+            <CheckCircle2 className="h-4 w-4" />
+            {discoveryResult
+              ? `Discovery complete — ${discoveryResult.filesDiscovered} files indexed, ${discoveryResult.chunksCreated} chunks created`
+              : "Discovery complete"}
           </div>
           <Button onClick={onComplete}>
             Continue <ChevronRight className="ml-2 h-4 w-4" />
@@ -923,6 +1055,7 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
 // ── Step 7: Generate Tests ────────────────────────────────────────────────────
 
 function GenerateTestsStep({ appId }: { appId: string }) {
+  const router = useRouter();
   const { data: criteria } = useQuery({
     queryKey: ["criteria", appId, "approved"],
     queryFn: () => getCriteria(appId, "approved"),
@@ -988,17 +1121,28 @@ function GenerateTestsStep({ appId }: { appId: string }) {
       </p>
 
       {!isComplete && (
-        <Button onClick={handleGenerateAll} disabled={generating || !criteria?.length}>
-          {generating ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0})...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria
-            </>
-          )}
-        </Button>
+        <div className="space-y-3">
+          <Button onClick={handleGenerateAll} disabled={generating || !criteria?.length}>
+            {generating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0}
+                )...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria
+              </>
+            )}
+          </Button>
+          <div className="pt-1">
+            <button
+              className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              onClick={() => router.push(`/talos/${appId}`)}
+            >
+              Skip &amp; Go to Test Library →
+            </button>
+          </div>
+        </div>
       )}
 
       {isComplete && (
@@ -1010,6 +1154,9 @@ function GenerateTestsStep({ appId }: { appId: string }) {
           <p className="text-sm text-muted-foreground">
             Your tests are now available in the Test Library. Review them, run them, and iterate.
           </p>
+          <Button onClick={() => router.push(`/talos/${appId}`)}>
+            Go to Test Library <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>
@@ -1423,7 +1570,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             "Save & Continue"
           )}
         </Button>
-        <Button variant="ghost" onClick={onComplete}>
+        <Button variant="outline" onClick={onComplete}>
           Skip
         </Button>
       </div>
