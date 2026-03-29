@@ -58,6 +58,15 @@ export type SdkAttachment = {
   content?: string;
 };
 
+export type CustomAgentDefinition = {
+  name: string;
+  displayName: string;
+  description: string;
+  prompt: string;
+  tools?: string[];
+  infer?: boolean;
+};
+
 export type ChatOptions = {
   tools?: ToolDefinition[];
   model?: string;
@@ -66,6 +75,8 @@ export type ChatOptions = {
   reasoningEffort?: ReasoningEffort;
   onToolCall?: (tool: string, args: unknown) => void;
   attachments?: SdkAttachment[];
+  enableSubagents?: boolean;
+  customAgents?: CustomAgentDefinition[];
 };
 
 // ── SDK Session abstraction ──
@@ -110,6 +121,8 @@ export interface CopilotWrapper {
   hasGithubToken(): boolean;
   getGithubToken(): Promise<string | null>;
   reinit(token?: string): Promise<void>;
+  getCustomAgents(): CustomAgentDefinition[];
+  setCustomAgents(agents: CustomAgentDefinition[]): void;
 }
 
 export type CopilotWrapperOptions = {
@@ -214,6 +227,7 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   private sessionCache = new Map<string, CopilotSessionLike>();
   private githubToken?: string;
   private permissionHandler?: PermissionHandler;
+  private customAgentsStore: CustomAgentDefinition[] = [];
   readonly tokenTracker = new TokenTracker();
 
   constructor(options: CopilotWrapperOptions = {}) {
@@ -357,6 +371,8 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
         systemMessage: options?.systemMessage,
         ...(effectiveReasoningEffort ? { reasoningEffort: effectiveReasoningEffort } : {}),
         ...(this.providerConfig ? { provider: this.providerConfig } : {}),
+        ...(options?.enableSubagents ? { enableSubagents: true } : {}),
+        ...(options?.customAgents ? { customAgents: options.customAgents } : {}),
         onPermissionRequest: this.permissionHandler ?? approveAll,
       });
       this.sessionCache.set(conversationId, session);
@@ -500,6 +516,14 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
     this.startFailed = false;
     this.startPromise = undefined;
     this.modelCapabilitiesCache.clear();
+  }
+
+  getCustomAgents(): CustomAgentDefinition[] {
+    return [...this.customAgentsStore];
+  }
+
+  setCustomAgents(agents: CustomAgentDefinition[]): void {
+    this.customAgentsStore = [...agents];
   }
 
   /** @internal Not part of the CopilotWrapper public interface — promote when called through the interface type. */

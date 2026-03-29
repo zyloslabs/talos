@@ -54,6 +54,17 @@ export { CopilotScraper } from "./m365/index.js";
 export { EphemeralStore as M365EphemeralStore } from "./m365/index.js";
 export { parseFile as parseM365File } from "./m365/index.js";
 
+// ── Agent Orchestration Tools ─────────────────────────────────────────────────
+
+export { createOrchestrateAgentsTool } from "./tools/orchestrate-agents.js";
+export { createSpawnAgentTool } from "./tools/spawn-agent.js";
+export {
+  setActiveOrchestrateContext,
+  clearActiveOrchestrateContext,
+  getActiveOrchestrateContext,
+} from "./tools/orchestrate-context.js";
+export type { OrchestrateContext } from "./tools/orchestrate-context.js";
+
 // ── Initialization ────────────────────────────────────────────────────────────
 
 import type Database from "better-sqlite3";
