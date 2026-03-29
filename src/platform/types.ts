@@ -51,6 +51,8 @@ export type UpdatePromptInput = Partial<CreatePromptInput>;
 
 // ── Scheduled Jobs ────────────────────────────────────────────────────────────
 
+export type OrchestrationMode = "task" | "session";
+
 export type ScheduledJob = {
   id: string;
   name: string;
@@ -58,6 +60,7 @@ export type ScheduledJob = {
   cronExpression: string;
   prompt: string;
   enabled: boolean;
+  orchestrationMode: OrchestrationMode;
   lastRunAt: string | null;
   nextRunAt: string | null;
   runCount: number;
@@ -71,6 +74,7 @@ export type CreateJobInput = {
   cronExpression: string;
   prompt: string;
   enabled?: boolean;
+  orchestrationMode?: OrchestrationMode;
 };
 
 export type UpdateJobInput = Partial<CreateJobInput>;
@@ -254,6 +258,7 @@ export type StoredJob = {
   cron_expression: string;
   prompt: string;
   enabled: number;
+  orchestration_mode: string;
   last_run_at: string | null;
   next_run_at: string | null;
   run_count: number;

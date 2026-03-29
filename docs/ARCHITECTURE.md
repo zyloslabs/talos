@@ -27,6 +27,7 @@
   - [Vector Store Schema](#vector-store-schema)
 - [Configuration System](#configuration-system)
 - [MCP Tool Interface](#mcp-tool-interface)
+- [Agent Orchestration](#agent-orchestration)
 - [Data Flow](#data-flow)
   - [Discovery → Index Pipeline](#discovery--index-pipeline)
   - [Test Generation Pipeline](#test-generation-pipeline)
@@ -1048,6 +1049,55 @@ interface ToolDefinition {
 | `talos_update_criteria` | MEDIUM | `id, title?, description?, status?, ...` | Update an existing acceptance criterion |
 | `talos_list_criteria` | LOW | `applicationId, status?, tags?, nfrTags?` | List acceptance criteria with optional filters |
 | `talos_delete_criteria` | HIGH | `id` | Permanently delete an acceptance criterion |
+| `talos-orchestrate-agents` | MEDIUM | `agents[], mode?, aggregation_prompt?, timeout_seconds?` | Orchestrate multiple AI agents (session or task mode) |
+| `talos-spawn-agent` | MEDIUM | `goal, context?, model?, auto_approve_tools?` | Spawn a single AI agent as a background task or session delegate |
+
+---
+
+## Agent Orchestration
+
+Talos supports two modes for multi-agent orchestration:
+
+### Session Mode (~2 API calls)
+
+Uses `@github/copilot-sdk` subagent delegation. A single prompt composed from all agent goals is sent to `copilot.chat()` with `enableSubagents: true` and `customAgents`. The SDK handles sub-agent dispatch internally.
+
+```
+orchestrate-agents(mode: "session")
+  ├─ Compose prompt from all agent goals
+  ├─ copilot.chat(prompt, { enableSubagents: true, customAgents })
+  └─ Return synthesized result
+```
+
+### Task Mode (N+1 API calls)
+
+Fans out individual background tasks via `PlatformRepository.createTask()`. Each task runs independently and is polled for completion.
+
+```
+orchestrate-agents(mode: "task")
+  ├─ Create N tasks via platformRepo.createTask()
+  ├─ Poll tasks until completion or timeout
+  └─ Return aggregated results
+```
+
+### Configuration
+
+```typescript
+// src/talos/config.ts
+orchestration: {
+  defaultMode: "task" | "session"  // default: "task"
+}
+```
+
+### Context Propagation
+
+Module-level setters (`setActiveOrchestrateContext` / `clearActiveOrchestrateContext`) propagate orchestration context to child tools like `spawn-agent`, following the same pattern as openzigs `setActiveChatContext()`.
+
+### Copilot365 Integration
+
+When a Copilot365 MCP server is configured, application creation emits a `copilot365:suggest-research` Socket.IO event. The UI can prompt the user to pull documents from Microsoft 365.
+
+- `GET /api/admin/copilot365/status` — Returns `{ available, serverName, enabled }`
 
 ---
 

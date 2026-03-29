@@ -343,6 +343,15 @@ export const atlassianConfigInputSchema = z.object({
 
 export type AtlassianConfigApiInput = z.infer<typeof atlassianConfigInputSchema>;
 
+// ── Orchestration Config ──────────────────────────────────────────────────
+
+export const orchestrationConfigSchema = z.object({
+  /** Default orchestration mode: "task" fans out N+1 API calls; "session" uses SDK subagent delegation (~2 calls) */
+  defaultMode: z.enum(["task", "session"]).default("task"),
+});
+
+export type OrchestrationConfig = z.infer<typeof orchestrationConfigSchema>;
+
 // ── Corporate Proxy Config ────────────────────────────────────────────────
 
 export const proxyConfigSchema = z.object({
@@ -389,6 +398,8 @@ export const talosConfigSchema = z.object({
   jdbcDataSources: z.array(jdbcDataSourceConfigSchema).default([]),
   /** Atlassian (Jira + Confluence) integration configuration */
   atlassian: atlassianConfigSchema.default(atlassianConfigSchema.parse({})),
+  /** Orchestration configuration (session vs task mode) */
+  orchestration: orchestrationConfigSchema.default(orchestrationConfigSchema.parse({})),
 });
 
 export type TalosConfig = z.infer<typeof talosConfigSchema>;

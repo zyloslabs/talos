@@ -627,4 +627,73 @@ describe("CopilotWrapperService", () => {
     const callArg = (sendAndWaitSpy.mock.calls as unknown as [Record<string, unknown>][])[0]?.[0] ?? {};
     expect("attachments" in callArg).toBe(false);
   });
+
+  // ── enableSubagents / customAgents tests (#392) ──
+
+  it("passes enableSubagents to createSession when specified", async () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of wrapper.chat("Hi", {
+      conversationId: "subagent-test",
+      enableSubagents: true,
+    })) {
+      /* consume */
+    }
+    const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.enableSubagents).toBe(true);
+  });
+
+  it("does not pass enableSubagents when not specified", async () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of wrapper.chat("Hi", { conversationId: "no-subagent-test" })) {
+      /* consume */
+    }
+    const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.enableSubagents).toBeUndefined();
+  });
+
+  it("passes customAgents to createSession when specified", async () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    const customAgents = [
+      { name: "agent-1", displayName: "Agent 1", description: "Test agent", prompt: "Do something" },
+    ];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ of wrapper.chat("Hi", {
+      conversationId: "custom-agents-test",
+      customAgents,
+    })) {
+      /* consume */
+    }
+    const callArgs = (client.createSession as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.customAgents).toEqual(customAgents);
+  });
+
+  it("getCustomAgents returns empty array by default", () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    expect(wrapper.getCustomAgents()).toEqual([]);
+  });
+
+  it("setCustomAgents stores and getCustomAgents retrieves agents", () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    const agents = [
+      { name: "researcher", displayName: "Researcher", description: "Research agent", prompt: "Research" },
+    ];
+    wrapper.setCustomAgents(agents);
+    expect(wrapper.getCustomAgents()).toEqual(agents);
+  });
+
+  it("setCustomAgents creates a defensive copy", () => {
+    const { client } = createMockClient();
+    const wrapper = new CopilotWrapperService({ client });
+    const agents = [{ name: "coder", displayName: "Coder", description: "Coding agent", prompt: "Code" }];
+    wrapper.setCustomAgents(agents);
+    agents.push({ name: "extra", displayName: "Extra", description: "Extra agent", prompt: "Extra" });
+    expect(wrapper.getCustomAgents()).toHaveLength(1);
+  });
 });

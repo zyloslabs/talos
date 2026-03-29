@@ -459,6 +459,7 @@ export interface OrchestrateInput {
   applicationId: string;
   steps: string[];
   config?: Record<string, unknown>;
+  mode?: "task" | "session";
 }
 export interface OrchestrateResult {
   runId: string;
@@ -480,6 +481,14 @@ export interface EnhanceResult {
 }
 export const enhanceText = (input: EnhanceInput) =>
   fetchApi<EnhanceResult>("/api/admin/ai/enhance", { method: "POST", body: JSON.stringify(input) });
+
+// Copilot365 Integration
+export interface Copilot365Status {
+  available: boolean;
+  serverName?: string;
+  enabled?: boolean;
+}
+export const getCopilot365Status = () => fetchApi<Copilot365Status>("/api/admin/copilot365/status");
 
 // Agents
 export interface Agent {
