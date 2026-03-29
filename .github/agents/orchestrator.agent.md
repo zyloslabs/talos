@@ -22,6 +22,7 @@ agents:
   - Code Issue
   - Code Review
   - E2E Test
+  - UI Vision
 ---
 
 # Orchestrator Agent
@@ -41,10 +42,11 @@ Track progress through these phases using `#tool:todo`:
 3. **IMPLEMENT** — Call the Code Issue subagent to implement all issues (≥80% unit test coverage)
 4. **SECURITY AUDIT** — Run CVE dependency audit against the PR's dependency tree
 5. **E2E TEST** — If the PR includes UI changes, call the E2E Test subagent to write Playwright tests
-6. **REVIEW** — Call the Code Review subagent to review the resulting PR
-7. **FIX** — If review finds blocking issues, call Code Issue again to fix them
-8. **RE-REVIEW** — Call Code Review again to verify fixes (max 2 review cycles)
-9. **REPORT** — Summarize results to the user
+6. **UI VISION** — *(user-requested only)* Call the UI Vision subagent for interactive browser walkthrough
+7. **REVIEW** — Call the Code Review subagent to review the resulting PR
+8. **FIX** — If review or UI Vision finds blocking issues, call Code Issue again to fix them
+9. **RE-REVIEW** — Call Code Review again to verify fixes (max 2 review cycles)
+10. **REPORT** — Summarize results to the user
 
 ## Phase Details
 
@@ -123,7 +125,25 @@ If the PR includes UI changes (new pages, component updates, user-facing feature
 
 **Extract from the result**: Test count and acceptance criteria coverage.
 
-### Phase 5: REVIEW
+### Phase 5: UI VISION (user-requested only)
+
+**This phase only runs if the user explicitly asks for it.** Look for signals like:
+- "walk through the UI", "visually test", "check the UI", "use UI Vision"
+- "test it in the browser", "open the app and verify", "do a visual walkthrough"
+
+**Do NOT run this phase automatically.** It requires real browser interaction and may need user input (credentials, test data) mid-walkthrough.
+
+Call the **UI Vision** subagent with `#tool:agent/runSubagent`:
+
+- **agentName**: `UI Vision`
+- **description**: `Visual walkthrough of {scenario} at {URL}`
+- **prompt**: *"Walk through the UI to verify PR #{PR_NUMBER} which implements epic #{EPIC_NUMBER}. Read the ui-vision skill at `.github/skills/ui-vision/SKILL.md` for the full workflow. Target URL: {URL or 'http://localhost:3001'}. Scenario: {user's walkthrough description}. {Include any parameters, credentials, or test data the user provided.} Complete the full walkthrough, collect all bugs with screenshots and console logs. If you need input that hasn't been provided (credentials, test data), ask the user before proceeding. When done, report: steps completed, bugs found (with issue numbers if created), and overall pass/fail status."*
+
+**If bugs are found**: The UI Vision agent will create GitHub issues. Include those issue numbers when calling Code Issue in the FIX phase. After Code Issue pushes fixes, call UI Vision again for re-testing:
+
+- **prompt**: *"Re-test the bugs found during the previous walkthrough on PR #{PR_NUMBER}. The following bugs were reported: {list bug issue numbers and titles}. Fixes have been pushed to the branch. Navigate to {URL} and verify only the previously-failing steps. Report which bugs are fixed and which persist."*
+
+### Phase 6: REVIEW
 
 Call the **Code Review** subagent with `#tool:agent/runSubagent`:
 
@@ -133,7 +153,7 @@ Call the **Code Review** subagent with `#tool:agent/runSubagent`:
 
 **Extract from the result**: The verdict and any blocking issues.
 
-### Phase 6: FIX (conditional)
+### Phase 7: FIX (conditional)
 
 If the review verdict is **REQUEST_CHANGES** or there are blocking issues:
 
@@ -143,11 +163,11 @@ Call the **Code Issue** subagent again:
 - **description**: `Fixing review comments on PR #{N}`
 - **prompt**: *"Fix the review comments on PR #{PR_NUMBER}. Read the resolve-pr-comments skill at `.github/skills/resolve-pr-comments/SKILL.md`. Address all blocking issues: {list issues from review}. Run tests and lint after fixes. Push to the existing branch. When done, confirm the fixes are pushed."*
 
-### Phase 7: RE-REVIEW (conditional)
+### Phase 8: RE-REVIEW (conditional)
 
 If fixes were applied, call **Code Review** one more time with the same PR number. Limit to **2 total review cycles** to avoid infinite loops. If the second review still has blocking issues, report them to the user for manual resolution.
 
-### Phase 8: REPORT
+### Phase 9: REPORT
 
 Present a summary to the user:
 
@@ -177,6 +197,13 @@ Present a summary to the user:
 - Tests written: {count}
 - Acceptance criteria covered: {N}/{total}
 - Unmapped criteria: {list or "None"}
+
+### UI Vision (if requested)
+- Walkthrough: {scenario description}
+- Steps completed: {N}/{total}
+- Bugs found: {count by severity, or "None"}
+- Bugs fixed: {count, or "N/A — no bugs found"}
+- Re-test status: {PASS/FAIL/PARTIAL, or "N/A"}
 
 ### Review
 - Verdict: {APPROVE/COMMENT/REQUEST_CHANGES}
