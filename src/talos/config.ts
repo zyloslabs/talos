@@ -4,6 +4,8 @@
  */
 
 import * as z from "zod";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 // ── Vector Database Config ────────────────────────────────────────────────────
 
@@ -185,9 +187,9 @@ export const m365ConfigSchema = z.object({
   /** Copilot 365 URL */
   url: z.string().default("https://m365.cloud.microsoft/chat/"),
   /** Path to persistent browser session data */
-  browserDataDir: z.string().default("./.browser-data"),
+  browserDataDir: z.string().default(join(homedir(), ".talos", "browser-data")),
   /** Directory for ephemeral downloaded documents */
-  docsDir: z.string().default("./docs"),
+  docsDir: z.string().default(join(homedir(), ".talos", "docs")),
   /** MFA authentication timeout (ms) */
   mfaTimeout: z.number().default(300000),
 });

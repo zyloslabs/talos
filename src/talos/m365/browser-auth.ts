@@ -4,7 +4,8 @@
  */
 
 import { chromium, type BrowserContext, type Page } from "@playwright/test";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { homedir } from "node:os";
 import { access } from "node:fs/promises";
 import { AuthError } from "./types.js";
 
@@ -28,7 +29,7 @@ export class BrowserAuth {
   private readonly proxy: string | undefined;
 
   constructor(options: BrowserAuthOptions = {}) {
-    this.userDataDir = resolve(options.userDataDir ?? "./.browser-data");
+    this.userDataDir = resolve(options.userDataDir ?? join(homedir(), ".talos", "browser-data"));
     this.copilotUrl = options.copilotUrl ?? process.env.COPILOT365_URL ?? DEFAULT_COPILOT_URL;
     this.mfaTimeoutMs = options.mfaTimeoutMs ?? DEFAULT_MFA_TIMEOUT_MS;
     this.proxy = options.proxy ?? process.env.COPILOT365_PROXY ?? process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;

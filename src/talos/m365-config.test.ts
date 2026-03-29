@@ -3,6 +3,8 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { m365ConfigSchema, parseTalosConfig } from "./config.js";
 
 describe("m365ConfigSchema", () => {
@@ -10,8 +12,8 @@ describe("m365ConfigSchema", () => {
     const result = m365ConfigSchema.parse({});
     expect(result.enabled).toBe(false);
     expect(result.url).toBe("https://m365.cloud.microsoft/chat/");
-    expect(result.browserDataDir).toBe("./.browser-data");
-    expect(result.docsDir).toBe("./docs");
+    expect(result.browserDataDir).toBe(join(homedir(), ".talos", "browser-data"));
+    expect(result.docsDir).toBe(join(homedir(), ".talos", "docs"));
     expect(result.mfaTimeout).toBe(300000);
   });
 

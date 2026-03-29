@@ -5,11 +5,12 @@
 
 import { mkdir, writeFile, readdir, readFile, rm, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { homedir } from "node:os";
 
 export class EphemeralStore {
   private readonly docsDir: string;
 
-  constructor(docsDir = "./docs") {
+  constructor(docsDir = join(homedir(), ".talos", "docs")) {
     this.docsDir = resolve(docsDir);
   }
 
