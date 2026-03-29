@@ -21,6 +21,7 @@ import { createAdminRouter } from "./api/admin.js";
 import { createCriteriaRouter } from "./api/criteria.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
+import { CriteriaGenerator } from "./talos/knowledge/criteria-generator.js";
 import { DocumentIngester, type DocFormat, type DocMetadata } from "./talos/knowledge/document-ingester.js";
 import { BrowserAuth } from "./talos/m365/browser-auth.js";
 import { CopilotScraper } from "./talos/m365/scraper.js";
@@ -143,6 +144,7 @@ let ragPipeline: RagPipeline | undefined;
 let discoveryEngine: DiscoveryEngine | undefined;
 let playwrightRunner: PlaywrightRunner | undefined;
 let testGenerator: TestGenerator | undefined;
+let criteriaGenerator: CriteriaGenerator | undefined;
 
 // Temporary per-app chunk buffer used by the orchestration pipeline
 const discoveredChunksBuffer = new Map<string, ChunkResult[]>();
@@ -211,6 +213,22 @@ const initRag = async () => {
       return result;
     },
   });
+
+  // CriteriaGenerator for AI-powered acceptance criteria generation
+  if (capturedCopilot) {
+    criteriaGenerator = new CriteriaGenerator({
+      ragPipeline,
+      repository: repo,
+      generateWithLLM: async (prompt: string): Promise<string> => {
+        let result = "";
+        for await (const chunk of capturedCopilot.chat(prompt)) {
+          result += chunk;
+        }
+        return result;
+      },
+    });
+    console.log("[criteria] CriteriaGenerator initialized");
+  }
 
   console.log("[RAG] Initialized with GitHub Models embeddings provider");
 };
@@ -385,12 +403,67 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
     return;
   }
 
-  const jobId = `discovery-${req.params.id}-${Date.now()}`;
+  if (!discoveryEngine) {
+    res.status(503).json({ error: "Discovery engine not initialized — check GitHub PAT and RAG configuration" });
+    return;
+  }
 
-  // Emit initial event, then track discovery asynchronously.
-  // A real DiscoveryEngine would be wired here; for now we emit start
-  // and the engine (when configured) will emit progress + completion.
+  const jobId = `discovery-${req.params.id}-${Date.now()}`;
   io.emit("discovery:started", { jobId, applicationId: req.params.id });
+
+  // Start discovery asynchronously — return jobId immediately
+  discoveryEngine
+    .startDiscovery(app_)
+    .then(async (job) => {
+      io.emit("discovery:progress", {
+        jobId,
+        phase: "discovery",
+        progress: 100,
+        message: `Discovered ${job.filesDiscovered} files, created ${job.chunksCreated} chunks`,
+      });
+
+      // Run AppIntelligenceScanner after discovery
+      try {
+        const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
+        const { GitHubMcpClient } = await import("./talos/discovery/github-mcp-client.js");
+
+        let pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
+        if (app_.githubPatRef) {
+          pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
+        }
+
+        if (pat) {
+          const repoMatch =
+            app_.repositoryUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/) ??
+            app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
+          if (repoMatch) {
+            const [, owner, repoName] = repoMatch;
+            const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+            const tree = await client.getTree(app_.branch || "HEAD", true);
+            const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
+            const report = await scanner.scan(tree, (path) => client.getFileText(path));
+            repo.saveIntelligenceReport(report);
+            io.emit("intelligence:scanned", { applicationId: app_.id, report });
+          }
+        }
+      } catch (scanErr) {
+        console.warn(
+          `[discovery] Intelligence scan failed for ${app_.id}:`,
+          scanErr instanceof Error ? scanErr.message : String(scanErr)
+        );
+      }
+
+      io.emit("discovery:complete", {
+        jobId,
+        filesDiscovered: job.filesDiscovered,
+        chunksCreated: job.chunksCreated,
+      });
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[discovery] Failed for ${app_.id}:`, message);
+      io.emit("discovery:error", { jobId, error: message });
+    });
 
   res.json({ jobId });
 });
@@ -885,7 +958,7 @@ app.post("/api/talos/applications/:appId/ingest", async (req, res) => {
 
 // ── Criteria API ──────────────────────────────────────────────────────────────
 
-app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo }));
+app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, criteriaGenerator }));
 
 // ── Test Generation (#220) ────────────────────────────────────────────────────
 

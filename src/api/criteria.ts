@@ -34,18 +34,20 @@ const CreateCriteriaSchema = z.object({
   tags: z.array(z.string()).default([]),
 });
 
-const UpdateCriteriaSchema = z.object({
-  requirementChunkId: z.string().optional(),
-  title: z.string().min(1).max(500).optional(),
-  description: z.string().max(5000).optional(),
-  scenarios: z.array(ScenarioSchema).optional(),
-  preconditions: z.array(z.string()).optional(),
-  dataRequirements: z.array(z.string()).optional(),
-  nfrTags: z.array(z.string()).optional(),
-  status: z.enum(["draft", "approved", "implemented", "deprecated"]).optional(),
-  confidence: z.number().min(0).max(1).optional(),
-  tags: z.array(z.string()).optional(),
-}).strict();
+const UpdateCriteriaSchema = z
+  .object({
+    requirementChunkId: z.string().optional(),
+    title: z.string().min(1).max(500).optional(),
+    description: z.string().max(5000).optional(),
+    scenarios: z.array(ScenarioSchema).optional(),
+    preconditions: z.array(z.string()).optional(),
+    dataRequirements: z.array(z.string()).optional(),
+    nfrTags: z.array(z.string()).optional(),
+    status: z.enum(["draft", "approved", "implemented", "deprecated"]).optional(),
+    confidence: z.number().min(0).max(1).optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict();
 
 const GenerateSchema = z.object({
   requirementFilter: z.string().optional(),
@@ -74,9 +76,10 @@ export function createCriteriaRouter({ repository, criteriaGenerator }: Criteria
     const tags = req.query.tags ? String(req.query.tags).split(",") : undefined;
 
     const validStatuses = ["draft", "approved", "implemented", "deprecated"] as const;
-    const statusFilter = status && validStatuses.includes(status as typeof validStatuses[number])
-      ? (status as typeof validStatuses[number])
-      : undefined;
+    const statusFilter =
+      status && validStatuses.includes(status as (typeof validStatuses)[number])
+        ? (status as (typeof validStatuses)[number])
+        : undefined;
 
     const criteria = repository.listAcceptanceCriteria(appId, {
       status: statusFilter,
@@ -136,7 +139,12 @@ export function createCriteriaRouter({ repository, criteriaGenerator }: Criteria
 
   router.post("/:appId/generate", async (req: Request, res: Response) => {
     if (!criteriaGenerator) {
-      res.status(503).json({ error: "Criteria generator not configured" });
+      res
+        .status(503)
+        .json({
+          error:
+            "AI features require Copilot authentication. Please configure your Copilot token in Admin > Auth settings.",
+        });
       return;
     }
 
@@ -160,7 +168,12 @@ export function createCriteriaRouter({ repository, criteriaGenerator }: Criteria
 
   router.post("/:appId/suggest", async (req: Request, res: Response) => {
     if (!criteriaGenerator) {
-      res.status(503).json({ error: "Criteria generator not configured" });
+      res
+        .status(503)
+        .json({
+          error:
+            "AI features require Copilot authentication. Please configure your Copilot token in Admin > Auth settings.",
+        });
       return;
     }
 
