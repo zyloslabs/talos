@@ -13,6 +13,8 @@ export type TalosApplication = {
   name: string;
   description: string;
   repositoryUrl: string;
+  /** Git branch to target (defaults to the repository's default branch) */
+  branch: string;
   /** GitHub PAT reference in vault (e.g., "vault:github-pat-myapp") */
   githubPatRef: string | null;
   baseUrl: string;
@@ -42,6 +44,7 @@ export type CreateApplicationInput = {
   name: string;
   description?: string;
   repositoryUrl?: string;
+  branch?: string;
   githubPatRef?: string;
   baseUrl?: string;
   mtlsEnabled?: boolean;
@@ -55,6 +58,7 @@ export type UpdateApplicationInput = Partial<
     | "name"
     | "description"
     | "repositoryUrl"
+    | "branch"
     | "githubPatRef"
     | "baseUrl"
     | "status"
@@ -433,6 +437,7 @@ export type StoredApplication = {
   name: string;
   description: string;
   repository_url: string;
+  branch: string;
   github_pat_ref: string | null;
   base_url: string;
   status: string;

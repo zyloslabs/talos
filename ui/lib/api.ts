@@ -9,6 +9,7 @@ export interface TalosApplication {
   name: string;
   description: string;
   repositoryUrl: string;
+  branch: string;
   githubPatRef: string | null;
   baseUrl: string;
   status: "active" | "archived" | "pending";

@@ -31,11 +31,7 @@ export class BrowserAuth {
     this.userDataDir = resolve(options.userDataDir ?? "./.browser-data");
     this.copilotUrl = options.copilotUrl ?? process.env.COPILOT365_URL ?? DEFAULT_COPILOT_URL;
     this.mfaTimeoutMs = options.mfaTimeoutMs ?? DEFAULT_MFA_TIMEOUT_MS;
-    this.proxy =
-      options.proxy ??
-      process.env.COPILOT365_PROXY ??
-      process.env.HTTPS_PROXY ??
-      process.env.HTTP_PROXY;
+    this.proxy = options.proxy ?? process.env.COPILOT365_PROXY ?? process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
   }
 
   getUserDataDir(): string {
@@ -94,13 +90,13 @@ export class BrowserAuth {
     try {
       await this.page.waitForURL(
         (url: URL) => !this.isLoginUrl(url.toString()) && url.toString().includes(new URL(this.copilotUrl).hostname),
-        { timeout: this.mfaTimeoutMs },
+        { timeout: this.mfaTimeoutMs }
       );
     } catch {
       await this.close();
       throw new AuthError(
         `MFA authentication timed out after ${this.mfaTimeoutMs / 1000}s. ` +
-          "Please try again and complete the MFA prompt in the browser window.",
+          "Please try again and complete the MFA prompt in the browser window."
       );
     }
 

@@ -12,16 +12,7 @@ import { dirname } from "node:path";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const SENSITIVE_PATTERNS = [
-  "SECRET",
-  "TOKEN",
-  "KEY",
-  "PASSWORD",
-  "PAT",
-  "CREDENTIAL",
-  "API_KEY",
-  "PRIVATE",
-];
+const SENSITIVE_PATTERNS = ["SECRET", "TOKEN", "KEY", "PASSWORD", "PAT", "CREDENTIAL", "API_KEY", "PRIVATE"];
 
 const DANGEROUS_KEYS = new Set([
   "PATH",
@@ -157,7 +148,9 @@ export class EnvManager {
       throw new EnvValidationError(`Invalid key format: "${key}". Keys must match [A-Za-z_][A-Za-z0-9_]*`);
     }
     if (DANGEROUS_KEYS.has(key.toUpperCase())) {
-      throw new EnvValidationError(`Dangerous key rejected: "${key}". System environment variables cannot be modified.`);
+      throw new EnvValidationError(
+        `Dangerous key rejected: "${key}". System environment variables cannot be modified.`
+      );
     }
 
     const dir = dirname(this.filePath);

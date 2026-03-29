@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   getApplications,
+  getApplication,
   createApplication,
   getVaultRoles,
   createVaultRole,
@@ -18,6 +19,7 @@ import {
   suggestCriteria,
   generateTest,
   getTraceabilityReport,
+  getIntelligenceReport,
   ingestDocument,
   m365Search,
   m365Fetch,
@@ -29,6 +31,7 @@ import {
   getAtlassianConfig,
   saveAtlassianConfig,
   testAtlassianConnection,
+  getMcpServers,
   type TalosApplication,
   type AcceptanceCriteria,
   type TraceabilityReport,
@@ -75,13 +78,54 @@ const STEPS = [
 export function SetupWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [appId, setAppId] = useState<string | null>(null);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
   const goNext = useCallback(() => {
+    setCompletedSteps((prev) => {
+      const next = new Set(prev);
+      next.add(currentStep);
+      return next;
+    });
     setCurrentStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }, []);
+  }, [currentStep]);
 
   const goBack = useCallback(() => {
     setCurrentStep((s) => Math.max(s - 1, 0));
+  }, []);
+
+  // When an existing app is selected, detect which steps are done and resume
+  const handleSelectApp = useCallback(async (id: string) => {
+    setAppId(id);
+    const done = new Set<number>();
+    done.add(0); // Step 0 (Register) is always done if we have an app
+
+    try {
+      const [dataSources, atlassianConfig, roles, intelligence, criteria] = await Promise.allSettled([
+        getDataSources(id),
+        getAtlassianConfig(id),
+        getVaultRoles(id),
+        getIntelligenceReport(id),
+        getCriteria(id),
+      ]);
+
+      if (dataSources.status === "fulfilled" && dataSources.value?.length > 0) done.add(1);
+      if (atlassianConfig.status === "fulfilled" && atlassianConfig.value) done.add(2);
+      // Step 3 (upload docs) — we consider it done if discovery has run (docs feed into discovery)
+      if (intelligence.status === "fulfilled" && intelligence.value) done.add(3);
+      if (roles.status === "fulfilled" && roles.value?.length > 0) done.add(4);
+      if (intelligence.status === "fulfilled" && intelligence.value) done.add(5);
+      if (criteria.status === "fulfilled" && criteria.value?.length > 0) done.add(6);
+      if (criteria.status === "fulfilled" && criteria.value?.some((c: AcceptanceCriteria) => c.status === "approved"))
+        done.add(7);
+    } catch {
+      // If any check fails, just start at step 1
+    }
+
+    setCompletedSteps(done);
+
+    // Find the first incomplete step, or go to step 1 if all early steps are done
+    const firstIncomplete = Array.from({ length: STEPS.length }, (_, i) => i).find((i) => !done.has(i));
+    setCurrentStep(firstIncomplete ?? 1);
   }, []);
 
   return (
@@ -91,15 +135,19 @@ export function SetupWizard() {
         {STEPS.map((step, i) => (
           <div key={step.label} className="flex items-center gap-2 flex-1">
             <button
-              onClick={() => i <= currentStep ? setCurrentStep(i) : undefined}
+              onClick={() => (appId || i === 0 ? setCurrentStep(i) : undefined)}
               className={cn(
                 "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors w-full",
                 i === currentStep && "bg-primary text-primary-foreground",
-                i < currentStep && "bg-primary/10 text-primary cursor-pointer",
-                i > currentStep && "bg-muted text-muted-foreground"
+                i !== currentStep && completedSteps.has(i) && "bg-primary/10 text-primary cursor-pointer",
+                i !== currentStep &&
+                  !completedSteps.has(i) &&
+                  appId &&
+                  "bg-muted text-muted-foreground cursor-pointer hover:bg-muted/80",
+                i !== currentStep && !completedSteps.has(i) && !appId && "bg-muted text-muted-foreground"
               )}
             >
-              {i < currentStep ? (
+              {completedSteps.has(i) && i !== currentStep ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
               ) : (
                 <span className="flex h-5 w-5 items-center justify-center rounded-full border text-xs shrink-0">
@@ -119,7 +167,16 @@ export function SetupWizard() {
           <CardDescription>{STEPS[currentStep].description}</CardDescription>
         </CardHeader>
         <CardContent>
-          {currentStep === 0 && <RegisterAppStep onComplete={(id) => { setAppId(id); goNext(); }} />}
+          {currentStep === 0 && (
+            <RegisterAppStep
+              onComplete={(id) => {
+                setAppId(id);
+                setCompletedSteps((prev) => new Set([...prev, 0]));
+                goNext();
+              }}
+              onSelectExisting={handleSelectApp}
+            />
+          )}
           {currentStep === 1 && appId && <DataSourcesStep appId={appId} onComplete={goNext} />}
           {currentStep === 2 && appId && <AtlassianStep appId={appId} onComplete={goNext} />}
           {currentStep === 3 && appId && <UploadDocsStep appId={appId} onComplete={goNext} />}
@@ -150,9 +207,16 @@ export function SetupWizard() {
 
 // ── Step: Register Application (existing) ─────────────────────────────────
 
-function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }) {
+function RegisterAppStep({
+  onComplete,
+  onSelectExisting,
+}: {
+  onComplete: (appId: string) => void;
+  onSelectExisting?: (appId: string) => void;
+}) {
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [branch, setBranch] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [mtlsEnabled, setMtlsEnabled] = useState(false);
   const [mtlsCert, setMtlsCert] = useState("");
@@ -162,12 +226,18 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
 
   const createMutation = useMutation({
-    mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) => createApplication(data as Partial<TalosApplication>),
+    mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) =>
+      createApplication(data as Partial<TalosApplication>),
     onSuccess: (app) => onComplete(app.id),
   });
 
   const handleCreate = () => {
-    const payload: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> } = { name, repositoryUrl: repoUrl, baseUrl };
+    const payload: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> } = {
+      name,
+      repositoryUrl: repoUrl,
+      branch: branch || undefined,
+      baseUrl,
+    };
     if (mtlsEnabled) {
       payload.mtlsEnabled = true;
       payload.mtlsConfig = {
@@ -186,21 +256,48 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
           <p className="text-sm text-muted-foreground">Select an existing application or create a new one:</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {apps.map((app) => (
-              <Button key={app.id} variant="outline" className="justify-start" onClick={() => onComplete(app.id)}>
-                {app.name}
+              <Button
+                key={app.id}
+                variant="outline"
+                className="justify-start text-left"
+                onClick={() => (onSelectExisting ?? onComplete)(app.id)}
+              >
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{app.name}</span>
+                  {app.repositoryUrl && (
+                    <span className="text-xs text-muted-foreground truncate max-w-[200px]">{app.repositoryUrl}</span>
+                  )}
+                </div>
               </Button>
             ))}
           </div>
           <div className="relative my-4">
-            <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-            <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">or create new</span></div>
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">or create new</span>
+            </div>
           </div>
         </div>
       )}
       <div className="space-y-3">
         <Input placeholder="Application name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input placeholder="Repository URL (https://github.com/...)" value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} />
-        <Input placeholder="Base URL (https://staging.example.com)" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
+        <Input
+          placeholder="Repository URL (https://github.com/...)"
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
+        />
+        <Input
+          placeholder="Branch (leave empty for default branch)"
+          value={branch}
+          onChange={(e) => setBranch(e.target.value)}
+        />
+        <Input
+          placeholder="Base URL (https://staging.example.com)"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+        />
 
         {/* mTLS Toggle (#324) */}
         <div className="rounded-lg border p-4 space-y-3">
@@ -215,18 +312,35 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
               aria-checked={mtlsEnabled}
               className={cn(
                 "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-                mtlsEnabled ? "bg-primary" : "bg-input",
+                mtlsEnabled ? "bg-primary" : "bg-input"
               )}
               onClick={() => setMtlsEnabled(!mtlsEnabled)}
             >
-              <span className={cn("pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm transition-transform", mtlsEnabled ? "translate-x-4" : "translate-x-0")} />
+              <span
+                className={cn(
+                  "pointer-events-none block h-4 w-4 rounded-full bg-background shadow-sm transition-transform",
+                  mtlsEnabled ? "translate-x-4" : "translate-x-0"
+                )}
+              />
             </button>
           </div>
           {mtlsEnabled && (
             <div className="space-y-2 pt-1">
-              <Input placeholder="Client Certificate vault ref or path" value={mtlsCert} onChange={(e) => setMtlsCert(e.target.value)} />
-              <Input placeholder="Client Key vault ref or path" value={mtlsKey} onChange={(e) => setMtlsKey(e.target.value)} />
-              <Input placeholder="CA Certificate (optional)" value={mtlsCa} onChange={(e) => setMtlsCa(e.target.value)} />
+              <Input
+                placeholder="Client Certificate vault ref or path"
+                value={mtlsCert}
+                onChange={(e) => setMtlsCert(e.target.value)}
+              />
+              <Input
+                placeholder="Client Key vault ref or path"
+                value={mtlsKey}
+                onChange={(e) => setMtlsKey(e.target.value)}
+              />
+              <Input
+                placeholder="CA Certificate (optional)"
+                value={mtlsCa}
+                onChange={(e) => setMtlsCa(e.target.value)}
+              />
               <p className="text-xs text-muted-foreground">
                 Playwright will use these certificates for mutual TLS authentication when testing this application.
               </p>
@@ -234,10 +348,7 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
           )}
         </div>
 
-        <Button
-          onClick={handleCreate}
-          disabled={!name || createMutation.isPending}
-        >
+        <Button onClick={handleCreate} disabled={!name || createMutation.isPending}>
           {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Create Application
         </Button>
@@ -249,7 +360,9 @@ function RegisterAppStep({ onComplete }: { onComplete: (appId: string) => void }
 // ── Step 2: Upload Requirements Documents ─────────────────────────────────────
 
 function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
-  const [files, setFiles] = useState<{ name: string; status: "pending" | "ingesting" | "done" | "error"; chunks?: number }[]>([]);
+  const [files, setFiles] = useState<
+    { name: string; status: "pending" | "ingesting" | "done" | "error"; chunks?: number }[]
+  >([]);
   const [docType, setDocType] = useState<string>("prd");
   const [isIngesting, setIsIngesting] = useState(false);
   const [activeTab, setActiveTab] = useState<"local" | "m365">("local");
@@ -265,37 +378,43 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
     staleTime: 30_000,
   });
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = e.target.files;
-    if (!selected) return;
-    const newFiles = Array.from(selected).map((f) => ({ name: f.name, status: "pending" as const, file: f }));
-    setFiles((prev) => [...prev, ...newFiles.map(({ name, status }) => ({ name, status }))]);
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selected = e.target.files;
+      if (!selected) return;
+      const newFiles = Array.from(selected).map((f) => ({ name: f.name, status: "pending" as const, file: f }));
+      setFiles((prev) => [...prev, ...newFiles.map(({ name, status }) => ({ name, status }))]);
 
-    for (const { file } of newFiles) {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const content = reader.result as string;
-        const format = file.name.endsWith(".yaml") || file.name.endsWith(".yml")
-          ? "openapi_yaml"
-          : file.name.endsWith(".json")
-          ? "openapi_json"
-          : "markdown";
+      for (const { file } of newFiles) {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          const content = reader.result as string;
+          const format =
+            file.name.endsWith(".yaml") || file.name.endsWith(".yml")
+              ? "openapi_yaml"
+              : file.name.endsWith(".json")
+                ? "openapi_json"
+                : "markdown";
 
-        setFiles((prev) => prev.map((f) => f.name === file.name ? { ...f, status: "ingesting" } : f));
-        setIsIngesting(true);
+          setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "ingesting" } : f)));
+          setIsIngesting(true);
 
-        try {
-          const result = await ingestDocument(appId, { content, format, fileName: file.name, docType });
-          setFiles((prev) => prev.map((f) => f.name === file.name ? { ...f, status: "done", chunks: result.chunksCreated } : f));
-        } catch {
-          setFiles((prev) => prev.map((f) => f.name === file.name ? { ...f, status: "error" } : f));
-        } finally {
-          setIsIngesting(false);
-        }
-      };
-      reader.readAsText(file);
-    }
-  }, [appId, docType]);
+          try {
+            const result = await ingestDocument(appId, { content, format, fileName: file.name, docType });
+            setFiles((prev) =>
+              prev.map((f) => (f.name === file.name ? { ...f, status: "done", chunks: result.chunksCreated } : f))
+            );
+          } catch {
+            setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "error" } : f)));
+          } finally {
+            setIsIngesting(false);
+          }
+        };
+        reader.readAsText(file);
+      }
+    },
+    [appId, docType]
+  );
 
   const handleM365Search = useCallback(async () => {
     if (!m365Query.trim()) return;
@@ -313,7 +432,9 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
 
   const handleM365Fetch = useCallback(async () => {
     setM365Fetching(true);
-    const selected = Array.from(m365Selected).map((i) => m365Results[i]).filter(Boolean);
+    const selected = Array.from(m365Selected)
+      .map((i) => m365Results[i])
+      .filter(Boolean);
 
     // Fetch all selected documents in parallel
     const results = await Promise.allSettled(
@@ -329,16 +450,16 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
           docType,
         });
         return { name: docName, chunks: ingested.chunksCreated };
-      }),
+      })
     );
 
     // Update file statuses based on settled results
     for (const result of results) {
       if (result.status === "fulfilled") {
         const { name, chunks } = result.value;
-        setFiles((prev) => prev.map((f) => f.name === name ? { ...f, status: "done", chunks } : f));
+        setFiles((prev) => prev.map((f) => (f.name === name ? { ...f, status: "done", chunks } : f)));
       } else {
-        setFiles((prev) => prev.map((f) => f.status === "ingesting" ? { ...f, status: "error" } : f));
+        setFiles((prev) => prev.map((f) => (f.status === "ingesting" ? { ...f, status: "error" } : f)));
       }
     }
 
@@ -351,13 +472,19 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
       {/* Tab switcher */}
       <div className="flex gap-1 rounded-lg bg-muted p-1">
         <button
-          className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", activeTab === "local" ? "bg-background shadow-sm" : "text-muted-foreground")}
+          className={cn(
+            "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            activeTab === "local" ? "bg-background shadow-sm" : "text-muted-foreground"
+          )}
           onClick={() => setActiveTab("local")}
         >
           <Upload className="mr-1.5 inline h-3.5 w-3.5" /> Upload Local Files
         </button>
         <button
-          className={cn("flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors", activeTab === "m365" ? "bg-background shadow-sm" : "text-muted-foreground")}
+          className={cn(
+            "flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            activeTab === "m365" ? "bg-background shadow-sm" : "text-muted-foreground"
+          )}
           onClick={() => setActiveTab("m365")}
         >
           <Globe className="mr-1.5 inline h-3.5 w-3.5" /> Search M365 Documents
@@ -367,10 +494,29 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
       {/* M365 Session Status Badge */}
       {activeTab === "m365" && sessionStatus && (
         <div className="flex items-center gap-2">
-          <Badge variant={sessionStatus.status === "active" ? "default" : sessionStatus.status === "disabled" ? "secondary" : "destructive"}>
-            {sessionStatus.status === "active" ? "M365 Connected" : sessionStatus.status === "disabled" ? "M365 Disabled" : "M365 " + sessionStatus.status}
+          <Badge
+            variant={
+              sessionStatus.status === "active"
+                ? "default"
+                : sessionStatus.status === "disabled"
+                  ? "secondary"
+                  : "destructive"
+            }
+          >
+            {sessionStatus.status === "active"
+              ? "M365 Connected"
+              : sessionStatus.status === "disabled"
+                ? "M365 Disabled"
+                : "M365 " + sessionStatus.status}
           </Badge>
-          {sessionStatus.message && <span className="text-xs text-muted-foreground">{sessionStatus.message}</span>}
+          {sessionStatus.status === "disabled" ? (
+            <span className="text-xs text-muted-foreground">
+              Set <code className="rounded bg-muted px-1 py-0.5">M365_ENABLED=true</code> in Admin &gt; Environment
+              Variables and restart the server.
+            </span>
+          ) : (
+            sessionStatus.message && <span className="text-xs text-muted-foreground">{sessionStatus.message}</span>
+          )}
         </div>
       )}
 
@@ -393,7 +539,9 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
           <label className="cursor-pointer">
             <input type="file" className="hidden" accept=".md,.yaml,.yml,.json" multiple onChange={handleFileSelect} />
             <Button asChild variant="outline">
-              <span><Upload className="mr-2 h-4 w-4" /> Select Files</span>
+              <span>
+                <Upload className="mr-2 h-4 w-4" /> Select Files
+              </span>
             </Button>
           </label>
         )}
@@ -416,7 +564,10 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
           {m365Results.length > 0 && (
             <div className="space-y-2 max-h-60 overflow-y-auto">
               {m365Results.map((r, i) => (
-                <label key={i} className="flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50">
+                <label
+                  key={i}
+                  className="flex items-start gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-muted/50"
+                >
                   <input
                     type="checkbox"
                     className="mt-1"
@@ -430,7 +581,11 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{r.title}</div>
                     <div className="text-xs text-muted-foreground line-clamp-2">{r.snippet}</div>
-                    {r.fileType && r.fileType !== "unknown" && <Badge variant="outline" className="mt-1 text-xs">{r.fileType.toUpperCase()}</Badge>}
+                    {r.fileType && r.fileType !== "unknown" && (
+                      <Badge variant="outline" className="mt-1 text-xs">
+                        {r.fileType.toUpperCase()}
+                      </Badge>
+                    )}
                   </div>
                 </label>
               ))}
@@ -526,11 +681,23 @@ function VaultRolesStep({ appId, onComplete }: { appId: string; onComplete: () =
           <option value="service">Service</option>
           <option value="user">User</option>
         </select>
-        <Input placeholder="Username ref (e.g. vault:admin-user)" value={usernameRef} onChange={(e) => setUsernameRef(e.target.value)} />
-        <Input placeholder="Password ref (e.g. vault:admin-pass)" value={passwordRef} onChange={(e) => setPasswordRef(e.target.value)} />
+        <Input
+          placeholder="Username ref (e.g. vault:admin-user)"
+          value={usernameRef}
+          onChange={(e) => setUsernameRef(e.target.value)}
+        />
+        <Input
+          placeholder="Password ref (e.g. vault:admin-pass)"
+          value={passwordRef}
+          onChange={(e) => setPasswordRef(e.target.value)}
+        />
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" onClick={() => createMutation.mutate()} disabled={!roleName || createMutation.isPending}>
+        <Button
+          variant="outline"
+          onClick={() => createMutation.mutate()}
+          disabled={!roleName || createMutation.isPending}
+        >
           {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Add Role
         </Button>
@@ -657,7 +824,12 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
     },
   });
 
-  if (isLoading) return <div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading criteria...</div>;
+  if (isLoading)
+    return (
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading criteria...
+      </div>
+    );
 
   return (
     <div className="space-y-4">
@@ -674,7 +846,11 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
           onClick={() => suggestMutation.mutate(suggestDesc)}
           disabled={!suggestDesc || suggestMutation.isPending}
         >
-          {suggestMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+          {suggestMutation.isPending ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Sparkles className="mr-2 h-4 w-4" />
+          )}
           AI Suggest
         </Button>
       </div>
@@ -690,7 +866,11 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
                   <Badge variant={c.confidence >= 0.8 ? "success" : c.confidence >= 0.5 ? "warning" : "destructive"}>
                     {(c.confidence * 100).toFixed(0)}%
                   </Badge>
-                  <Badge variant={c.status === "approved" ? "success" : c.status === "deprecated" ? "destructive" : "secondary"}>
+                  <Badge
+                    variant={
+                      c.status === "approved" ? "success" : c.status === "deprecated" ? "destructive" : "secondary"
+                    }
+                  >
                     {c.status}
                   </Badge>
                 </div>
@@ -700,9 +880,15 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
                 <div className="space-y-1 text-xs font-mono bg-muted rounded p-2">
                   {c.scenarios.map((s, i) => (
                     <div key={i}>
-                      <div><span className="text-green-600 font-bold">Given</span> {s.given}</div>
-                      <div><span className="text-blue-600 font-bold">When</span> {s.when}</div>
-                      <div><span className="text-purple-600 font-bold">Then</span> {s.then}</div>
+                      <div>
+                        <span className="text-green-600 font-bold">Given</span> {s.given}
+                      </div>
+                      <div>
+                        <span className="text-blue-600 font-bold">When</span> {s.when}
+                      </div>
+                      <div>
+                        <span className="text-purple-600 font-bold">Then</span> {s.then}
+                      </div>
                       {i < c.scenarios.length - 1 && <hr className="my-1 border-dashed" />}
                     </div>
                   ))}
@@ -722,7 +908,9 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
           ))}
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No criteria found. Use AI Suggest to create one, or go back and generate criteria.</p>
+        <p className="text-sm text-muted-foreground">
+          No criteria found. Use AI Suggest to create one, or go back and generate criteria.
+        </p>
       )}
 
       <Button onClick={onComplete}>
@@ -802,9 +990,13 @@ function GenerateTestsStep({ appId }: { appId: string }) {
       {!isComplete && (
         <Button onClick={handleGenerateAll} disabled={generating || !criteria?.length}>
           {generating ? (
-            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0})...</>
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0})...
+            </>
           ) : (
-            <><Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria</>
+            <>
+              <Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria
+            </>
           )}
         </Button>
       )}
@@ -860,7 +1052,7 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
   const addDraft = () => setDrafts((prev) => [...prev, emptyDraft()]);
   const removeDraft = (i: number) => setDrafts((prev) => prev.filter((_, idx) => idx !== i));
   const updateDraft = (i: number, field: keyof DataSourceDraft, value: string) => {
-    setDrafts((prev) => prev.map((d, idx) => idx === i ? { ...d, [field]: value } : d));
+    setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)));
   };
 
   const handleSaveAll = async () => {
@@ -876,7 +1068,8 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Add JDBC database data sources for schema-aware test generation. Each data source runs in an isolated Docker container with read-only access.
+        Add JDBC database data sources for schema-aware test generation. Each data source runs in an isolated Docker
+        container with read-only access.
       </p>
 
       {existing && existing.length > 0 && (
@@ -902,7 +1095,11 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
               </Button>
             )}
           </div>
-          <Input placeholder="Label (e.g., Production Oracle)" value={draft.label} onChange={(e) => updateDraft(i, "label", e.target.value)} />
+          <Input
+            placeholder="Label (e.g., Production Oracle)"
+            value={draft.label}
+            onChange={(e) => updateDraft(i, "label", e.target.value)}
+          />
           <select
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             value={draft.driverType}
@@ -915,9 +1112,21 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
             <option value="sqlite">SQLite</option>
             <option value="other">Other</option>
           </select>
-          <Input placeholder="JDBC URL (jdbc:postgresql://host:5432/db)" value={draft.jdbcUrl} onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)} />
-          <Input placeholder="Username vault ref (vault:db-user)" value={draft.usernameVaultRef} onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)} />
-          <Input placeholder="Password vault ref (vault:db-pass)" value={draft.passwordVaultRef} onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)} />
+          <Input
+            placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
+            value={draft.jdbcUrl}
+            onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
+          />
+          <Input
+            placeholder="Username vault ref (vault:db-user)"
+            value={draft.usernameVaultRef}
+            onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
+          />
+          <Input
+            placeholder="Password vault ref (vault:db-pass)"
+            value={draft.passwordVaultRef}
+            onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
+          />
         </div>
       ))}
 
@@ -928,7 +1137,13 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
       </div>
 
       <Button onClick={handleSaveAll} disabled={saving || !drafts.some((d) => d.label && d.jdbcUrl)}>
-        {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
+        {saving ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+          </>
+        ) : (
+          "Save & Continue"
+        )}
       </Button>
     </div>
   );
@@ -953,6 +1168,60 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [preFilledFrom, setPreFilledFrom] = useState<"saved" | "mcp" | null>(null);
+
+  // Load saved Atlassian config for this app
+  const { data: savedConfig } = useQuery({
+    queryKey: ["atlassian-config", appId],
+    queryFn: () => getAtlassianConfig(appId).catch(() => null),
+  });
+
+  // Auto-detect Atlassian credentials from configured MCP servers
+  const { data: mcpServers } = useQuery({
+    queryKey: ["mcp-servers"],
+    queryFn: getMcpServers,
+  });
+
+  const mcpAtlassian = mcpServers?.find((s) => s.enabled && s.name.toLowerCase().includes("atlassian") && s.env);
+
+  // Pre-fill priority: saved config > MCP server env > empty
+  useEffect(() => {
+    if (preFilledFrom) return;
+
+    // Try saved config first
+    if (savedConfig && savedConfig.jiraUrl) {
+      setDeploymentType(savedConfig.deploymentType ?? "cloud");
+      setJiraUrl(savedConfig.jiraUrl ?? "");
+      setJiraProject(savedConfig.jiraProject ?? "");
+      setJiraUsername(savedConfig.jiraUsernameVaultRef ?? "");
+      setJiraApiToken(savedConfig.jiraApiTokenVaultRef ?? "");
+      setJiraPersonalToken(savedConfig.jiraPersonalTokenVaultRef ?? "");
+      setJiraSslVerify(savedConfig.jiraSslVerify ?? true);
+      setConfluenceUrl(savedConfig.confluenceUrl ?? "");
+      setConfluenceSpacesRaw((savedConfig.confluenceSpaces ?? []).join(", "));
+      setConfluenceUsername(savedConfig.confluenceUsernameVaultRef ?? "");
+      setConfluenceApiToken(savedConfig.confluenceApiTokenVaultRef ?? "");
+      setConfluencePersonalToken(savedConfig.confluencePersonalTokenVaultRef ?? "");
+      setConfluenceSslVerify(savedConfig.confluenceSslVerify ?? true);
+      setPreFilledFrom("saved");
+      return;
+    }
+
+    // Fall back to MCP server env vars
+    if (mcpAtlassian) {
+      const env = mcpAtlassian.env ?? {};
+      if (env.JIRA_URL) setJiraUrl(env.JIRA_URL);
+      const jiraToken = env.JIRA_PERSONAL_TOKEN || env.JIRA_API_TOKEN;
+      const confluenceToken = env.CONFLUENCE_PERSONAL_TOKEN || env.CONFLUENCE_API_TOKEN;
+      if (jiraToken) setJiraPersonalToken(jiraToken);
+      if (env.JIRA_SSL_VERIFY) setJiraSslVerify(env.JIRA_SSL_VERIFY !== "false");
+      if (env.CONFLUENCE_URL) setConfluenceUrl(env.CONFLUENCE_URL);
+      if (confluenceToken) setConfluencePersonalToken(confluenceToken);
+      if (env.CONFLUENCE_SSL_VERIFY) setConfluenceSslVerify(env.CONFLUENCE_SSL_VERIFY !== "false");
+      if (jiraToken || confluenceToken) setDeploymentType("datacenter");
+      setPreFilledFrom("mcp");
+    }
+  }, [savedConfig, mcpAtlassian, preFilledFrom]);
 
   const saveMut = useMutation({
     mutationFn: (data: Partial<TalosAtlassianConfig>) => saveAtlassianConfig(appId, data),
@@ -969,7 +1238,10 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
       jiraPersonalTokenVaultRef: jiraPersonalToken,
       jiraSslVerify,
       confluenceUrl,
-      confluenceSpaces: confluenceSpacesRaw.split(",").map((s) => s.trim()).filter(Boolean),
+      confluenceSpaces: confluenceSpacesRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
       confluenceUsernameVaultRef: confluenceUsername,
       confluenceApiTokenVaultRef: confluenceApiToken,
       confluencePersonalTokenVaultRef: confluencePersonalToken,
@@ -983,6 +1255,25 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
     setTesting(true);
     setTestResult(null);
     try {
+      // Save config first so the test endpoint can find it
+      await saveMut.mutateAsync({
+        deploymentType,
+        jiraUrl,
+        jiraProject,
+        jiraUsernameVaultRef: jiraUsername,
+        jiraApiTokenVaultRef: jiraApiToken,
+        jiraPersonalTokenVaultRef: jiraPersonalToken,
+        jiraSslVerify,
+        confluenceUrl,
+        confluenceSpaces: confluenceSpacesRaw
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        confluenceUsernameVaultRef: confluenceUsername,
+        confluenceApiTokenVaultRef: confluenceApiToken,
+        confluencePersonalTokenVaultRef: confluencePersonalToken,
+        confluenceSslVerify,
+      });
       const result = await testAtlassianConnection(appId);
       setTestResult(result);
     } catch {
@@ -995,25 +1286,73 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Connect to Jira and Confluence to import requirements and acceptance criteria into the RAG knowledge base. This step is optional.
+        Connect to Jira and Confluence to import requirements and acceptance criteria into the RAG knowledge base. This
+        step is optional.
       </p>
 
+      {preFilledFrom === "saved" && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-600/30 bg-blue-950/20 px-4 py-2 text-sm text-blue-400">
+          <Check className="h-4 w-4 shrink-0" />
+          Loaded previously saved Atlassian configuration.
+        </div>
+      )}
+
+      {preFilledFrom === "mcp" && (
+        <div className="flex items-center gap-2 rounded-lg border border-green-600/30 bg-green-950/20 px-4 py-2 text-sm text-green-400">
+          <Check className="h-4 w-4 shrink-0" />
+          Credentials auto-filled from MCP server &quot;{mcpAtlassian?.name}&quot;. Just add a project key and space
+          keys below.
+        </div>
+      )}
+
       <div className="flex gap-2">
-        <Button variant={deploymentType === "cloud" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("cloud")}>Cloud</Button>
-        <Button variant={deploymentType === "datacenter" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("datacenter")}>Data Center</Button>
+        <Button
+          variant={deploymentType === "cloud" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setDeploymentType("cloud")}
+        >
+          Cloud
+        </Button>
+        <Button
+          variant={deploymentType === "datacenter" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setDeploymentType("datacenter")}
+        >
+          Data Center
+        </Button>
       </div>
 
       <div className="rounded-lg border p-4 space-y-3">
         <span className="text-sm font-medium">Jira</span>
-        <Input placeholder="Jira URL (https://your-org.atlassian.net)" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} />
-        <Input placeholder="Project key (e.g., PROJ)" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} />
+        <Input
+          placeholder="Jira URL (https://your-org.atlassian.net)"
+          value={jiraUrl}
+          onChange={(e) => setJiraUrl(e.target.value)}
+        />
+        <Input
+          placeholder="Project key (e.g., PROJ)"
+          value={jiraProject}
+          onChange={(e) => setJiraProject(e.target.value)}
+        />
         {deploymentType === "cloud" ? (
           <>
-            <Input placeholder="Username vault ref" value={jiraUsername} onChange={(e) => setJiraUsername(e.target.value)} />
-            <Input placeholder="API token vault ref" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} />
+            <Input
+              placeholder="Username vault ref"
+              value={jiraUsername}
+              onChange={(e) => setJiraUsername(e.target.value)}
+            />
+            <Input
+              placeholder="API token vault ref"
+              value={jiraApiToken}
+              onChange={(e) => setJiraApiToken(e.target.value)}
+            />
           </>
         ) : (
-          <Input placeholder="Personal access token vault ref" value={jiraPersonalToken} onChange={(e) => setJiraPersonalToken(e.target.value)} />
+          <Input
+            placeholder="Personal access token vault ref"
+            value={jiraPersonalToken}
+            onChange={(e) => setJiraPersonalToken(e.target.value)}
+          />
         )}
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={jiraSslVerify} onChange={(e) => setJiraSslVerify(e.target.checked)} />
@@ -1023,18 +1362,42 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
 
       <div className="rounded-lg border p-4 space-y-3">
         <span className="text-sm font-medium">Confluence</span>
-        <Input placeholder="Confluence URL (https://your-org.atlassian.net/wiki)" value={confluenceUrl} onChange={(e) => setConfluenceUrl(e.target.value)} />
-        <Input placeholder="Space keys (comma-separated: DEV, QA)" value={confluenceSpacesRaw} onChange={(e) => setConfluenceSpacesRaw(e.target.value)} />
+        <Input
+          placeholder="Confluence URL (https://your-org.atlassian.net/wiki)"
+          value={confluenceUrl}
+          onChange={(e) => setConfluenceUrl(e.target.value)}
+        />
+        <Input
+          placeholder="Space keys (comma-separated: DEV, QA)"
+          value={confluenceSpacesRaw}
+          onChange={(e) => setConfluenceSpacesRaw(e.target.value)}
+        />
         {deploymentType === "cloud" ? (
           <>
-            <Input placeholder="Username vault ref" value={confluenceUsername} onChange={(e) => setConfluenceUsername(e.target.value)} />
-            <Input placeholder="API token vault ref" value={confluenceApiToken} onChange={(e) => setConfluenceApiToken(e.target.value)} />
+            <Input
+              placeholder="Username vault ref"
+              value={confluenceUsername}
+              onChange={(e) => setConfluenceUsername(e.target.value)}
+            />
+            <Input
+              placeholder="API token vault ref"
+              value={confluenceApiToken}
+              onChange={(e) => setConfluenceApiToken(e.target.value)}
+            />
           </>
         ) : (
-          <Input placeholder="Personal access token vault ref" value={confluencePersonalToken} onChange={(e) => setConfluencePersonalToken(e.target.value)} />
+          <Input
+            placeholder="Personal access token vault ref"
+            value={confluencePersonalToken}
+            onChange={(e) => setConfluencePersonalToken(e.target.value)}
+          />
         )}
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={confluenceSslVerify} onChange={(e) => setConfluenceSslVerify(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={confluenceSslVerify}
+            onChange={(e) => setConfluenceSslVerify(e.target.checked)}
+          />
           Verify SSL
         </label>
       </div>
@@ -1052,9 +1415,17 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           Test Connection
         </Button>
         <Button onClick={handleSave} disabled={saving}>
-          {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+            </>
+          ) : (
+            "Save & Continue"
+          )}
         </Button>
-        <Button variant="ghost" onClick={onComplete}>Skip</Button>
+        <Button variant="ghost" onClick={onComplete}>
+          Skip
+        </Button>
       </div>
     </div>
   );

@@ -137,8 +137,9 @@ export class DiscoveryEngine {
         clock: this.clock,
       });
 
-      // Get repository tree
-      const tree = await client.getTree("HEAD", true);
+      // Get repository tree (use configured branch or default to HEAD)
+      const ref = application.branch || "HEAD";
+      const tree = await client.getTree(ref, true);
       progress.filesDiscovered = tree.tree.filter((f) => f.type === "file").length;
 
       // Filter files by extension and exclude patterns

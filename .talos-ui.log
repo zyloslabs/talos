@@ -1,8 +1,8 @@
 ▲ Next.js 16.2.1 (Turbopack)
 - Local:         http://localhost:3001
-- Network:       http://192.168.68.62:3001
+- Network:       http://192.168.68.56:3001
 - Environments: .env.local
-✓ Ready in 427ms
+✓ Ready in 380ms
 ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
  We detected multiple lockfiles and selected the directory of /Users/cronin/Development/package-lock.json as the root directory.
  To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
@@ -11,20 +11,25 @@
    * /Users/cronin/Development/talos/pnpm-workspace.yaml
 
 
- GET / 307 in 379ms (next.js: 131ms, application-code: 249ms)
- GET /admin 200 in 295ms (next.js: 27ms, application-code: 268ms)
- GET /admin 200 in 309ms (next.js: 83ms, application-code: 225ms)
- GET /admin 200 in 60ms (next.js: 7ms, application-code: 53ms)
- GET /workbench 200 in 815ms (next.js: 789ms, application-code: 26ms)
- GET /talos 200 in 52ms (next.js: 32ms, application-code: 21ms)
- GET /admin 200 in 35ms (next.js: 7ms, application-code: 28ms)
-✓ Compiled in 533ms
-✓ Compiled in 51ms
-✓ Compiled in 101ms
-✓ Compiled in 37ms
-✓ Compiled in 43ms
-✓ Compiled in 119ms
-✓ Compiled in 54ms
+ GET / 307 in 906ms (next.js: 598ms, application-code: 308ms)
+ GET /admin 200 in 841ms (next.js: 725ms, application-code: 116ms)
+ GET /talos/setup 200 in 51ms (next.js: 28ms, application-code: 23ms)
+Failed to proxy http://localhost:3000/api/talos/m365/search Error: socket hang up
+    at ignore-listed frames {
+  code: 'ECONNRESET'
+}
+Error: socket hang up
+    at ignore-listed frames {
+  code: 'ECONNRESET'
+}
+✓ Compiled in 373ms
+✓ Compiled in 86ms
+✓ Compiled in 26ms
 ✓ Compiled in 28ms
-✓ Compiled in 61ms
-✓ Compiled in 38ms
+✓ Compiled in 19ms
+✓ Compiled in 25ms
+✓ Compiled in 24ms
+✓ Compiled in 34ms
+✓ Compiled in 33ms
+✓ Compiled in 80ms
+✓ Compiled in 176ms

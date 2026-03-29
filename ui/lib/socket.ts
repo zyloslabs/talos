@@ -53,15 +53,12 @@ export function useSocket() {
     };
   }, []);
 
-  const subscribe = useCallback(
-    <T>(event: string, handler: (data: T) => void) => {
-      socketRef.current?.on(event, handler);
-      return () => {
-        socketRef.current?.off(event, handler);
-      };
-    },
-    []
-  );
+  const subscribe = useCallback(<T>(event: string, handler: (data: T) => void) => {
+    socketRef.current?.on(event, handler);
+    return () => {
+      socketRef.current?.off(event, handler);
+    };
+  }, []);
 
   const emit = useCallback((event: string, data: unknown) => {
     socketRef.current?.emit(event, data);

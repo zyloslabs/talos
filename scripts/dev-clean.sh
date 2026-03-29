@@ -79,6 +79,15 @@ done
 
 echo "[clean-start] Starting Talos in dev mode (backend: $BACKEND_PORT, UI: $UI_PORT)..."
 
+# ── Pre-flight: Playwright browsers ──────────────────────────────────────────
+PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/Library/Caches/ms-playwright}"
+if [ ! -d "$PW_CACHE" ] || [ -z "$(ls -A "$PW_CACHE" 2>/dev/null)" ]; then
+  echo "[clean-start] Playwright browsers not found — installing..."
+  npx playwright install --with-deps 2>&1 | tail -5
+else
+  echo "[clean-start] Playwright browsers found at $PW_CACHE"
+fi
+
 # Auto-populate UI .env.local from environment or defaults
 UI_ENV="$PROJECT_ROOT/ui/.env.local"
 TALOS_API_BASE="${TALOS_API_BASE:-http://localhost:$BACKEND_PORT}"

@@ -183,6 +183,15 @@ export function createOrchestrateAgentsTool(deps: OrchestrateAgentsToolDeps): To
         agents: {
           type: "array",
           description: "Array of agent definitions with goal, optional context, and optional model",
+          items: {
+            type: "object",
+            properties: {
+              goal: { type: "string", description: "What the agent should accomplish" },
+              context: { type: "string", description: "Additional context for the agent" },
+              model: { type: "string", description: "Model override for this agent" },
+            },
+            required: ["goal"],
+          },
         },
         aggregation_prompt: {
           type: "string",

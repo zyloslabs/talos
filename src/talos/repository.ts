@@ -71,6 +71,7 @@ const toApplication = (row: StoredApplication): TalosApplication => ({
   name: row.name,
   description: row.description,
   repositoryUrl: row.repository_url,
+  branch: row.branch || "",
   githubPatRef: row.github_pat_ref,
   baseUrl: row.base_url,
   status: row.status as TalosApplicationStatus,
@@ -467,6 +468,9 @@ export class TalosRepository {
     if (!colNames.has("export_repo_url")) {
       this.db.exec(`ALTER TABLE talos_applications ADD COLUMN export_repo_url TEXT`);
     }
+    if (!colNames.has("branch")) {
+      this.db.exec(`ALTER TABLE talos_applications ADD COLUMN branch TEXT NOT NULL DEFAULT ''`);
+    }
 
     // ── App Intelligence table migration ───────────────────────────────────
     this.db.exec(`
@@ -490,9 +494,9 @@ export class TalosRepository {
 
     const stmt = this.db.prepare(`
       INSERT INTO talos_applications (
-        id, name, description, repository_url, github_pat_ref, base_url,
+        id, name, description, repository_url, branch, github_pat_ref, base_url,
         status, mtls_enabled, mtls_config_json, metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -500,6 +504,7 @@ export class TalosRepository {
       input.name,
       input.description ?? "",
       input.repositoryUrl ?? "",
+      input.branch ?? "",
       input.githubPatRef ?? null,
       input.baseUrl ?? "",
       input.mtlsEnabled ? 1 : 0,
@@ -552,6 +557,10 @@ export class TalosRepository {
     if (input.repositoryUrl !== undefined) {
       updates.push("repository_url = ?");
       values.push(input.repositoryUrl);
+    }
+    if (input.branch !== undefined) {
+      updates.push("branch = ?");
+      values.push(input.branch);
     }
     if (input.githubPatRef !== undefined) {
       updates.push("github_pat_ref = ?");

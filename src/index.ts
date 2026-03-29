@@ -45,7 +45,8 @@ import type { ToolDefinition } from "./talos/tools.js";
 // Load ~/.talos/.env into process.env before reading any config.
 // Shell env vars already set (e.g. PORT from dev-clean.sh) take precedence.
 {
-  const _dir = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
+  const _rawDir = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
+  const _dir = _rawDir.startsWith("~/") ? join(homedir(), _rawDir.slice(2)) : _rawDir === "~" ? homedir() : _rawDir;
   const _file = join(_dir, ".env");
   if (existsSync(_file)) {
     try {
@@ -71,7 +72,12 @@ import type { ToolDefinition } from "./talos/tools.js";
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.PORT ?? "3000", 10);
-const DATA_DIR = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
+const _rawDataDir = process.env.TALOS_DATA_DIR ?? join(homedir(), ".talos");
+const DATA_DIR = _rawDataDir.startsWith("~/")
+  ? join(homedir(), _rawDataDir.slice(2))
+  : _rawDataDir === "~"
+    ? homedir()
+    : _rawDataDir;
 const DB_PATH = join(DATA_DIR, "talos.db");
 const SESSIONS_DIR = join(DATA_DIR, "sessions");
 const VECTORDB_DIR = join(DATA_DIR, "vectordb");
@@ -82,7 +88,12 @@ mkdirSync(VECTORDB_DIR, { recursive: true });
 
 // ── Talos Config (hoisted — needed by RAG and engine init) ────────────────────
 
-const talosConfig = parseTalosConfig({});
+const m365EnabledRaw = process.env.M365_ENABLED;
+const talosConfig = parseTalosConfig({
+  m365: {
+    enabled: m365EnabledRaw === "true" || m365EnabledRaw === "1",
+  },
+});
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
@@ -680,14 +691,74 @@ app.delete("/api/talos/applications/:appId/atlassian", (req, res) => {
   res.status(204).end();
 });
 
-app.post("/api/talos/applications/:appId/atlassian/test", (req, res) => {
+app.post("/api/talos/applications/:appId/atlassian/test", async (req, res) => {
   const config = repo.getAtlassianConfigByApp(req.params.appId);
   if (!config) {
     res.status(404).json({ error: "No Atlassian config found" });
     return;
   }
-  // Connection test — would start Docker Atlassian container and run a health check
-  res.json({ success: true, message: "Atlassian connection test queued" });
+
+  const results: string[] = [];
+  const errors: string[] = [];
+
+  // Test Jira connection
+  if (config.jiraUrl) {
+    try {
+      const jiraBase = config.jiraUrl.replace(/\/+$/, "");
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (config.deploymentType === "datacenter" && config.jiraPersonalTokenVaultRef) {
+        headers["Authorization"] = `Bearer ${config.jiraPersonalTokenVaultRef}`;
+      } else if (config.jiraUsernameVaultRef && config.jiraApiTokenVaultRef) {
+        headers["Authorization"] =
+          `Basic ${Buffer.from(`${config.jiraUsernameVaultRef}:${config.jiraApiTokenVaultRef}`).toString("base64")}`;
+      }
+      const jiraRes = await fetch(`${jiraBase}/rest/api/2/serverInfo`, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (jiraRes.ok) {
+        const info = (await jiraRes.json()) as { serverTitle?: string; version?: string };
+        results.push(`Jira: connected (${info.serverTitle ?? "OK"} v${info.version ?? "?"})`);
+      } else {
+        errors.push(`Jira: HTTP ${jiraRes.status} — ${jiraRes.statusText}`);
+      }
+    } catch (err) {
+      errors.push(`Jira: ${err instanceof Error ? err.message : "connection failed"}`);
+    }
+  }
+
+  // Test Confluence connection
+  if (config.confluenceUrl) {
+    try {
+      const confBase = config.confluenceUrl.replace(/\/+$/, "");
+      const headers: Record<string, string> = { Accept: "application/json" };
+      if (config.deploymentType === "datacenter" && config.confluencePersonalTokenVaultRef) {
+        headers["Authorization"] = `Bearer ${config.confluencePersonalTokenVaultRef}`;
+      } else if (config.confluenceUsernameVaultRef && config.confluenceApiTokenVaultRef) {
+        headers["Authorization"] =
+          `Basic ${Buffer.from(`${config.confluenceUsernameVaultRef}:${config.confluenceApiTokenVaultRef}`).toString("base64")}`;
+      }
+      const confRes = await fetch(`${confBase}/rest/api/space?limit=1`, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (confRes.ok) {
+        results.push("Confluence: connected");
+      } else {
+        errors.push(`Confluence: HTTP ${confRes.status} — ${confRes.statusText}`);
+      }
+    } catch (err) {
+      errors.push(`Confluence: ${err instanceof Error ? err.message : "connection failed"}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    res.json({ success: false, message: errors.join("; ") });
+  } else if (results.length > 0) {
+    res.json({ success: true, message: results.join("; ") });
+  } else {
+    res.json({ success: false, message: "No Jira or Confluence URL configured" });
+  }
 });
 
 // ── App Intelligence ──────────────────────────────────────────────────────────
@@ -740,7 +811,7 @@ app.post("/api/talos/applications/:appId/intelligence/refresh", async (req, res)
     const [, owner, repoName] = repoMatch;
 
     const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
-    const tree = await client.getTree("HEAD", true);
+    const tree = await client.getTree(app_.branch || "HEAD", true);
 
     const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
     const report = await scanner.scan(tree, (path) => client.getFileText(path));
@@ -1366,71 +1437,79 @@ app.get("/api/admin/copilot365/status", (_req, res) => {
 // ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
 
 io.on("connection", (socket) => {
-  socket.on("chat:message", async (data: { message: string; conversationId?: string; agent?: string }) => {
-    const conversationId = data.conversationId ?? `chat-${Date.now()}`;
-    const timestamp = new Date().toISOString();
+  socket.on(
+    "chat:message",
+    async (data: { message: string; conversationId?: string; agent?: string; model?: string }) => {
+      const conversationId = data.conversationId ?? `chat-${Date.now()}`;
+      const timestamp = new Date().toISOString();
 
-    // Persist user message
-    appendSessionMessage(conversationId, { role: "user", content: data.message, timestamp });
+      // Persist user message
+      appendSessionMessage(conversationId, { role: "user", content: data.message, timestamp });
 
-    socket.emit("chat:stream:start", { conversationId });
+      socket.emit("chat:stream:start", { conversationId });
 
-    if (!copilot) {
-      const fallback = "Copilot SDK is not configured. Go to Admin > Auth to set up authentication.";
-      socket.emit("chat:stream:delta", { delta: fallback, conversationId });
-      socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
-      appendSessionMessage(conversationId, {
-        role: "assistant",
-        content: fallback,
-        timestamp: new Date().toISOString(),
-      });
-      return;
-    }
-
-    try {
-      const isAuthenticated = await copilot.isAuthenticated();
-      if (!isAuthenticated) {
-        const msg = "Not authenticated. Go to Admin > Auth to connect to GitHub Copilot.";
-        socket.emit("chat:stream:delta", { delta: msg, conversationId });
+      if (!copilot) {
+        const fallback = "Copilot SDK is not configured. Go to Admin > Auth to set up authentication.";
+        socket.emit("chat:stream:delta", { delta: fallback, conversationId });
         socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
-        appendSessionMessage(conversationId, { role: "assistant", content: msg, timestamp: new Date().toISOString() });
+        appendSessionMessage(conversationId, {
+          role: "assistant",
+          content: fallback,
+          timestamp: new Date().toISOString(),
+        });
         return;
       }
 
-      // Get active personality for system message
-      const personality = platformRepo.getActivePersonality();
-      const systemMessage = personality ? { mode: "append" as const, content: personality.systemPrompt } : undefined;
+      try {
+        const isAuthenticated = await copilot.isAuthenticated();
+        if (!isAuthenticated) {
+          const msg = "Not authenticated. Go to Admin > Auth to connect to GitHub Copilot.";
+          socket.emit("chat:stream:delta", { delta: msg, conversationId });
+          socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
+          appendSessionMessage(conversationId, {
+            role: "assistant",
+            content: msg,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
 
-      let fullResponse = "";
-      const stream = copilot.chat(data.message, {
-        conversationId,
-        systemMessage,
-        tools: orchestrationTools.length > 0 ? orchestrationTools : undefined,
-        onToolCall: (tool, args) => {
-          socket.emit("chat:stream:tool", { tool, args, conversationId });
-        },
-      });
+        // Get active personality for system message
+        const personality = platformRepo.getActivePersonality();
+        const systemMessage = personality ? { mode: "append" as const, content: personality.systemPrompt } : undefined;
 
-      for await (const chunk of stream) {
-        fullResponse += chunk;
-        socket.emit("chat:stream:delta", { delta: chunk, conversationId });
+        let fullResponse = "";
+        const stream = copilot.chat(data.message, {
+          conversationId,
+          systemMessage,
+          model: data.model || undefined,
+          tools: orchestrationTools.length > 0 ? orchestrationTools : undefined,
+          onToolCall: (tool, args) => {
+            socket.emit("chat:stream:tool", { tool, args, conversationId });
+          },
+        });
+
+        for await (const chunk of stream) {
+          fullResponse += chunk;
+          socket.emit("chat:stream:delta", { delta: chunk, conversationId });
+        }
+
+        const tokenUsage = copilot.getSessionUsage(conversationId);
+        socket.emit("chat:stream:end", { conversationId, tokenUsage });
+
+        // Persist assistant message
+        appendSessionMessage(conversationId, {
+          role: "assistant",
+          content: fullResponse,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : "Unknown error occurred";
+        socket.emit("chat:stream:delta", { delta: `Error: ${errMsg}`, conversationId });
+        socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
       }
-
-      const tokenUsage = copilot.getSessionUsage(conversationId);
-      socket.emit("chat:stream:end", { conversationId, tokenUsage });
-
-      // Persist assistant message
-      appendSessionMessage(conversationId, {
-        role: "assistant",
-        content: fullResponse,
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "Unknown error occurred";
-      socket.emit("chat:stream:delta", { delta: `Error: ${errMsg}`, conversationId });
-      socket.emit("chat:stream:end", { conversationId, tokenUsage: null });
     }
-  });
+  );
 });
 
 // ── Stats ─────────────────────────────────────────────────────────────────────

@@ -156,9 +156,27 @@ export function createAdminRouter({
     "PORT",
     "TALOS_DATA_DIR",
     "TALOS_ALLOWED_DIRS",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "PROXY_ENABLED",
+    "COPILOT365_URL",
+    "COPILOT365_PROXY",
+    "M365_ENABLED",
   ];
   // Token keys whose changes require re-initialising the Copilot wrapper.
   const COPILOT_TOKEN_KEYS = new Set(["GITHUB_TOKEN", "COPILOT_GITHUB_TOKEN"]);
+  // Keys that must also be propagated to process.env so the running process uses them immediately.
+  const PROCESS_ENV_KEYS = new Set([
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "PROXY_ENABLED",
+    "GITHUB_PERSONAL_ACCESS_TOKEN",
+    "COPILOT365_URL",
+    "COPILOT365_PROXY",
+    "M365_ENABLED",
+  ]);
 
   router.get("/env", (_req, res) => {
     if (!envManager) {
@@ -213,6 +231,10 @@ export function createAdminRouter({
     }
     try {
       const entry = envManager.set(key, value);
+      // Propagate to process.env so the running process uses the new value immediately.
+      if (PROCESS_ENV_KEYS.has(key) || COPILOT_TOKEN_KEYS.has(key)) {
+        process.env[key] = value;
+      }
       // Re-initialise the Copilot wrapper so the new token takes effect immediately.
       if (COPILOT_TOKEN_KEYS.has(key) && copilot) {
         const token =
@@ -240,6 +262,10 @@ export function createAdminRouter({
     if (!envManager.delete(req.params.key)) {
       res.status(404).json({ error: "Key not found" });
       return;
+    }
+    // Remove from process.env so changes take effect immediately.
+    if (PROCESS_ENV_KEYS.has(req.params.key) || COPILOT_TOKEN_KEYS.has(req.params.key)) {
+      delete process.env[req.params.key];
     }
     // Re-initialise the Copilot wrapper if a token was removed.
     if (COPILOT_TOKEN_KEYS.has(req.params.key) && copilot) {
@@ -271,7 +297,11 @@ export function createAdminRouter({
   // ── Proxy ───────────────────────────────────────────────────────────────
 
   router.post("/proxy/test", async (_req, res) => {
-    const proxyUrl = process.env.HTTPS_PROXY ?? process.env.HTTP_PROXY;
+    const proxyUrl =
+      process.env.HTTPS_PROXY ??
+      process.env.HTTP_PROXY ??
+      envManager?.getRaw("HTTPS_PROXY") ??
+      envManager?.getRaw("HTTP_PROXY");
     if (!proxyUrl) {
       res.json({ connected: false, error: "No proxy configured" });
       return;

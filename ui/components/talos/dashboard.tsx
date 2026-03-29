@@ -67,7 +67,10 @@ function ApplicationCard({ app, onScan }: { app: TalosApplication; onScan: (id: 
           {app.repositoryUrl && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <FolderGit2 className="h-4 w-4" />
-              <span className="truncate">{app.repositoryUrl}</span>
+              <span className="truncate">
+                {app.repositoryUrl}
+                {app.branch ? ` (${app.branch})` : ""}
+              </span>
             </div>
           )}
           <div className="flex items-center gap-2 text-muted-foreground">
@@ -89,10 +92,11 @@ function ApplicationCard({ app, onScan }: { app: TalosApplication; onScan: (id: 
 function AddApplicationDialog({
   onAdd,
 }: {
-  onAdd: (data: { name: string; repositoryUrl?: string; baseUrl?: string }) => void;
+  onAdd: (data: { name: string; repositoryUrl?: string; branch?: string; baseUrl?: string }) => void;
 }) {
   const [name, setName] = useState("");
   const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [branch, setBranch] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [open, setOpen] = useState(false);
 
@@ -101,10 +105,12 @@ function AddApplicationDialog({
       onAdd({
         name: name.trim(),
         repositoryUrl: repositoryUrl.trim() || undefined,
+        branch: branch.trim() || undefined,
         baseUrl: baseUrl.trim() || undefined,
       });
       setName("");
       setRepositoryUrl("");
+      setBranch("");
       setBaseUrl("");
       setOpen(false);
     }
@@ -139,6 +145,17 @@ function AddApplicationDialog({
               value={repositoryUrl}
               onChange={(e) => setRepositoryUrl(e.target.value)}
               placeholder="https://github.com/org/repo"
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="branch" className="text-sm font-medium">
+              Branch
+            </label>
+            <Input
+              id="branch"
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="main (leave empty for default branch)"
             />
           </div>
           <div className="space-y-2">
@@ -177,7 +194,12 @@ export function Dashboard() {
     queryFn: getStats,
   });
 
-  const handleAddApplication = async (data: { name: string; repositoryUrl?: string; baseUrl?: string }) => {
+  const handleAddApplication = async (data: {
+    name: string;
+    repositoryUrl?: string;
+    branch?: string;
+    baseUrl?: string;
+  }) => {
     try {
       await createApplication(data);
       refetchApps();

@@ -26,6 +26,7 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState(() => `chat-${Date.now()}`);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { subscribe, emit, isConnected } = useSocket();
 
@@ -41,12 +42,15 @@ export default function ChatPage() {
     const unsubs = [
       subscribe<{ conversationId: string }>("chat:stream:start", () => {
         setIsStreaming(true);
-        setMessages((prev) => [...prev, {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-        }]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+          },
+        ]);
       }),
       subscribe<{ delta: string; conversationId: string }>("chat:stream:delta", (data) => {
         setMessages((prev) => {
@@ -82,7 +86,7 @@ export default function ChatPage() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, msg]);
-    emit("chat:message", { message: input.trim(), conversationId });
+    emit("chat:message", { message: input.trim(), conversationId, model: selectedModel });
     setInput("");
   };
 
@@ -110,6 +114,8 @@ export default function ChatPage() {
           <ChatHeader
             conversationId={conversationId}
             onClearChat={handleNewChat}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
           />
           <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4">
             <div className="flex-1 overflow-y-auto py-4 space-y-4">
@@ -132,9 +138,7 @@ export default function ChatPage() {
                           <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                         </CardContent>
                       </Card>
-                      {msg.sources && msg.sources.length > 0 && (
-                        <RagContextIndicator sources={msg.sources} />
-                      )}
+                      {msg.sources && msg.sources.length > 0 && <RagContextIndicator sources={msg.sources} />}
                     </div>
                   </div>
                 </div>

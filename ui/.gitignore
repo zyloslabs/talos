@@ -23,6 +23,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Talos log files
+.talos-dev.log
+.talos-ui.log
+
 # local env files
 .env*.local
 

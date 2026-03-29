@@ -26,7 +26,9 @@ export function InlineModelPicker({ value, onChange, className }: InlineModelPic
     >
       <option value="">Default ({data?.selected})</option>
       {models.map((m) => (
-        <option key={m.id} value={m.id}>{m.id}</option>
+        <option key={m.id} value={m.id}>
+          {m.id}
+        </option>
       ))}
     </select>
   );
