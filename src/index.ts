@@ -1405,6 +1405,7 @@ io.on("connection", (socket) => {
       const stream = copilot.chat(data.message, {
         conversationId,
         systemMessage,
+        tools: orchestrationTools.length > 0 ? orchestrationTools : undefined,
         onToolCall: (tool, args) => {
           socket.emit("chat:stream:tool", { tool, args, conversationId });
         },

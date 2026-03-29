@@ -17,7 +17,6 @@ export const spawnAgentSchema = z.object({
   goal: z.string().min(1, "Agent goal is required"),
   context: z.string().optional(),
   model: z.string().optional(),
-  auto_approve_tools: z.array(z.string()).optional(),
 });
 
 export type SpawnAgentInput = z.infer<typeof spawnAgentSchema>;
@@ -46,10 +45,6 @@ export function createSpawnAgentTool(deps: SpawnAgentToolDeps): ToolDefinition {
         goal: { type: "string", description: "What the agent should accomplish" },
         context: { type: "string", description: "Additional context for the agent" },
         model: { type: "string", description: "Model override for this agent" },
-        auto_approve_tools: {
-          type: "array",
-          description: "Tools to auto-approve for this agent",
-        },
       },
       required: ["goal"],
     },
@@ -73,11 +68,15 @@ export function createSpawnAgentTool(deps: SpawnAgentToolDeps): ToolDefinition {
             result += chunk;
           }
           return {
-            text: JSON.stringify({
-              mode: "session",
-              sessionId: orchestrateCtx.sessionId,
-              result: result || "Agent completed (no output)",
-            }, null, 2),
+            text: JSON.stringify(
+              {
+                mode: "session",
+                sessionId: orchestrateCtx.sessionId,
+                result: result || "Agent completed (no output)",
+              },
+              null,
+              2
+            ),
           };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -90,12 +89,16 @@ export function createSpawnAgentTool(deps: SpawnAgentToolDeps): ToolDefinition {
       const task = platformRepo.createTask({ prompt });
 
       return {
-        text: JSON.stringify({
-          mode: "task",
-          taskId: task.id,
-          status: task.status,
-          goal: parsed.goal,
-        }, null, 2),
+        text: JSON.stringify(
+          {
+            mode: "task",
+            taskId: task.id,
+            status: task.status,
+            goal: parsed.goal,
+          },
+          null,
+          2
+        ),
       };
     },
   };

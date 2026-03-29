@@ -11,10 +11,7 @@ import type { ToolDefinition } from "../tools.js";
 import type { CopilotWrapper, CustomAgentDefinition } from "../../copilot/copilot-wrapper.js";
 import type { PlatformRepository } from "../../platform/repository.js";
 import type { TalosConfig } from "../config.js";
-import {
-  setActiveOrchestrateContext,
-  clearActiveOrchestrateContext,
-} from "./orchestrate-context.js";
+import { setActiveOrchestrateContext, clearActiveOrchestrateContext } from "./orchestrate-context.js";
 
 // ── Zod Schema ────────────────────────────────────────────────────────────────
 
@@ -25,7 +22,7 @@ const agentDefinitionSchema = z.object({
 });
 
 export const orchestrateAgentsSchema = z.object({
-  agents: z.array(agentDefinitionSchema).min(1, "At least one agent is required"),
+  agents: z.array(agentDefinitionSchema).min(1, "At least one agent is required").max(50, "Maximum 50 agents allowed"),
   aggregation_prompt: z.string().optional(),
   timeout_seconds: z.number().min(1).max(3600).optional(),
   mode: z.enum(["task", "session"]).optional(),
@@ -45,7 +42,7 @@ export type OrchestrateAgentsToolDeps = {
 
 async function handleSessionMode(
   input: OrchestrateAgentsInput,
-  deps: OrchestrateAgentsToolDeps,
+  deps: OrchestrateAgentsToolDeps
 ): Promise<{ text: string; isError?: boolean }> {
   const { copilot } = deps;
   const sessionId = `orchestrate-${Date.now()}`;
@@ -89,12 +86,16 @@ async function handleSessionMode(
     }
 
     return {
-      text: JSON.stringify({
-        mode: "session",
-        sessionId,
-        agentCount: input.agents.length,
-        result: result || "Orchestration completed (no output)",
-      }, null, 2),
+      text: JSON.stringify(
+        {
+          mode: "session",
+          sessionId,
+          agentCount: input.agents.length,
+          result: result || "Orchestration completed (no output)",
+        },
+        null,
+        2
+      ),
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -108,7 +109,7 @@ async function handleSessionMode(
 
 async function handleTaskMode(
   input: OrchestrateAgentsInput,
-  deps: OrchestrateAgentsToolDeps,
+  deps: OrchestrateAgentsToolDeps
 ): Promise<{ text: string; isError?: boolean }> {
   const { platformRepo } = deps;
   const timeoutMs = (input.timeout_seconds ?? 300) * 1000;
@@ -128,7 +129,10 @@ async function handleTaskMode(
     for (const task of tasks) {
       if (completedResults.some((r) => r.taskId === task.id)) continue;
       const current = platformRepo.getTask(task.id);
-      if (current && (current.status === "completed" || current.status === "failed" || current.status === "cancelled")) {
+      if (
+        current &&
+        (current.status === "completed" || current.status === "failed" || current.status === "cancelled")
+      ) {
         completedResults.push({
           taskId: current.id,
           status: current.status,
@@ -150,11 +154,15 @@ async function handleTaskMode(
   }
 
   return {
-    text: JSON.stringify({
-      mode: "task",
-      taskCount: tasks.length,
-      results: completedResults,
-    }, null, 2),
+    text: JSON.stringify(
+      {
+        mode: "task",
+        taskCount: tasks.length,
+        results: completedResults,
+      },
+      null,
+      2
+    ),
   };
 }
 
