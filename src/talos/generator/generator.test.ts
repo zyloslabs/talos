@@ -15,16 +15,25 @@ vi.mock("./code-validator.js", () => ({
   CodeValidator: class MockCodeValidator {
     validate(code: string) {
       const patched = code.replace(/^import\s+.*$/gm, "// import");
-      try { new Function(patched); } catch {
+      try {
+        new Function(patched);
+      } catch {
         return { isValid: false, errors: [{ message: "Syntax error", code: "syntax" }], warnings: [], suggestions: [] };
       }
       // Check for assertions (mirrors real REQUIRED_PATTERNS behavior, promoted to error for test fidelity)
       if (!/expect\s*\(|toBe|toEqual|toContain|toMatch/.test(code) && !/test\(/.test(code)) {
-        return { isValid: false, errors: [{ message: "Validation failed: no test or assertions", code: "no-test" }], warnings: [], suggestions: [] };
+        return {
+          isValid: false,
+          errors: [{ message: "Validation failed: no test or assertions", code: "no-test" }],
+          warnings: [],
+          suggestions: [],
+        };
       }
       return { isValid: true, errors: [], warnings: [], suggestions: [] };
     }
-    autoFix(code: string) { return { code, fixes: [] }; }
+    autoFix(code: string) {
+      return { code, fixes: [] };
+    }
   },
 }));
 
@@ -34,7 +43,16 @@ function createMockRagPipeline() {
   return {
     retrieve: vi.fn().mockResolvedValue({
       chunks: [
-        { id: "c1", content: "function login() {}", filePath: "/src/login.ts", startLine: 1, endLine: 5, type: "source", score: 0.9, metadata: {} },
+        {
+          id: "c1",
+          content: "function login() {}",
+          filePath: "/src/login.ts",
+          startLine: 1,
+          endLine: 5,
+          type: "source",
+          score: 0.9,
+          metadata: {},
+        },
       ],
       totalTokens: 10,
       query: "test",
@@ -60,22 +78,55 @@ describe("PromptBuilder", () => {
 
   it("buildPrompt fills template with application info and code snippets", async () => {
     const app: TalosApplication = {
-      id: "app-1", name: "TestApp", description: "", repositoryUrl: "https://github.com/o/r",
-      githubPatRef: null, baseUrl: "https://example.com", status: "active", mtlsEnabled: false, mtlsConfig: null, metadata: {},
-      createdAt: new Date(), updatedAt: new Date(),
+      id: "app-1",
+      name: "TestApp",
+      description: "",
+      repositoryUrl: "https://github.com/o/r",
+      branch: "",
+      githubPatRef: null,
+      baseUrl: "https://example.com",
+      status: "active",
+      mtlsEnabled: false,
+      mtlsConfig: null,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
-    const existingTests: TalosTest[] = [{
-      id: "t1", applicationId: "app-1", name: "Login Test", description: "",
-      code: "test('login', async () => {})",
-      type: "e2e", status: "active", version: "1.0.0",
-      pomDependencies: [], selectors: [], embeddingId: null,
-      generationConfidence: null, codeHash: "", tags: [], metadata: {},
-      createdAt: new Date(), updatedAt: new Date(),
-    }];
-    const relevantCode: TalosChunk[] = [{
-      id: "c1", applicationId: "app-1", type: "code", content: "function login() {}",
-      filePath: "/src/login.ts", startLine: 1, endLine: 5, contentHash: "h", metadata: {}, createdAt: new Date(),
-    }];
+    const existingTests: TalosTest[] = [
+      {
+        id: "t1",
+        applicationId: "app-1",
+        name: "Login Test",
+        description: "",
+        code: "test('login', async () => {})",
+        type: "e2e",
+        status: "active",
+        version: "1.0.0",
+        pomDependencies: [],
+        selectors: [],
+        embeddingId: null,
+        generationConfidence: null,
+        codeHash: "",
+        tags: [],
+        metadata: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ];
+    const relevantCode: TalosChunk[] = [
+      {
+        id: "c1",
+        applicationId: "app-1",
+        type: "code",
+        content: "function login() {}",
+        filePath: "/src/login.ts",
+        startLine: 1,
+        endLine: 5,
+        contentHash: "h",
+        metadata: {},
+        createdAt: new Date(),
+      },
+    ];
 
     const result = await builder.buildPrompt({
       application: app,
@@ -97,13 +148,25 @@ describe("PromptBuilder", () => {
 
   it("buildPrompt uses default framework/style", async () => {
     const app: TalosApplication = {
-      id: "a", name: "A", description: "", repositoryUrl: "r",
-      githubPatRef: null, baseUrl: "b", status: "active", mtlsEnabled: false, mtlsConfig: null, metadata: {},
-      createdAt: new Date(), updatedAt: new Date(),
+      id: "a",
+      name: "A",
+      description: "",
+      repositoryUrl: "r",
+      branch: "",
+      githubPatRef: null,
+      baseUrl: "b",
+      status: "active",
+      mtlsEnabled: false,
+      mtlsConfig: null,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     const result = await builder.buildPrompt({
-      application: app, existingTests: [], relevantCode: [],
+      application: app,
+      existingTests: [],
+      relevantCode: [],
       userRequest: "test", // no framework/style
     });
 
@@ -113,12 +176,23 @@ describe("PromptBuilder", () => {
 
   it("buildEnhancementPrompt includes existing test code", async () => {
     const test: TalosTest = {
-      id: "t1", applicationId: "a1", name: "T1", description: "",
+      id: "t1",
+      applicationId: "a1",
+      name: "T1",
+      description: "",
       code: "test('x', async () => { await page.goto('/'); })",
-      type: "e2e", status: "active", version: "1.0.0",
-      pomDependencies: [], selectors: [], embeddingId: null,
-      generationConfidence: null, codeHash: "", tags: [], metadata: {},
-      createdAt: new Date(), updatedAt: new Date(),
+      type: "e2e",
+      status: "active",
+      version: "1.0.0",
+      pomDependencies: [],
+      selectors: [],
+      embeddingId: null,
+      generationConfidence: null,
+      codeHash: "",
+      tags: [],
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     const result = await builder.buildEnhancementPrompt(test, "add login assertion", []);
@@ -179,7 +253,11 @@ describe("TestGenerator", () => {
   });
 
   it("generate creates test on valid LLM response", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
 
     mockLLM.mockResolvedValue(`\`\`\`typescript
 import { test, expect } from '@playwright/test';
@@ -205,7 +283,11 @@ test('login flow', async ({ page }) => {
   });
 
   it("generate extracts code from markdown blocks", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
 
     mockLLM.mockResolvedValue(`Here's the test:
 \`\`\`typescript
@@ -221,11 +303,14 @@ That should work!`);
   });
 
   it("generate retries on invalid code", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
 
     // First attempt: invalid (no playwright import), second: valid
-    mockLLM
-      .mockResolvedValueOnce("console.log('no test here')")
+    mockLLM.mockResolvedValueOnce("console.log('no test here')")
       .mockResolvedValueOnce(`import { test, expect } from '@playwright/test';
 test('retry', async ({ page }) => { await page.goto('/'); });`);
 
@@ -241,7 +326,11 @@ test('retry', async ({ page }) => { await page.goto('/'); });`);
   });
 
   it("generate fails after exhausting retries", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
 
     mockLLM.mockResolvedValue("not valid code");
 
@@ -257,7 +346,11 @@ test('retry', async ({ page }) => { await page.goto('/'); });`);
   });
 
   it("generate handles LLM errors", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
 
     mockLLM.mockRejectedValue(new Error("LLM unavailable"));
 
@@ -272,7 +365,11 @@ test('retry', async ({ page }) => { await page.goto('/'); });`);
   });
 
   it("generate auto-generates test name from request", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     mockLLM.mockResolvedValue(`import { test, expect } from '@playwright/test';
 test('generated', async ({ page }) => { await page.goto('/'); });`);
 
@@ -288,7 +385,11 @@ test('generated', async ({ page }) => { await page.goto('/'); });`);
   });
 
   it("enhance updates existing test", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test('x', async () => {})", type: "e2e" });
 
     mockLLM.mockResolvedValue(`import { test, expect } from '@playwright/test';
@@ -300,7 +401,11 @@ test('x enhanced', async ({ page }) => { await page.goto('/'); await expect(page
   });
 
   it("enhance fails on invalid generated code", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test('x', async () => {})", type: "e2e" });
 
     mockLLM.mockResolvedValue("not valid code at all");
@@ -310,7 +415,11 @@ test('x enhanced', async ({ page }) => { await page.goto('/'); await expect(page
   });
 
   it("enhance handles LLM exceptions", async () => {
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     const test = repo.createTest({ applicationId: app.id, name: "t1", code: "test('x', async () => {})", type: "e2e" });
 
     mockLLM.mockRejectedValue(new Error("boom"));
@@ -326,7 +435,11 @@ export class LoginPage {
   async navigate() { await this.page.goto('/login'); }
 }`);
 
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     const result = await generator.generatePageObject(app.id, "Login", "https://example.com/login");
     // Code validity depends on whether validator considers POM valid
     expect(result.code).toBeDefined();
@@ -335,7 +448,11 @@ export class LoginPage {
 
   it("generatePageObject handles LLM errors", async () => {
     mockLLM.mockRejectedValue(new Error("fail"));
-    const app = repo.createApplication({ name: "MyApp", repositoryUrl: "https://github.com/a/b", baseUrl: "https://example.com" });
+    const app = repo.createApplication({
+      name: "MyApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://example.com",
+    });
     const result = await generator.generatePageObject(app.id, "Login", "/login");
     expect(result.success).toBe(false);
     expect(result.error).toContain("fail");

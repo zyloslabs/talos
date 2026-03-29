@@ -14,6 +14,7 @@ function makeApp(overrides: Partial<TalosApplication> = {}): TalosApplication {
     repositoryUrl: "https://github.com/org/repo",
     baseUrl: "https://app.example.com",
     description: "",
+    branch: "",
     githubPatRef: null,
     status: "active",
     mtlsEnabled: false,
@@ -103,7 +104,7 @@ describe("PromptBuilder", () => {
     const builder = new PromptBuilder(makeRagPipeline());
     const prompt = await builder.buildPrompt({
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    application: makeApp({ repositoryUrl: null as unknown as string, baseUrl: null as unknown as string }),
+      application: makeApp({ repositoryUrl: null as unknown as string, baseUrl: null as unknown as string }),
       existingTests: [],
       relevantCode: [],
       userRequest: "test",
@@ -198,11 +199,7 @@ describe("PromptBuilder", () => {
 
   it("buildEnhancementPrompt returns valid prompts", async () => {
     const builder = new PromptBuilder(makeRagPipeline());
-    const prompt = await builder.buildEnhancementPrompt(
-      makeTest(),
-      "Add assertion for error message",
-      [makeChunk()]
-    );
+    const prompt = await builder.buildEnhancementPrompt(makeTest(), "Add assertion for error message", [makeChunk()]);
     expect(prompt.systemPrompt).toContain("enhance");
     expect(prompt.userPrompt).toContain("Add assertion for error message");
     expect(prompt.userPrompt).toContain("login");
@@ -220,15 +217,17 @@ describe("PromptBuilder", () => {
   it("getRelevantCode maps RAG results to TalosChunk format", async () => {
     const mockRag = {
       retrieve: vi.fn().mockResolvedValue({
-        chunks: [{
-          id: "c1",
-          type: "component",
-          content: "export const Btn = () => <button />;",
-          filePath: "src/Btn.tsx",
-          startLine: 1,
-          endLine: 1,
-          metadata: {},
-        }],
+        chunks: [
+          {
+            id: "c1",
+            type: "component",
+            content: "export const Btn = () => <button />;",
+            filePath: "src/Btn.tsx",
+            startLine: 1,
+            endLine: 1,
+            metadata: {},
+          },
+        ],
       }),
     } as unknown as RagPipeline;
     const builder = new PromptBuilder(mockRag);
