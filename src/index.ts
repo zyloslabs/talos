@@ -37,6 +37,9 @@ import { PlaywrightRunner } from "./talos/runner/playwright-runner.js";
 import { TestGenerator } from "./talos/generator/test-generator.js";
 import type { ChunkResult } from "./talos/discovery/file-chunker.js";
 import type { TalosChunk } from "./talos/types.js";
+import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js";
+import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
+import type { ToolDefinition } from "./talos/tools.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -207,6 +210,16 @@ initRag().catch((err) => {
   );
 });
 
+// ── Orchestration Agent Tools ─────────────────────────────────────────────────
+
+const orchestrationTools: ToolDefinition[] = [];
+if (copilot) {
+  orchestrationTools.push(
+    createOrchestrateAgentsTool({ copilot, platformRepo, talosConfig }),
+    createSpawnAgentTool({ copilot, platformRepo })
+  );
+}
+
 // ── URL Validation ───────────────────────────────────────────────────────────
 
 // When true, skip private/loopback range checks (for local dev). Still requires http/https scheme.
@@ -319,6 +332,19 @@ app.post("/api/talos/applications", (req, res) => {
   }
   const created = repo.createApplication({ name, description, repositoryUrl, baseUrl, githubPatRef });
   io.emit("application:created", created);
+
+  // Copilot365 integration (#401): suggest M365 research if Copilot365 MCP server is configured
+  const mcpServers = platformRepo.listMcpServers();
+  const copilot365Available = mcpServers.some(
+    (s) => (s.name.toLowerCase() === "copilot365" || s.name.toLowerCase() === "copilot-365") && s.enabled
+  );
+  if (copilot365Available) {
+    io.emit("copilot365:suggest-research", {
+      applicationId: created.id,
+      serverAvailable: true,
+    });
+  }
+
   res.status(201).json(created);
 });
 
@@ -1323,6 +1349,20 @@ app.get("/api/talos/orchestrate/:runId", (req, res) => {
   res.json({ runId: run.runId, status: run.status, steps: run.steps });
 });
 
+// ── Copilot365 Status (#400) ──────────────────────────────────────────────────
+
+app.get("/api/admin/copilot365/status", (_req, res) => {
+  const servers = platformRepo.listMcpServers();
+  const copilot365Server = servers.find(
+    (s) => s.name.toLowerCase() === "copilot365" || s.name.toLowerCase() === "copilot-365"
+  );
+  res.json({
+    available: !!copilot365Server,
+    serverName: copilot365Server?.name,
+    enabled: copilot365Server?.enabled ?? false,
+  });
+});
+
 // ── Chat (streaming via Socket.IO) ────────────────────────────────────────────
 
 io.on("connection", (socket) => {
@@ -1365,6 +1405,7 @@ io.on("connection", (socket) => {
       const stream = copilot.chat(data.message, {
         conversationId,
         systemMessage,
+        tools: orchestrationTools.length > 0 ? orchestrationTools : undefined,
         onToolCall: (tool, args) => {
           socket.emit("chat:stream:tool", { tool, args, conversationId });
         },

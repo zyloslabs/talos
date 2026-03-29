@@ -44,6 +44,7 @@
   - [Artifact Viewer](#artifact-viewer)
   - [Vault Manager](#vault-manager)
 - [MCP Tools Reference](#mcp-tools-reference)
+- [Agent Orchestration](#agent-orchestration)
 - [Test Generation](#test-generation)
   - [Writing Effective Prompts](#writing-effective-prompts)
   - [Generation Flow](#generation-flow)
@@ -826,6 +827,67 @@ TALOS exposes 21 MCP-compatible tools. Each tool validates inputs with Zod, retu
 | `talos_update_criteria` | MEDIUM | Update an existing acceptance criterion |
 | `talos_list_criteria` | LOW | List acceptance criteria with optional filters |
 | `talos_delete_criteria` | HIGH | Permanently delete an acceptance criterion |
+
+### Agent Orchestration
+
+| Tool | Risk | Description |
+|------|------|-------------|
+| `talos-orchestrate-agents` | MEDIUM | Orchestrate multiple AI agents in session or task mode |
+| `talos-spawn-agent` | MEDIUM | Spawn a single AI agent as a background task or session delegate |
+
+---
+
+## Agent Orchestration
+
+TALOS supports multi-agent orchestration for complex workflows that benefit from parallel work streams.
+
+### Orchestration Modes
+
+| Mode | API Calls | When to Use |
+|------|-----------|-------------|
+| **Task** (default) | N+1 | True parallelism needed; agents work independently |
+| **Session** | ~2 | Cost efficiency; agents can share context via SDK subagent delegation |
+
+### Using the Workbench
+
+1. Navigate to **Workbench** in the UI
+2. Select your target application
+3. Configure pipeline steps
+4. Choose **Task** or **Session** mode using the orchestration mode toggle
+5. Click **Start Pipeline**
+
+### Using the MCP Tool
+
+```json
+{
+  "agents": [
+    { "goal": "Analyze code quality of the login module" },
+    { "goal": "Find security vulnerabilities in auth endpoints" }
+  ],
+  "mode": "session",
+  "aggregation_prompt": "Combine findings into a priority-ordered report"
+}
+```
+
+### Configuration
+
+Set the default orchestration mode in your config:
+
+```json
+{
+  "orchestration": {
+    "defaultMode": "task"
+  }
+}
+```
+
+### Copilot365 Integration
+
+When a `copilot365` MCP server is configured in the platform, TALOS automatically detects it and offers to pull documents from Microsoft 365 when you create a new application. This is useful for importing PRDs, user stories, and API specs from SharePoint or OneDrive.
+
+- The system checks `GET /api/admin/copilot365/status` for server availability
+- On application creation, a `copilot365:suggest-research` Socket.IO event is emitted
+- The UI can prompt you to confirm M365 document ingestion
 
 ---
 

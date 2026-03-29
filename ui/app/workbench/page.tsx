@@ -28,6 +28,7 @@ import {
   TestTube2,
   BarChart3,
   ChevronRight,
+  Zap,
 } from "lucide-react";
 
 const STEPS = [
@@ -93,6 +94,7 @@ function WorkbenchContent() {
   const [stepConfigs, setStepConfigs] = useState<Record<string, Record<string, string>>>({});
   const [result, setResult] = useState<OrchestrateResult | null>(null);
   const [liveStepStatus, setLiveStepStatus] = useState<Record<string, string>>({});
+  const [orchestrationMode, setOrchestrationMode] = useState<"task" | "session">("task");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Sync wizard step to URL param
@@ -122,6 +124,7 @@ function WorkbenchContent() {
         applicationId: selectedApp!.id,
         steps: selectedSteps,
         config: stepConfigs,
+        mode: orchestrationMode,
       }),
     onSuccess: (data) => {
       setResult(data);
@@ -172,6 +175,7 @@ function WorkbenchContent() {
     setStepConfigs({});
     setResult(null);
     setLiveStepStatus({});
+    setOrchestrationMode("task");
   };
 
   // Step validation: can only advance forward when criteria are met
@@ -341,7 +345,29 @@ function WorkbenchContent() {
               );
             })}
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-between items-center pt-2">
+              <div className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Orchestration Mode:</span>
+                <div className="flex rounded-md border">
+                  <button
+                    className={`px-3 py-1 text-xs font-medium rounded-l-md transition-colors ${
+                      orchestrationMode === "task" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    }`}
+                    onClick={() => setOrchestrationMode("task")}
+                  >
+                    Task (N+1 calls)
+                  </button>
+                  <button
+                    className={`px-3 py-1 text-xs font-medium rounded-r-md transition-colors ${
+                      orchestrationMode === "session" ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                    }`}
+                    onClick={() => setOrchestrationMode("session")}
+                  >
+                    Session (~2 calls)
+                  </button>
+                </div>
+              </div>
               <Button
                 onClick={() => orchestrateMut.mutate()}
                 disabled={selectedSteps.length === 0 || orchestrateMut.isPending}

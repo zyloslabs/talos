@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Session Mode Orchestration** (Epic #391): Multi-agent orchestration with two execution modes — Session (~2 API calls via SDK subagent delegation) and Task (N+1 parallel background tasks).
+  - `enableSubagents` and `customAgents` wired through `CopilotWrapper.chat()` to `@github/copilot-sdk` session creation (#392).
+  - `CustomAgentDefinition` type with `name`, `displayName`, `description`, `prompt`, `tools?`, `infer?` fields (#392).
+  - `getCustomAgents()` / `setCustomAgents()` on `CopilotWrapper` for runtime agent injection (#392).
+  - `talos-orchestrate-agents` MCP tool: Zod-validated schema with `agents[]`, `aggregation_prompt?`, `timeout_seconds?`, `mode?`; session mode composes prompt and delegates via SDK; task mode fans out via `PlatformRepository.createTask()` (#393).
+  - `talos-spawn-agent` MCP tool: single-agent dispatch that uses session mode when orchestration context is active, otherwise creates a background task (#394).
+  - Module-level orchestration context setters (`setActiveOrchestrateContext` / `clearActiveOrchestrateContext` / `getActiveOrchestrateContext`) for cross-boundary context propagation (#395).
+  - `orchestration.defaultMode` config option (`"task"` | `"session"`, default `"task"`) in `TalosConfig` Zod schema (#396).
+  - Orchestration mode selector (Task/Session toggle) in the Workbench UI configure step (#397).
+  - `orchestrationMode` field on `ScheduledJob` type and `scheduled_jobs` SQLite table with migration (#398).
+  - Orchestration tools registered in server startup alongside existing testing tools (#399).
+  - `GET /api/admin/copilot365/status` endpoint: checks if a Copilot365 MCP server is configured and returns `{ available, serverName, enabled }` (#400).
+  - `copilot365:suggest-research` Socket.IO event emitted on application creation when Copilot365 is available, enabling UI prompts for M365 document ingestion (#401).
+  - `getCopilot365Status()` API client function in `ui/lib/api.ts` (#401).
+  - Agent Orchestration section in `docs/ARCHITECTURE.md` with session/task mode diagrams, context propagation, and Copilot365 integration (#402).
+  - Agent Orchestration section and Copilot365 Integration docs in `docs/USER_GUIDE.md` (#403).
+
 - **App Intelligence** (Epic #379): Automated repository analysis that detects tech stack, databases, test users, and documentation from config files — no AI required, pure regex/string matching.
   - `AppIntelligenceReport` type and Zod schema with `techStack`, `databases`, `testUsers`, `documentation`, and `configFiles` arrays (#380).
   - Tech Stack Detector: parses `package.json`, `pom.xml`, `build.gradle`, `requirements.txt`, `go.mod`, `Cargo.toml`, `Gemfile` and maps dependencies to known frameworks/libraries (#381).

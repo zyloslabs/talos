@@ -3,13 +3,19 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseTalosConfig, getDefaultTalosConfig, talosConfigSchema, jdbcDataSourceConfigSchema, atlassianConfigSchema } from "./config.js";
+import {
+  parseTalosConfig,
+  getDefaultTalosConfig,
+  talosConfigSchema,
+  jdbcDataSourceConfigSchema,
+  atlassianConfigSchema,
+} from "./config.js";
 
 describe("parseTalosConfig", () => {
   it("should return default config when no input provided", () => {
     const config = parseTalosConfig(undefined);
     const defaults = getDefaultTalosConfig();
-    
+
     expect(config.vectorDb.path).toBe(defaults.vectorDb.path);
     expect(config.embedding.model).toBe(defaults.embedding.model);
     expect(config.runner.defaultBrowser).toBe(defaults.runner.defaultBrowser);
@@ -19,7 +25,7 @@ describe("parseTalosConfig", () => {
     const config = parseTalosConfig({
       runner: { defaultBrowser: "firefox" },
     });
-    
+
     expect(config.runner.defaultBrowser).toBe("firefox");
     expect(config.runner.headless).toBe(true); // default
     expect(config.embedding.model).toBe("text-embedding-3-small"); // default
@@ -77,7 +83,7 @@ describe("parseTalosConfig", () => {
     };
 
     const config = parseTalosConfig(input);
-    
+
     expect(config.vectorDb.path).toBe("/custom/lancedb");
     expect(config.embedding.dimensions).toBe(3072);
     expect(config.runner.defaultBrowser).toBe("webkit");
@@ -88,7 +94,7 @@ describe("parseTalosConfig", () => {
 describe("getDefaultTalosConfig", () => {
   it("should return valid default configuration", () => {
     const config = getDefaultTalosConfig();
-    
+
     expect(config.vectorDb.path).toContain("vectordb");
     expect(config.embedding.model).toBe("text-embedding-3-small");
     expect(config.embedding.dimensions).toBe(1536);
@@ -105,7 +111,7 @@ describe("getDefaultTalosConfig", () => {
   it("should return a new object each time", () => {
     const config1 = getDefaultTalosConfig();
     const config2 = getDefaultTalosConfig();
-    
+
     expect(config1).not.toBe(config2);
     expect(config1).toEqual(config2);
   });
@@ -246,5 +252,21 @@ describe("talosConfigSchema with new fields", () => {
 
     expect(config.atlassian.enabled).toBe(true);
     expect(config.atlassian.jiraUrl).toBe("https://jira.example.com");
+  });
+
+  it("should include orchestration with default mode 'task'", () => {
+    const config = getDefaultTalosConfig();
+    expect(config.orchestration.defaultMode).toBe("task");
+  });
+
+  it("should parse orchestration config with session mode", () => {
+    const config = parseTalosConfig({
+      orchestration: { defaultMode: "session" },
+    });
+    expect(config.orchestration.defaultMode).toBe("session");
+  });
+
+  it("should reject invalid orchestration mode", () => {
+    expect(() => parseTalosConfig({ orchestration: { defaultMode: "invalid" } })).toThrow();
   });
 });

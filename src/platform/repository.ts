@@ -66,6 +66,7 @@ const toJob = (row: StoredJob): ScheduledJob => ({
   cronExpression: row.cron_expression,
   prompt: row.prompt,
   enabled: row.enabled === 1,
+  orchestrationMode: (row.orchestration_mode as ScheduledJob["orchestrationMode"]) ?? "task",
   lastRunAt: row.last_run_at,
   nextRunAt: row.next_run_at,
   runCount: row.run_count,
@@ -273,6 +274,12 @@ export class PlatformRepository {
       this.db.exec("ALTER TABLE mcp_servers ADD COLUMN tags_json TEXT NOT NULL DEFAULT '[]'");
     }
 
+    // Add orchestration_mode column to scheduled_jobs if missing (v4 migration)
+    const jobCols = this.db.pragma("table_info(scheduled_jobs)") as { name: string }[];
+    if (!jobCols.some((c) => c.name === "orchestration_mode")) {
+      this.db.exec("ALTER TABLE scheduled_jobs ADD COLUMN orchestration_mode TEXT NOT NULL DEFAULT 'task'");
+    }
+
     // Seed default personality if none exists
     const count = this.db.prepare("SELECT COUNT(*) as c FROM personality").get() as { c: number };
     if (count.c === 0) {
@@ -422,8 +429,8 @@ export class PlatformRepository {
     this.db
       .prepare(
         `
-      INSERT INTO scheduled_jobs (id, name, description, cron_expression, prompt, enabled, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scheduled_jobs (id, name, description, cron_expression, prompt, enabled, orchestration_mode, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
       )
       .run(
@@ -433,6 +440,7 @@ export class PlatformRepository {
         input.cronExpression,
         input.prompt,
         input.enabled !== false ? 1 : 0,
+        input.orchestrationMode ?? "task",
         now,
         now
       );
@@ -447,7 +455,7 @@ export class PlatformRepository {
       .prepare(
         `
       UPDATE scheduled_jobs SET
-        name = ?, description = ?, cron_expression = ?, prompt = ?, enabled = ?, updated_at = ?
+        name = ?, description = ?, cron_expression = ?, prompt = ?, enabled = ?, orchestration_mode = ?, updated_at = ?
       WHERE id = ?
     `
       )
@@ -457,6 +465,7 @@ export class PlatformRepository {
         input.cronExpression ?? existing.cron_expression,
         input.prompt ?? existing.prompt,
         input.enabled !== undefined ? (input.enabled ? 1 : 0) : existing.enabled,
+        input.orchestrationMode ?? existing.orchestration_mode,
         now,
         id
       );
