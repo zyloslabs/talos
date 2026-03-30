@@ -240,6 +240,8 @@ Reports are persisted to `talos_app_intelligence` SQLite table and exposed via A
 
 - **Authentication**: Personal Access Token (PAT) resolved from vault reference (e.g., `vault:github-pat-myapp`).
 - **Operations**: `getTree()` (recursive file listing), `getFileContent()`, `getFileText()`, `listFiles()` (by extension).
+- **Base URL**: Configurable via `baseUrl` option. Defaults to `https://api.github.com`. For GitHub Enterprise, use `https://{host}/api/v3`. Static helper `GitHubApiClient.apiBaseFromHost(host)` handles the mapping.
+- **GHE Support**: `parseRepoUrl()` in `DiscoveryEngine` now returns `{ host, owner, repo }` for any git host (github.com, GHE, SSH, shorthand). The host is mapped to the correct API base URL automatically.
 - **Rate limiting**: Reads `x-ratelimit-remaining` / `x-ratelimit-reset` headers. Defaults to 5000 req/hr.
 - **Backoff**: Exponential with jitter — 1s base, 60s max, retries on 5xx errors.
 - **Caching**: In-memory cache with configurable TTL (default 5 minutes). Keyed by `{owner}/{repo}/{path}@{ref}`.

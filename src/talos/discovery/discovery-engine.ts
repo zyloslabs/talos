@@ -10,6 +10,8 @@ import type { DiscoveryConfig } from "../config.js";
 import { GitHubApiClient, type GitHubFile } from "./github-api-client.js";
 import { FileChunker } from "./file-chunker.js";
 
+export type ParsedRepoUrl = { host: string; owner: string; repo: string };
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type DiscoveryEngineOptions = {
@@ -127,13 +129,14 @@ export class DiscoveryEngine {
       }
 
       // Parse repository URL
-      const { owner, repo } = this.parseRepoUrl(application.repositoryUrl);
+      const { host, owner, repo } = this.parseRepoUrl(application.repositoryUrl);
 
-      // Create GitHub client
+      // Create GitHub client with appropriate API base URL
       const client = new GitHubApiClient({
         pat,
         owner,
         repo,
+        baseUrl: GitHubApiClient.apiBaseFromHost(host),
         clock: this.clock,
       });
 
@@ -179,15 +182,23 @@ export class DiscoveryEngine {
     }
   }
 
-  private parseRepoUrl(url: string): { owner: string; repo: string } {
-    // Handle various GitHub URL formats
-    const patterns = [/github\.com[/:]([^/]+)\/([^/.]+)/, /^([^/]+)\/([^/]+)$/];
+  private parseRepoUrl(url: string): ParsedRepoUrl {
+    // HTTPS URLs: https://github.com/org/repo or https://git.nyiso.com/GOT/GFER-Cloud
+    const httpsMatch = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+    if (httpsMatch) {
+      return { host: httpsMatch[1], owner: httpsMatch[2], repo: httpsMatch[3] };
+    }
 
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) {
-        return { owner: match[1], repo: match[2].replace(/\.git$/, "") };
-      }
+    // SSH URLs: git@github.com:org/repo.git or git@git.nyiso.com:org/repo.git
+    const sshMatch = url.match(/^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/);
+    if (sshMatch) {
+      return { host: sshMatch[1], owner: sshMatch[2], repo: sshMatch[3] };
+    }
+
+    // Shorthand: org/repo (default to github.com)
+    const shortMatch = url.match(/^([^/]+)\/([^/]+)$/);
+    if (shortMatch) {
+      return { host: "github.com", owner: shortMatch[1], repo: shortMatch[2] };
     }
 
     throw new Error(`Invalid repository URL: ${url}`);

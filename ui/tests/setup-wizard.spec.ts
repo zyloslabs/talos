@@ -259,9 +259,9 @@ test.describe("Register App Validation (#417)", () => {
     await wizard.baseUrlInput.fill("https://staging.example.com");
     await wizard.createAppButton.click();
 
-    // fetchApi throws "API error: {status} {statusText}" — verify the error
-    // banner appears inline (error is shown, not swallowed silently)
-    await expect(page.getByText(/API error: 400/)).toBeVisible();
+    // fetchApi now extracts the JSON error message — verify the server's
+    // error text appears inline (not just the HTTP status)
+    await expect(page.getByText(/Application name already exists/)).toBeVisible();
   });
 });
 
@@ -729,5 +729,113 @@ test.describe("Discovery RAG Indexing Flow (#431)", () => {
       await expect(page.getByText(/RAG indexing failed/)).toBeVisible();
       await expect(wizard.startDiscoveryButton).toBeVisible();
     });
+  });
+});
+
+// ── #444: Discovery Step E2E — Error Messaging & GHE Support ──────────────────
+
+test.describe("Discovery Step Error Messaging (#444)", () => {
+  const JOB_ID = "discovery-job-e2e-444";
+
+  async function goToDiscoveryStep(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await setupSocketMock(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Discovery/);
+    await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+    await page.waitForTimeout(50);
+    return wizard;
+  }
+
+  test("should show Start Discovery button on the Discovery step", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    await expect(wizard.startDiscoveryButton).toBeVisible();
+    await expect(wizard.startDiscoveryButton).toBeEnabled();
+  });
+
+  test("should display server error message when API returns 503 with JSON body", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    // Override discover route to return 503 with server error message
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Discovery engine not initialized — check GitHub PAT and RAG configuration",
+        }),
+      })
+    );
+
+    await wizard.startDiscoveryButton.click();
+
+    // Should show the actual server error message, not generic "503 Service Unavailable"
+    await expect(page.getByText(/Discovery engine not initialized/)).toBeVisible();
+    // Should include troubleshooting text
+    await expect(page.getByText(/Troubleshooting/)).toBeVisible();
+    // Start Discovery button should reappear (reset to idle)
+    await expect(wizard.startDiscoveryButton).toBeVisible();
+  });
+
+  test("should display troubleshooting hint when error mentions PAT", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Discovery engine not initialized — check GitHub PAT and RAG configuration",
+        }),
+      })
+    );
+
+    await wizard.startDiscoveryButton.click();
+
+    await expect(
+      page.getByText(/Ensure a GitHub Personal Access Token is configured/)
+    ).toBeVisible();
+  });
+
+  test("should show correct endpoint call when Start Discovery is clicked", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    let capturedUrl = "";
+
+    // Override discover route to capture the request URL
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) => {
+      capturedUrl = route.request().url();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ jobId: JOB_ID }),
+      });
+    });
+
+    await wizard.startDiscoveryButton.click();
+
+    // Verify the API is called with the correct endpoint
+    expect(capturedUrl).toContain(`/api/talos/applications/${APP_ID}/discover`);
+    await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+  });
+
+  test("should display generic error when API returns non-JSON error", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "text/plain",
+        body: "Internal Server Error",
+      })
+    );
+
+    await wizard.startDiscoveryButton.click();
+
+    // Should show an error message and reset to idle
+    await expect(page.getByText(/API error: 500/)).toBeVisible();
+    await expect(wizard.startDiscoveryButton).toBeVisible();
   });
 });
