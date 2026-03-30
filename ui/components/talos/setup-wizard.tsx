@@ -236,6 +236,7 @@ function RegisterAppStep({
   const createMutation = useMutation({
     mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) =>
       createApplication(data as Partial<TalosApplication>),
+    onMutate: () => setCreateError(null),
     onSuccess: (app) => onComplete(app.id),
     onError: (error: Error) => setCreateError(error.message || "Failed to create application"),
   });

@@ -445,9 +445,11 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
       });
     })
     .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : "Discovery failed";
       console.error(`[discovery] Failed for ${app_.id}:`, message);
-      io.emit("discovery:error", { jobId, error: message });
+      // Sanitize error message before broadcasting — avoid leaking internal paths or tokens
+      const safeMessage = message.replace(/\/[^\s]+/g, "[path]").replace(/ghp_[A-Za-z0-9]+/g, "[token]");
+      io.emit("discovery:error", { jobId, error: safeMessage });
     });
 
   res.json({ jobId });

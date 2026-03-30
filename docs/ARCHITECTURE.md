@@ -1105,28 +1105,61 @@ When a Copilot365 MCP server is configured, application creation emits a `copilo
 
 ### Discovery → Index Pipeline
 
+The discovery pipeline is triggered by `POST /api/talos/applications/:id/discover`. The endpoint returns `{ jobId }` immediately and runs the full scan asynchronously, emitting progress via Socket.IO.
+
+**Socket.IO Event Contract**
+
+| Event | Payload | When |
+|-------|---------|------|
+| `discovery:started` | `{ jobId, applicationId }` | Immediately on POST |
+| `discovery:progress` | `{ jobId, phase, progress, message }` | After `DiscoveryEngine.startDiscovery()` completes |
+| `discovery:complete` | `{ jobId, filesDiscovered, chunksCreated }` | After AppIntelligenceScanner finishes |
+| `discovery:error` | `{ jobId, error }` | On any failure (error message is sanitized before broadcast) |
+
+All events include the `jobId` so clients can correlate events to the correct discovery run.
+
+**Requires**: GitHub PAT available to the RAG initializer (via `GITHUB_TOKEN`, `GITHUB_PERSONAL_ACCESS_TOKEN`, or `COPILOT_GITHUB_TOKEN` env vars, or the same keys in `~/.talos/.env`). If RAG is not initialized, the endpoint returns `503 Service Unavailable`.
+
 ```
-GitHub Repository
+POST /api/talos/applications/:id/discover
   │
-  ▼
-GitHubMcpClient.getTree("HEAD", recursive=true)
+  ├─ res.json({ jobId })          ← immediate HTTP response
   │
-  ▼
-Filter (extensions, patterns, size)
-  │
-  ▼
-GitHubMcpClient.getFileText(path)  ← per file
-  │
-  ▼
-FileChunker.chunk(path, content, appId)
-  │  ├─ Structural: function/class boundaries
-  │  └─ Sliding window: fixed-size overlapping
-  ▼
-RagPipeline.indexChunks(appId, chunks)
-  │
-  ├─ Dedup (contentHash)
-  ├─ EmbeddingService.embedBatch(texts)
-  └─ VectorStore.add(records)
+  └─ async pipeline:
+       │
+       ▼
+     GitHubMcpClient.getTree("HEAD", recursive=true)
+       │
+       ▼
+     Filter (extensions, patterns, size)
+       │
+       ▼
+     GitHubMcpClient.getFileText(path)  ← per file
+       │
+       ▼
+     FileChunker.chunk(path, content, appId)
+       │  ├─ Structural: function/class boundaries
+       │  └─ Sliding window: fixed-size overlapping
+       ▼
+     RagPipeline.indexChunks(appId, chunks)
+       │
+       ├─ Dedup (contentHash)
+       ├─ EmbeddingService.embedBatch(texts)
+       └─ VectorStore.add(records)
+       │
+       ▼
+     io.emit("discovery:progress", { jobId, ... })
+       │
+       ▼
+     AppIntelligenceScanner.scan(tree, getFileText)
+       │  ├─ detectTechStack()
+       │  ├─ detectDatabases()
+       │  ├─ detectTestUsers()
+       │  └─ detectDocumentation()
+       ▼
+     repo.saveIntelligenceReport(report)
+     io.emit("intelligence:scanned", { applicationId, report })
+     io.emit("discovery:complete", { jobId, filesDiscovered, chunksCreated })
 ```
 
 ### Test Generation Pipeline
