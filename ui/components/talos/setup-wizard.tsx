@@ -787,8 +787,13 @@ function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () =>
     onSuccess: (data) => setJobId(data.jobId),
     onError: (error: Error) => {
       setDiscoveryStatus("idle");
+      const msg = error.message || "Discovery failed";
+      const isInitError =
+        msg.includes("not initialized") || msg.includes("PAT") || msg.includes("RAG configuration");
       setErrorMsg(
-        error.message || "Discovery failed — check GitHub PAT and RAG configuration in Admin > Auth settings."
+        isInitError
+          ? `${msg}. Troubleshooting: Ensure a GitHub Personal Access Token is configured — either set GITHUB_PERSONAL_ACCESS_TOKEN in the environment, or add a githubPatRef in the application settings (Admin > Auth).`
+          : msg
       );
     },
   });

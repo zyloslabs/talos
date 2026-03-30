@@ -150,10 +150,31 @@ const discoveredChunksBuffer = new Map<string, ChunkResult[]>();
 
 const initRag = async () => {
   const githubToken = copilot ? await (copilot as CopilotWrapperService).getGithubToken() : undefined;
+
+  // Always initialize discoveryEngine if a GitHub PAT is available (Copilot token not required)
+  const discoveryResolveSecret = async (ref: string) => {
+    const envKey = ref.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase();
+    const value = process.env[envKey];
+    if (!value) throw new Error(`Secret not found: ${ref}`);
+    return value;
+  };
+
+  discoveryEngine = new DiscoveryEngine({
+    repository: repo,
+    config: talosConfig.discovery,
+    resolveSecret: discoveryResolveSecret,
+    storeChunks: async (applicationId: string, chunks: TalosChunk[]) => {
+      const existing = discoveredChunksBuffer.get(applicationId) ?? [];
+      discoveredChunksBuffer.set(applicationId, [...existing, ...(chunks as unknown as ChunkResult[])]);
+    },
+  });
+  console.log("[Discovery] Engine initialized (uses per-app PAT or GITHUB_PERSONAL_ACCESS_TOKEN)");
+
   if (!githubToken) {
-    console.warn("[RAG] GitHub token not available — RAG features will be disabled");
+    console.warn("[RAG] GitHub token not available — RAG pipeline disabled, but discovery is available");
     return;
   }
+
   ragPipeline = new RagPipeline({
     vectorDbConfig: { ...talosConfig.vectorDb, path: VECTORDB_DIR },
     embeddingConfig: { ...talosConfig.embedding, provider: "github-models" },
@@ -161,16 +182,6 @@ const initRag = async () => {
   });
 
   await ragPipeline.initialize();
-
-  // DiscoveryEngine wired to store chunks in per-app buffer for pipeline indexing
-  discoveryEngine = new DiscoveryEngine({
-    repository: repo,
-    config: talosConfig.discovery,
-    storeChunks: async (applicationId: string, chunks: TalosChunk[]) => {
-      const existing = discoveredChunksBuffer.get(applicationId) ?? [];
-      discoveredChunksBuffer.set(applicationId, [...existing, ...(chunks as unknown as ChunkResult[])]);
-    },
-  });
 
   const artifactManager = new ArtifactManager({
     config: talosConfig.artifacts,

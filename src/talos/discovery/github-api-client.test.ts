@@ -229,4 +229,83 @@ describe("GitHubApiClient", () => {
     expect(rl!.remaining).toBe(100);
     expect(rl!.limit).toBe(5000);
   });
+
+  // ── apiBaseFromHost static helper ──────────────────────────────────────────
+
+  it("apiBaseFromHost returns api.github.com for github.com", () => {
+    expect(GitHubApiClient.apiBaseFromHost("github.com")).toBe("https://api.github.com");
+  });
+
+  it("apiBaseFromHost returns /api/v3 for GHE hosts", () => {
+    expect(GitHubApiClient.apiBaseFromHost("git.nyiso.com")).toBe("https://git.nyiso.com/api/v3");
+  });
+
+  it("apiBaseFromHost returns /api/v3 for arbitrary host", () => {
+    expect(GitHubApiClient.apiBaseFromHost("github.example.org")).toBe("https://github.example.org/api/v3");
+  });
+
+  // ── custom baseUrl ─────────────────────────────────────────────────────────
+
+  it("getTree uses custom baseUrl when provided", async () => {
+    const tree = { sha: "abc", url: "u", tree: [], truncated: false };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(tree),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
+    });
+
+    const client = createClient({ baseUrl: "https://git.nyiso.com/api/v3" });
+    await client.getTree("main");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://git.nyiso.com/api/v3/repos/acme/app/git/trees/main?recursive=1",
+      expect.any(Object)
+    );
+  });
+
+  it("getFileContent uses custom baseUrl when provided", async () => {
+    const content = { path: "a.ts", content: "YQ==", encoding: "base64", sha: "s", size: 1 };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(content),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
+    });
+
+    const client = createClient({ baseUrl: "https://git.nyiso.com/api/v3" });
+    await client.getFileContent("a.ts");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("https://git.nyiso.com/api/v3/repos/acme/app/contents/"),
+      expect.any(Object)
+    );
+  });
+
+  it("uses default github.com API base when no baseUrl provided", async () => {
+    const tree = { sha: "abc", url: "u", tree: [], truncated: false };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(tree),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
+    });
+
+    const client = createClient();
+    await client.getTree("main");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.github.com/repos/acme/app/git/trees/main?recursive=1",
+      expect.any(Object)
+    );
+  });
 });
