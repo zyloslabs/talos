@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { AppIntelligenceScanner } from "./app-intelligence-scanner.js";
-import type { GitHubTree } from "./github-mcp-client.js";
+import type { GitHubTree } from "./github-api-client.js";
 
 describe("AppIntelligenceScanner", () => {
   const fixedDate = new Date("2026-03-28T12:00:00Z");
@@ -37,7 +37,8 @@ describe("AppIntelligenceScanner", () => {
         dependencies: { react: "^18.0.0", express: "^4.18.0", prisma: "^5.0.0" },
         devDependencies: { typescript: "^5.3.0", vitest: "^1.0.0" },
       }),
-      ".env.example": "TEST_USER_EMAIL=test@example.com\nTEST_USER_PASSWORD=secret\nDATABASE_URL=postgres://user:pass@localhost:5432/mydb",
+      ".env.example":
+        "TEST_USER_EMAIL=test@example.com\nTEST_USER_PASSWORD=secret\nDATABASE_URL=postgres://user:pass@localhost:5432/mydb",
       "docker-compose.yml": "services:\n  db:\n    image: postgres:16\n  cache:\n    image: redis:7",
       "playwright.config.ts": "export default { globalSetup: './setup.ts', use: { storageState: 'auth.json' } }",
     };
@@ -142,11 +143,7 @@ describe("AppIntelligenceScanner", () => {
   });
 
   it("scans multiple manifest files from different ecosystems", async () => {
-    const tree = makeTree([
-      { path: "package.json" },
-      { path: "requirements.txt" },
-      { path: "go.mod" },
-    ]);
+    const tree = makeTree([{ path: "package.json" }, { path: "requirements.txt" }, { path: "go.mod" }]);
 
     const contentMap: Record<string, string> = {
       "package.json": JSON.stringify({ dependencies: { express: "^4.0.0" } }),

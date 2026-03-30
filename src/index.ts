@@ -41,6 +41,7 @@ import type { TalosChunk } from "./talos/types.js";
 import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js";
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
+import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -151,10 +152,31 @@ const discoveredChunksBuffer = new Map<string, ChunkResult[]>();
 
 const initRag = async () => {
   const githubToken = copilot ? await (copilot as CopilotWrapperService).getGithubToken() : undefined;
+
+  // Always initialize discoveryEngine if a GitHub PAT is available (Copilot token not required)
+  const discoveryResolveSecret = async (ref: string) => {
+    const envKey = ref.replace(/[^A-Za-z0-9_]/g, "_").toUpperCase();
+    const value = process.env[envKey];
+    if (!value) throw new Error(`Secret not found: ${ref}`);
+    return value;
+  };
+
+  discoveryEngine = new DiscoveryEngine({
+    repository: repo,
+    config: talosConfig.discovery,
+    resolveSecret: discoveryResolveSecret,
+    storeChunks: async (applicationId: string, chunks: TalosChunk[]) => {
+      const existing = discoveredChunksBuffer.get(applicationId) ?? [];
+      discoveredChunksBuffer.set(applicationId, [...existing, ...(chunks as unknown as ChunkResult[])]);
+    },
+  });
+  console.log("[Discovery] Engine initialized (uses per-app PAT or GITHUB_PERSONAL_ACCESS_TOKEN)");
+
   if (!githubToken) {
-    console.warn("[RAG] GitHub token not available — RAG features will be disabled");
+    console.warn("[RAG] GitHub token not available — RAG pipeline disabled, but discovery is available");
     return;
   }
+
   ragPipeline = new RagPipeline({
     vectorDbConfig: { ...talosConfig.vectorDb, path: VECTORDB_DIR },
     embeddingConfig: { ...talosConfig.embedding, provider: "github-models" },
@@ -162,16 +184,6 @@ const initRag = async () => {
   });
 
   await ragPipeline.initialize();
-
-  // DiscoveryEngine wired to store chunks in per-app buffer for pipeline indexing
-  discoveryEngine = new DiscoveryEngine({
-    repository: repo,
-    config: talosConfig.discovery,
-    storeChunks: async (applicationId: string, chunks: TalosChunk[]) => {
-      const existing = discoveredChunksBuffer.get(applicationId) ?? [];
-      discoveredChunksBuffer.set(applicationId, [...existing, ...(chunks as unknown as ChunkResult[])]);
-    },
-  });
 
   const artifactManager = new ArtifactManager({
     config: talosConfig.artifacts,
@@ -311,6 +323,10 @@ function appendSessionMessage(conversationId: string, message: { role: string; c
 const app = express();
 app.use(express.json());
 
+// ── Rate Limiters ─────────────────────────────────────────────────────────────
+
+const atlassianImportLimiter = new RateLimiter(60_000); // 60 seconds per app
+
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
 
 const httpServer = createServer(app);
@@ -422,23 +438,57 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
         message: `Discovered ${job.filesDiscovered} files, created ${job.chunksCreated} chunks`,
       });
 
-      // Run AppIntelligenceScanner after discovery
+      // Index discovered chunks into RAG vector store (#431)
+      const bufferedChunks = discoveredChunksBuffer.get(req.params.id) ?? [];
+      if (ragPipeline && bufferedChunks.length > 0) {
+        try {
+          io.emit("discovery:progress", {
+            jobId,
+            phase: "indexing",
+            progress: 0,
+            message: "Indexing chunks into RAG...",
+          });
+          const indexResult = await ragPipeline.indexChunks(req.params.id, bufferedChunks);
+          console.log(
+            `[discovery] RAG indexed ${indexResult.indexed} chunks (${indexResult.skipped} skipped) for ${req.params.id}`
+          );
+          io.emit("discovery:progress", {
+            jobId,
+            phase: "indexing",
+            progress: 100,
+            message: `Indexed ${indexResult.indexed} chunks into RAG (${indexResult.skipped} skipped)`,
+          });
+        } catch (indexErr) {
+          console.warn(
+            "[discovery] RAG indexing failed for %s:",
+            req.params.id,
+            indexErr instanceof Error ? indexErr.message : String(indexErr)
+          );
+        }
+      }
+      // Clean up the buffer after indexing
+      discoveredChunksBuffer.delete(req.params.id);
+
+      // Run AppIntelligenceScanner after discovery completes
       try {
         const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
-        const { GitHubMcpClient } = await import("./talos/discovery/github-mcp-client.js");
+        const { GitHubApiClient } = await import("./talos/discovery/github-api-client.js");
 
-        let pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
-        if (app_.githubPatRef) {
-          pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
-        }
+        const pat =
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
+          process.env.GITHUB_TOKEN ??
+          process.env.COPILOT_GITHUB_TOKEN ??
+          envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
+          envManager.getRaw("GITHUB_TOKEN") ??
+          "";
 
         if (pat) {
           const repoMatch =
-            app_.repositoryUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/) ??
-            app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
+            app_.repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/) ??
+            app_.repositoryUrl.match(/^([^\/]+)\/([^\/]+)$/);
           if (repoMatch) {
             const [, owner, repoName] = repoMatch;
-            const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+            const client = new GitHubApiClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
             const tree = await client.getTree(app_.branch || "HEAD", true);
             const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
             const report = await scanner.scan(tree, (path) => client.getFileText(path));
@@ -460,9 +510,11 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
       });
     })
     .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : "Discovery failed";
       console.error(`[discovery] Failed for ${app_.id}:`, message);
-      io.emit("discovery:error", { jobId, error: message });
+      // Sanitize error message before broadcasting — avoid leaking internal paths or tokens
+      const safeMessage = message.replace(/\/[^\s]+/g, "[path]").replace(/ghp_[A-Za-z0-9]+/g, "[token]");
+      io.emit("discovery:error", { jobId, error: safeMessage });
     });
 
   res.json({ jobId });
@@ -834,6 +886,257 @@ app.post("/api/talos/applications/:appId/atlassian/test", async (req, res) => {
   }
 });
 
+// ── Atlassian Data Import (#430) ──────────────────────────────────────────────
+
+app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => {
+  const appId = req.params.appId;
+
+  // ── Rate limiting ───────────────────────────────────────────────────────────
+  const rl = atlassianImportLimiter.check(appId);
+  if (rl.limited) {
+    res.status(429).json({
+      error: "Import rate limited. Please wait before importing again.",
+      retryAfterMs: rl.retryAfterMs,
+    });
+    return;
+  }
+
+  const app_ = repo.getApplication(appId);
+  if (!app_) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+
+  const config = repo.getAtlassianConfigByApp(appId);
+  if (!config) {
+    res.status(404).json({ error: "No Atlassian config found. Save your config first." });
+    return;
+  }
+
+  // ── Input validation (SSRF + JQL injection) ─────────────────────────────────
+  const isDev = process.env.NODE_ENV === "development";
+  if (config.jiraUrl) {
+    try {
+      validateExternalUrl(config.jiraUrl, { allowLocalhostHttp: isDev });
+    } catch (e) {
+      res.status(400).json({ error: `Invalid Jira URL: ${e instanceof Error ? e.message : String(e)}` });
+      return;
+    }
+  }
+  if (config.confluenceUrl) {
+    try {
+      validateExternalUrl(config.confluenceUrl, { allowLocalhostHttp: isDev });
+    } catch (e) {
+      res.status(400).json({ error: `Invalid Confluence URL: ${e instanceof Error ? e.message : String(e)}` });
+      return;
+    }
+  }
+  if (config.jiraProject && !isValidJiraProjectKey(config.jiraProject)) {
+    res
+      .status(400)
+      .json({ error: "Invalid Jira project key format. Expected uppercase alphanumeric (e.g. PROJ, MY_APP)." });
+    return;
+  }
+
+  io.emit("atlassian:import:started", { applicationId: appId });
+
+  // Build auth headers for Jira
+  function buildJiraHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (config!.deploymentType === "datacenter" && config!.jiraPersonalTokenVaultRef) {
+      headers["Authorization"] = `Bearer ${config!.jiraPersonalTokenVaultRef}`;
+    } else if (config!.jiraUsernameVaultRef && config!.jiraApiTokenVaultRef) {
+      headers["Authorization"] =
+        `Basic ${Buffer.from(`${config!.jiraUsernameVaultRef}:${config!.jiraApiTokenVaultRef}`).toString("base64")}`;
+    }
+    return headers;
+  }
+
+  // Build auth headers for Confluence
+  function buildConfluenceHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (config!.deploymentType === "datacenter" && config!.confluencePersonalTokenVaultRef) {
+      headers["Authorization"] = `Bearer ${config!.confluencePersonalTokenVaultRef}`;
+    } else if (config!.confluenceUsernameVaultRef && config!.confluenceApiTokenVaultRef) {
+      headers["Authorization"] =
+        `Basic ${Buffer.from(`${config!.confluenceUsernameVaultRef}:${config!.confluenceApiTokenVaultRef}`).toString("base64")}`;
+    }
+    return headers;
+  }
+
+  const importedDocs: { source: string; title: string; type: string }[] = [];
+  const importErrors: string[] = [];
+  let totalChunks = 0;
+
+  try {
+    // Import Jira issues
+    if (config.jiraUrl && config.jiraProject) {
+      const jiraBase = config.jiraUrl.replace(/\/+$/, "");
+      const headers = buildJiraHeaders();
+      const jql = `project = ${config.jiraProject} ORDER BY updated DESC`;
+
+      io.emit("atlassian:import:progress", { applicationId: appId, phase: "jira", message: "Fetching Jira issues..." });
+
+      const jiraRes = await fetch(
+        `${jiraBase}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,description,issuetype,status,priority`,
+        { headers, signal: AbortSignal.timeout(30_000) }
+      );
+
+      if (jiraRes.ok) {
+        const data = (await jiraRes.json()) as {
+          issues: Array<{
+            key: string;
+            fields: {
+              summary: string;
+              description: string | null;
+              issuetype?: { name: string };
+              status?: { name: string };
+              priority?: { name: string };
+            };
+          }>;
+        };
+
+        if (data.issues.length > 0) {
+          // Convert issues to markdown document for RAG ingestion
+          const issueMarkdown = data.issues
+            .map(
+              (issue) =>
+                `## ${issue.key}: ${issue.fields.summary}\n` +
+                `**Type:** ${issue.fields.issuetype?.name ?? "Unknown"} | **Status:** ${issue.fields.status?.name ?? "Unknown"} | **Priority:** ${issue.fields.priority?.name ?? "Unknown"}\n\n` +
+                (issue.fields.description ?? "_No description_")
+            )
+            .join("\n\n---\n\n");
+
+          // Ingest via DocumentIngester if RAG is available
+          if (ragPipeline) {
+            try {
+              const ingester = new DocumentIngester({ ragPipeline });
+              const result = await ingester.ingestDocument(appId, issueMarkdown, "markdown", {
+                fileName: `jira-${config.jiraProject}-issues.md`,
+                docType: "user_story",
+                tags: ["atlassian", "jira", config.jiraProject],
+              });
+              totalChunks += result.chunksCreated;
+            } catch (err) {
+              console.warn(
+                "[atlassian-import] Jira RAG ingestion failed:",
+                err instanceof Error ? err.message : String(err)
+              );
+              // Fallback: just count the issues as chunks
+              totalChunks += data.issues.length;
+            }
+          }
+
+          importedDocs.push({
+            source: "Jira",
+            title: `${data.issues.length} issues from ${config.jiraProject}`,
+            type: "user_story",
+          });
+          io.emit("atlassian:import:progress", {
+            applicationId: appId,
+            phase: "jira",
+            message: `Imported ${data.issues.length} Jira issues`,
+          });
+        }
+      } else {
+        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraRes.statusText}`);
+      }
+    }
+
+    // Import Confluence pages
+    if (config.confluenceUrl && config.confluenceSpaces.length > 0) {
+      const confBase = config.confluenceUrl.replace(/\/+$/, "");
+      const headers = buildConfluenceHeaders();
+
+      for (const space of config.confluenceSpaces) {
+        io.emit("atlassian:import:progress", {
+          applicationId: appId,
+          phase: "confluence",
+          message: `Fetching Confluence pages from space ${space}...`,
+        });
+
+        const confRes = await fetch(
+          `${confBase}/rest/api/content?spaceKey=${encodeURIComponent(space)}&limit=25&expand=body.storage,metadata.labels`,
+          { headers, signal: AbortSignal.timeout(30_000) }
+        );
+
+        if (confRes.ok) {
+          const data = (await confRes.json()) as {
+            results: Array<{
+              title: string;
+              body?: { storage?: { value: string } };
+              metadata?: { labels?: { results?: Array<{ name: string }> } };
+            }>;
+          };
+
+          if (data.results.length > 0) {
+            // Strip HTML tags for plain-text RAG ingestion
+            const pagesMarkdown = data.results
+              .map((page) => {
+                const body = (page.body?.storage?.value ?? "")
+                  .replace(/<[^>]+>/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+                return `## ${page.title}\n\n${body || "_No content_"}`;
+              })
+              .join("\n\n---\n\n");
+
+            if (ragPipeline) {
+              try {
+                const ingester = new DocumentIngester({ ragPipeline });
+                const result = await ingester.ingestDocument(appId, pagesMarkdown, "markdown", {
+                  fileName: `confluence-${space}-pages.md`,
+                  docType: "functional_spec",
+                  tags: ["atlassian", "confluence", space],
+                });
+                totalChunks += result.chunksCreated;
+              } catch (err) {
+                console.warn(
+                  "[atlassian-import] Confluence RAG ingestion failed for space %s:",
+                  space,
+                  err instanceof Error ? err.message : String(err)
+                );
+                totalChunks += data.results.length;
+              }
+            }
+
+            importedDocs.push({
+              source: "Confluence",
+              title: `${data.results.length} pages from ${space}`,
+              type: "functional_spec",
+            });
+            io.emit("atlassian:import:progress", {
+              applicationId: appId,
+              phase: "confluence",
+              message: `Imported ${data.results.length} Confluence pages from ${space}`,
+            });
+          }
+        } else {
+          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confRes.statusText}`);
+        }
+      }
+    }
+
+    io.emit("atlassian:import:complete", {
+      applicationId: appId,
+      imported: importedDocs,
+      totalChunks,
+      errors: importErrors,
+    });
+
+    res.json({
+      success: importErrors.length === 0,
+      imported: importedDocs,
+      totalChunks,
+      errors: importErrors,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    io.emit("atlassian:import:error", { applicationId: appId, error: message });
+    res.status(500).json({ error: `Import failed: ${message}` });
+  }
+});
+
 // ── App Intelligence ──────────────────────────────────────────────────────────
 
 app.get("/api/talos/applications/:appId/intelligence", (req, res) => {
@@ -860,7 +1163,7 @@ app.post("/api/talos/applications/:appId/intelligence/refresh", async (req, res)
   try {
     // Lazy import to keep module boundary clean
     const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
-    const { GitHubMcpClient } = await import("./talos/discovery/github-mcp-client.js");
+    const { GitHubApiClient } = await import("./talos/discovery/github-api-client.js");
 
     // Resolve PAT
     let pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN ?? "";
@@ -883,7 +1186,7 @@ app.post("/api/talos/applications/:appId/intelligence/refresh", async (req, res)
     }
     const [, owner, repoName] = repoMatch;
 
-    const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+    const client = new GitHubApiClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
     const tree = await client.getTree(app_.branch || "HEAD", true);
 
     const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
@@ -985,6 +1288,7 @@ app.post("/api/talos/tests/generate", async (req, res) => {
   try {
     // ── Path 1: TestGenerator (RAG-backed) ──────────────────────────────────
     if (testGenerator) {
+      console.log(`[generation] Path 1: TestGenerator (RAG-backed) for app ${applicationId}`);
       io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 20 });
       const genResult = await testGenerator.generate({
         applicationId,
@@ -996,6 +1300,7 @@ app.post("/api/talos/tests/generate", async (req, res) => {
       });
       if (genResult.success && genResult.test) {
         const confidence = genResult.test.generationConfidence ?? 0.85;
+        console.log(`[generation] Path 1 succeeded: test ${genResult.test.id}, confidence ${confidence}`);
         io.emit("generation:complete", {
           generationId,
           testId: genResult.test.id,
@@ -1006,10 +1311,12 @@ app.post("/api/talos/tests/generate", async (req, res) => {
           code: genResult.test.code,
           name: genResult.test.name,
           confidence,
+          generationPath: "rag-backed",
         });
         return;
       }
       // Fall through to raw Copilot if TestGenerator failed
+      console.log(`[generation] Path 1 failed (${genResult.error ?? "unknown"}), falling through...`);
       if (!copilot) {
         throw new Error(genResult.error ?? "Test generation failed");
       }
@@ -1017,7 +1324,8 @@ app.post("/api/talos/tests/generate", async (req, res) => {
 
     // ── Path 2: Raw Copilot (direct LLM, no RAG) ───────────────────────────
     if (!copilot) {
-      // Fallback: generate a template test when Copilot is unavailable
+      // ── Path 3: Skeleton template (no AI available) ─────────────────────
+      console.log(`[generation] Path 3: Skeleton template fallback for app ${applicationId} (no AI available)`);
       io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 30 });
       const testName = `Generated: ${prompt.substring(0, 50)}`;
       const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
@@ -1035,11 +1343,18 @@ app.post("/api/talos/tests/generate", async (req, res) => {
       });
 
       io.emit("generation:complete", { generationId, testId: created.id, confidence: 0.5 });
-      res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence: 0.5 });
+      res.status(201).json({
+        id: created.id,
+        code: created.code,
+        name: created.name,
+        confidence: 0.5,
+        generationPath: "skeleton-template",
+      });
       return;
     }
 
     // Real LLM generation
+    console.log(`[generation] Path 2: Raw Copilot (direct LLM, no RAG) for app ${applicationId}`);
     io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 20 });
 
     const systemPrompt = `You are an expert test automation engineer. Generate a complete Playwright test based on the user's request.
@@ -1081,7 +1396,10 @@ Application URL: ${app_.baseUrl}`;
     });
 
     io.emit("generation:complete", { generationId, testId: created.id, confidence });
-    res.status(201).json({ id: created.id, code: created.code, name: created.name, confidence });
+    console.log(`[generation] Path 2 succeeded: test ${created.id}, confidence ${confidence}`);
+    res
+      .status(201)
+      .json({ id: created.id, code: created.code, name: created.name, confidence, generationPath: "raw-copilot" });
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     io.emit("generation:error", { generationId, error: errMsg });

@@ -89,6 +89,9 @@ export class TestGenerator {
       this.config.maxContextChunks
     );
 
+    // Get intelligence report if available (#429)
+    const intelligence = this.repository.getIntelligenceReport(input.applicationId) ?? undefined;
+
     while (attempts <= maxRetries) {
       attempts++;
 
@@ -98,6 +101,7 @@ export class TestGenerator {
           application,
           existingTests,
           relevantCode,
+          intelligence,
           userRequest: input.request,
           framework: input.framework,
           style: input.style,

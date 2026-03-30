@@ -19,6 +19,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **GitHub Enterprise Support** (Epic #437): Discovery engine and API client now support GitHub Enterprise Server (GHE) alongside github.com.
+  - **#438** — `parseRepoUrl` now handles any git host: `https://git.example.com/org/repo`, `git@ghe.corp.com:org/repo.git`, and shorthand `org/repo` (defaults to github.com). Returns `{ host, owner, repo }`.
+  - **#439** — `GitHubApiClient` accepts a configurable `baseUrl` option (defaults to `https://api.github.com`). Static helper `apiBaseFromHost(host)` maps `github.com` → `https://api.github.com` and any other host → `https://{host}/api/v3`.
+  - **#441** — Discovery engine wires the parsed host to the API client, so GHE repositories are discovered using the correct API endpoint.
+  - **#443** — Unit tests for GHE URL parsing, custom API base URL, and PAT fallback logic.
+  - **#444** — E2E Playwright test for the discovery step: verifies Start Discovery button, API call interception, and error display.
+- **Pipeline Integration** (Epic #426): Wire discovery, intelligence, and Atlassian data through the RAG and generation pipelines.
+  - **#431** — Discovery chunks are now indexed into the RAG vector store (LanceDB) after repository discovery completes. Progress events emitted via Socket.IO (`discovery:progress` with `phase: "indexing"`).
+  - **#429** — App intelligence scan data (tech stack, databases, test users, documentation paths) is now fed to `PromptBuilder` and `CriteriaGenerator` for richer, context-aware test generation and acceptance criteria.
+  - **#430** — New `POST /api/talos/applications/:id/atlassian/import` endpoint fetches Jira issues and Confluence pages, converts them to markdown, and ingests into RAG via `DocumentIngester`. "Import Data" button added to wizard Atlassian step with real-time Socket.IO progress.
+  - **#427** — Test generation endpoint now logs which fallback path is used (`rag-backed`, `raw-copilot`, or `skeleton-template`) and includes `generationPath` in the API response.
+
+### Changed
+
+- **#440** — Discovery engine initialization no longer requires a Copilot token. If only `GITHUB_PERSONAL_ACCESS_TOKEN` is set, discovery works independently while the RAG pipeline remains disabled.
+- **#442** — Setup wizard discovery step now shows the actual server error message (parsed from JSON response body) instead of generic "API error: 503 Service Unavailable". Troubleshooting hints are displayed when the error relates to PAT/initialization.
+- **#432** — Renamed `GitHubMcpClient` → `GitHubApiClient` and `github-mcp-client.ts` → `github-api-client.ts` to accurately reflect that the class is a REST API client, not an MCP client.
+- **#428** — Data Sources wizard step (Step 2) now shows a "Coming Soon" badge with disabled form fields, since JDBC support is not yet available. Users can skip to the next step.
+
+### Fixed
+
+- **Setup Wizard UX & Discovery** (Epic #412): Comprehensive validation, Socket.IO wiring, and UX polish across the setup wizard.
+  - **#413** — Skip button in Atlassian step now uses `variant="outline"` consistently with all other Skip buttons in the wizard.
+  - **#417** — Register App step: `Create Application` button now requires all three fields (name, repoUrl, baseUrl); inline URL format validation for `repositoryUrl` and `baseUrl` (must start with `http://` or `https://`); inline error display when the create API call fails.
+  - **#414** — Upload Docs step: replaced boolean `isIngesting` with `ingestingCount` counter to correctly handle concurrent multi-file uploads — the Continue button now stays disabled until ALL in-flight ingestion requests complete, not just the last one to finish.
+  - **#415** — Upload Docs step: Continue button label is now context-aware — "Skip This Step →" when no files are uploaded, "Continue (N file(s) uploaded)" when files are done, and a spinner while ingestion is in progress.
+  - **#419** — Discovery step: no longer treats HTTP 200 as "complete". The step now subscribes to Socket.IO events (`discovery:progress`, `discovery:complete`, `discovery:error`) and shows real-time progress (phase, percentage, message). Completion state shows actual file/chunk counts. Events are filtered by `jobId` to avoid cross-app interference. A 5-minute timeout fires if no completion event arrives.
+  - **#416** — Generate Tests step: added "Go to Test Library" navigation button after successful test generation, and a "Skip & Go to Test Library →" link so users can exit the wizard without generating tests.
+
+### Added
+
 - **Session Mode Orchestration** (Epic #391): Multi-agent orchestration with two execution modes — Session (~2 API calls via SDK subagent delegation) and Task (N+1 parallel background tasks).
   - `enableSubagents` and `customAgents` wired through `CopilotWrapper.chat()` to `@github/copilot-sdk` session creation (#392).
   - `CustomAgentDefinition` type with `name`, `displayName`, `description`, `prompt`, `tools?`, `infer?` fields (#392).

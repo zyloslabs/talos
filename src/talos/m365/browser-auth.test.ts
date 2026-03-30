@@ -41,7 +41,7 @@ describe("BrowserAuth", () => {
   describe("constructor", () => {
     it("uses default values", () => {
       const auth = new BrowserAuth();
-      expect(auth.getUserDataDir()).toContain("browser-data");
+      expect(auth.getUserDataDir()).toContain(".talos/browser-data");
     });
 
     it("accepts custom options", () => {

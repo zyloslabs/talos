@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSocket } from "@/lib/socket";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ import {
   getAtlassianConfig,
   saveAtlassianConfig,
   testAtlassianConnection,
+  importAtlassianData,
   getMcpServers,
   type TalosApplication,
   type AcceptanceCriteria,
@@ -238,19 +241,26 @@ function RegisterAppStep({
 }) {
   const [name, setName] = useState("");
   const [repoUrl, setRepoUrl] = useState("");
+  const [repoUrlError, setRepoUrlError] = useState<string | null>(null);
   const [branch, setBranch] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [baseUrlError, setBaseUrlError] = useState<string | null>(null);
   const [mtlsEnabled, setMtlsEnabled] = useState(false);
   const [mtlsCert, setMtlsCert] = useState("");
   const [mtlsKey, setMtlsKey] = useState("");
   const [mtlsCa, setMtlsCa] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const isValidUrl = (url: string) => url.startsWith("http://") || url.startsWith("https://");
 
   const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) =>
       createApplication(data as Partial<TalosApplication>),
+    onMutate: () => setCreateError(null),
     onSuccess: (app) => onComplete(app.id),
+    onError: (error: Error) => setCreateError(error.message || "Failed to create application"),
   });
 
   const handleCreate = () => {
@@ -305,21 +315,37 @@ function RegisterAppStep({
       )}
       <div className="space-y-3">
         <Input placeholder="Application name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input
-          placeholder="Repository URL (https://github.com/...)"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-        />
+        <div className="space-y-1">
+          <Input
+            placeholder="Repository URL (https://github.com/...)"
+            value={repoUrl}
+            onChange={(e) => {
+              setRepoUrl(e.target.value);
+              setRepoUrlError(
+                e.target.value && !isValidUrl(e.target.value) ? "Must start with http:// or https://" : null
+              );
+            }}
+          />
+          {repoUrlError && <p className="text-xs text-red-500">{repoUrlError}</p>}
+        </div>
         <Input
           placeholder="Branch (leave empty for default branch)"
           value={branch}
           onChange={(e) => setBranch(e.target.value)}
         />
-        <Input
-          placeholder="Base URL (https://staging.example.com)"
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-        />
+        <div className="space-y-1">
+          <Input
+            placeholder="Base URL (https://staging.example.com)"
+            value={baseUrl}
+            onChange={(e) => {
+              setBaseUrl(e.target.value);
+              setBaseUrlError(
+                e.target.value && !isValidUrl(e.target.value) ? "Must start with http:// or https://" : null
+              );
+            }}
+          />
+          {baseUrlError && <p className="text-xs text-red-500">{baseUrlError}</p>}
+        </div>
 
         {/* mTLS Toggle (#324) */}
         <div className="rounded-lg border p-4 space-y-3">
@@ -370,10 +396,19 @@ function RegisterAppStep({
           )}
         </div>
 
-        <Button onClick={handleCreate} disabled={!name || createMutation.isPending}>
+        <Button
+          onClick={handleCreate}
+          disabled={!name || !repoUrl || !baseUrl || !!repoUrlError || !!baseUrlError || createMutation.isPending}
+        >
           {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Create Application
         </Button>
+        {createError && (
+          <div className="flex items-center gap-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            {createError}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -386,7 +421,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
     { name: string; status: "pending" | "ingesting" | "done" | "error"; chunks?: number }[]
   >([]);
   const [docType, setDocType] = useState<string>("prd");
-  const [isIngesting, setIsIngesting] = useState(false);
+  const [ingestingCount, setIngestingCount] = useState(0);
   const [activeTab, setActiveTab] = useState<"local" | "m365">("local");
   const [m365Query, setM365Query] = useState("");
   const [m365Results, setM365Results] = useState<M365SearchResult[]>([]);
@@ -419,7 +454,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
                 : "markdown";
 
           setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "ingesting" } : f)));
-          setIsIngesting(true);
+          setIngestingCount((c) => c + 1);
 
           try {
             const result = await ingestDocument(appId, { content, format, fileName: file.name, docType });
@@ -429,7 +464,7 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
           } catch {
             setFiles((prev) => prev.map((f) => (f.name === file.name ? { ...f, status: "error" } : f)));
           } finally {
-            setIsIngesting(false);
+            setIngestingCount((c) => c - 1);
           }
         };
         reader.readAsText(file);
@@ -464,14 +499,19 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
         const ft = result.fileType && result.fileType !== "unknown" ? result.fileType : "docx";
         const docName = result.title || `m365-${Date.now()}`;
         setFiles((prev) => [...prev, { name: docName, status: "ingesting" }]);
-        const fetched = await m365Fetch(result.url, ft);
-        const ingested = await ingestDocument(appId, {
-          content: fetched.content,
-          format: "markdown",
-          fileName: `${docName}.md`,
-          docType,
-        });
-        return { name: docName, chunks: ingested.chunksCreated };
+        setIngestingCount((c) => c + 1);
+        try {
+          const fetched = await m365Fetch(result.url, ft);
+          const ingested = await ingestDocument(appId, {
+            content: fetched.content,
+            format: "markdown",
+            fileName: `${docName}.md`,
+            docType,
+          });
+          return { name: docName, chunks: ingested.chunksCreated };
+        } finally {
+          setIngestingCount((c) => c - 1);
+        }
       })
     );
 
@@ -642,8 +682,23 @@ function UploadDocsStep({ appId, onComplete }: { appId: string; onComplete: () =
         </div>
       )}
 
-      <Button onClick={onComplete} disabled={isIngesting}>
-        Continue <ChevronRight className="ml-2 h-4 w-4" />
+      <Button onClick={onComplete} disabled={ingestingCount > 0}>
+        {ingestingCount > 0 ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...
+          </>
+        ) : (
+          (() => {
+            const completedCount = files.filter((f) => f.status === "done").length;
+            return completedCount > 0 ? (
+              `Continue (${completedCount} file${completedCount !== 1 ? "s" : ""} uploaded)`
+            ) : (
+              <>
+                Skip This Step <ChevronRight className="ml-2 h-4 w-4" />
+              </>
+            );
+          })()
+        )}
       </Button>
     </div>
   );
@@ -735,20 +790,83 @@ function VaultRolesStep({ appId, onComplete }: { appId: string; onComplete: () =
 
 function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
   const [discoveryStatus, setDiscoveryStatus] = useState<"idle" | "running" | "done">("idle");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ phase: string; progress: number; message: string } | null>(null);
+  const [discoveryResult, setDiscoveryResult] = useState<{ filesDiscovered: number; chunksCreated: number } | null>(
+    null
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const { subscribe } = useSocket();
 
   const discoverMutation = useMutation({
     mutationFn: () => triggerDiscovery(appId),
     onMutate: () => {
       setDiscoveryStatus("running");
       setErrorMsg(null);
+      setProgress(null);
     },
-    onSuccess: () => setDiscoveryStatus("done"),
-    onError: (error: unknown) => {
+    onSuccess: (data) => setJobId(data.jobId),
+    onError: (error: Error) => {
       setDiscoveryStatus("idle");
-      setErrorMsg(getErrorMessage(error));
+      const msg = error.message || "Discovery failed";
+      const isInitError =
+        msg.includes("not initialized") || msg.includes("PAT") || msg.includes("RAG configuration");
+      setErrorMsg(
+        isInitError
+          ? `${msg}. Troubleshooting: Ensure a GitHub Personal Access Token is configured — either set GITHUB_PERSONAL_ACCESS_TOKEN in the environment, or add a githubPatRef in the application settings (Admin > Auth).`
+          : msg
+      );
     },
   });
+
+  useEffect(() => {
+    if (!jobId) return;
+
+    const timeoutId = setTimeout(
+      () => {
+        setDiscoveryStatus((status) => {
+          if (status === "running") {
+            setErrorMsg("Discovery timed out — the scan may still be running in the background");
+            return "idle";
+          }
+          return status;
+        });
+      },
+      5 * 60 * 1000
+    );
+
+    const unsubProgress = subscribe<{ jobId: string; phase: string; progress: number; message: string }>(
+      "discovery:progress",
+      (data) => {
+        if (data.jobId !== jobId) return;
+        setProgress({ phase: data.phase, progress: data.progress, message: data.message });
+      }
+    );
+
+    const unsubComplete = subscribe<{ jobId: string; filesDiscovered: number; chunksCreated: number }>(
+      "discovery:complete",
+      (data) => {
+        if (data.jobId !== jobId) return;
+        setDiscoveryStatus("done");
+        setDiscoveryResult({ filesDiscovered: data.filesDiscovered, chunksCreated: data.chunksCreated });
+        clearTimeout(timeoutId);
+      }
+    );
+
+    const unsubError = subscribe<{ jobId: string; error: string }>("discovery:error", (data) => {
+      if (data.jobId !== jobId) return;
+      setDiscoveryStatus("idle");
+      setErrorMsg(data.error);
+      clearTimeout(timeoutId);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      unsubProgress();
+      unsubComplete();
+      unsubError();
+    };
+  }, [jobId, subscribe]);
 
   return (
     <div className="space-y-4">
@@ -756,7 +874,7 @@ function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () =>
         Crawl your repository to index source code for test generation context.
       </p>
       {errorMsg && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-600/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
+        <div className="flex items-center gap-2 rounded-md border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-600">
           <AlertCircle className="h-4 w-4 shrink-0" />
           {errorMsg}
         </div>
@@ -767,14 +885,26 @@ function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () =>
         </Button>
       )}
       {discoveryStatus === "running" && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Discovery in progress...
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {progress?.message ?? "Discovery in progress..."}
+          </div>
+          {progress && (
+            <p className="text-xs text-muted-foreground">
+              {progress.phase}
+              {progress.progress > 0 && ` — ${progress.progress}%`}
+            </p>
+          )}
         </div>
       )}
       {discoveryStatus === "done" && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm text-green-600">
-            <CheckCircle2 className="h-4 w-4" /> Discovery complete
+            <CheckCircle2 className="h-4 w-4" />
+            {discoveryResult
+              ? `Discovery complete — ${discoveryResult.filesDiscovered} files indexed, ${discoveryResult.chunksCreated} chunks created`
+              : "Discovery complete"}
           </div>
           <Button onClick={onComplete}>
             Continue <ChevronRight className="ml-2 h-4 w-4" />
@@ -797,9 +927,10 @@ function GenerateCriteriaStep({ appId, onComplete }: { appId: string; onComplete
       setResult(data);
       setErrorMsg(null);
     },
-    onError: (error: unknown) => {
-      setErrorMsg(getErrorMessage(error));
-    },
+    onError: (error: Error) =>
+      setErrorMsg(
+        error.message || "AI service unavailable — please check your Copilot configuration in Admin > Auth settings."
+      ),
   });
 
   return (
@@ -972,7 +1103,7 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
         </p>
       )}
 
-      <Button onClick={onComplete}>
+      <Button variant="outline" onClick={onComplete}>
         Continue to Test Generation <ChevronRight className="ml-2 h-4 w-4" />
       </Button>
     </div>
@@ -982,6 +1113,7 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
 // ── Step 7: Generate Tests ────────────────────────────────────────────────────
 
 function GenerateTestsStep({ appId }: { appId: string }) {
+  const router = useRouter();
   const { data: criteria } = useQuery({
     queryKey: ["criteria", appId, "approved"],
     queryFn: () => getCriteria(appId, "approved"),
@@ -1063,17 +1195,28 @@ function GenerateTestsStep({ appId }: { appId: string }) {
       )}
 
       {!isComplete && (
-        <Button onClick={handleGenerateAll} disabled={generating || !criteria?.length}>
-          {generating ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0})...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria
-            </>
-          )}
-        </Button>
+        <div className="space-y-3">
+          <Button onClick={handleGenerateAll} disabled={generating || !criteria?.length}>
+            {generating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating ({generatedCount}/{criteria?.length ?? 0}
+                )...
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-4 w-4" /> Generate Tests for All Criteria
+              </>
+            )}
+          </Button>
+          <div className="pt-1">
+            <button
+              className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+              onClick={() => router.push(`/talos/${appId}`)}
+            >
+              Skip &amp; Go to Test Library →
+            </button>
+          </div>
+        </div>
       )}
 
       {isComplete && (
@@ -1085,6 +1228,9 @@ function GenerateTestsStep({ appId }: { appId: string }) {
           <p className="text-sm text-muted-foreground">
             Your tests are now available in the Test Library. Review them, run them, and iterate.
           </p>
+          <Button onClick={() => router.push(`/talos/${appId}`)}>
+            Go to Test Library <ChevronRight className="ml-2 h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>
@@ -1142,83 +1288,85 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Add JDBC database data sources for schema-aware test generation. Each data source runs in an isolated Docker
-        container with read-only access.
-      </p>
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
+          Coming Soon
+        </Badge>
+        <p className="text-sm text-muted-foreground">
+          JDBC database data sources are not yet available. This feature is under active development.
+        </p>
+      </div>
 
-      {existing && existing.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Existing Data Sources:</p>
-          {existing.map((ds) => (
-            <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
-              <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{ds.label}</span>
-              <Badge variant="secondary">{ds.driverType}</Badge>
+      <div className="relative">
+        {/* Disabled overlay */}
+        <div className="pointer-events-none opacity-50">
+          {existing && existing.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Existing Data Sources:</p>
+              {existing.map((ds) => (
+                <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">{ds.label}</span>
+                  <Badge variant="secondary">{ds.driverType}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {drafts.map((draft, i) => (
+            <div key={i} className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Data Source {i + 1}</span>
+                {drafts.length > 1 && (
+                  <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <Input
+                placeholder="Label (e.g., Production Oracle)"
+                value={draft.label}
+                onChange={(e) => updateDraft(i, "label", e.target.value)}
+                disabled
+              />
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={draft.driverType}
+                onChange={(e) => updateDraft(i, "driverType", e.target.value)}
+                disabled
+              >
+                <option value="postgresql">PostgreSQL</option>
+                <option value="oracle">Oracle</option>
+                <option value="mysql">MySQL</option>
+                <option value="sqlserver">SQL Server</option>
+                <option value="sqlite">SQLite</option>
+                <option value="other">Other</option>
+              </select>
+              <Input
+                placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
+                value={draft.jdbcUrl}
+                onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
+                disabled
+              />
+              <Input
+                placeholder="Username vault ref (vault:db-user)"
+                value={draft.usernameVaultRef}
+                onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
+                disabled
+              />
+              <Input
+                placeholder="Password vault ref (vault:db-pass)"
+                value={draft.passwordVaultRef}
+                onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
+                disabled
+              />
             </div>
           ))}
         </div>
-      )}
-
-      {drafts.map((draft, i) => (
-        <div key={i} className="rounded-lg border p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Data Source {i + 1}</span>
-            {drafts.length > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          <Input
-            placeholder="Label (e.g., Production Oracle)"
-            value={draft.label}
-            onChange={(e) => updateDraft(i, "label", e.target.value)}
-          />
-          <select
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            value={draft.driverType}
-            onChange={(e) => updateDraft(i, "driverType", e.target.value)}
-          >
-            <option value="postgresql">PostgreSQL</option>
-            <option value="oracle">Oracle</option>
-            <option value="mysql">MySQL</option>
-            <option value="sqlserver">SQL Server</option>
-            <option value="sqlite">SQLite</option>
-            <option value="other">Other</option>
-          </select>
-          <Input
-            placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
-            value={draft.jdbcUrl}
-            onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
-          />
-          <Input
-            placeholder="Username vault ref (vault:db-user)"
-            value={draft.usernameVaultRef}
-            onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
-          />
-          <Input
-            placeholder="Password vault ref (vault:db-pass)"
-            value={draft.passwordVaultRef}
-            onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
-          />
-        </div>
-      ))}
-
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={addDraft}>
-          <Plus className="mr-1 h-4 w-4" /> Add Data Source
-        </Button>
       </div>
 
-      <Button onClick={handleSaveAll} disabled={saving || !drafts.some((d) => d.label && d.jdbcUrl)}>
-        {saving ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-          </>
-        ) : (
-          "Save & Continue"
-        )}
+      <Button variant="outline" onClick={onComplete}>
+        Skip — Continue to Next Step <ChevronRight className="ml-2 h-4 w-4" />
       </Button>
     </div>
   );
@@ -1244,6 +1392,13 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [preFilledFrom, setPreFilledFrom] = useState<"saved" | "mcp" | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    imported: Array<{ source: string; title: string }>;
+    totalChunks: number;
+    errors: string[];
+  } | null>(null);
 
   // Load saved Atlassian config for this app
   const { data: savedConfig } = useQuery({
@@ -1419,6 +1574,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             <Input
               type="password"
               placeholder="API token vault ref"
+              type="password"
               value={jiraApiToken}
               onChange={(e) => setJiraApiToken(e.target.value)}
             />
@@ -1427,6 +1583,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           <Input
             type="password"
             placeholder="Personal access token vault ref"
+            type="password"
             value={jiraPersonalToken}
             onChange={(e) => setJiraPersonalToken(e.target.value)}
           />
@@ -1459,6 +1616,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             <Input
               type="password"
               placeholder="API token vault ref"
+              type="password"
               value={confluenceApiToken}
               onChange={(e) => setConfluenceApiToken(e.target.value)}
             />
@@ -1467,6 +1625,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           <Input
             type="password"
             placeholder="Personal access token vault ref"
+            type="password"
             value={confluencePersonalToken}
             onChange={(e) => setConfluencePersonalToken(e.target.value)}
           />
@@ -1488,10 +1647,75 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
         </div>
       )}
 
+      {importResult && (
+        <div
+          className={cn(
+            "rounded-lg border p-3 text-sm space-y-1",
+            importResult.success
+              ? "border-green-600/30 bg-green-950/20 text-green-400"
+              : "border-red-600/30 bg-red-950/20 text-red-400"
+          )}
+        >
+          {importResult.imported.map((doc, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Check className="h-3 w-3 shrink-0" />
+              {doc.source}: {doc.title}
+            </div>
+          ))}
+          {importResult.totalChunks > 0 && (
+            <div className="text-xs text-muted-foreground">{importResult.totalChunks} chunks indexed into RAG</div>
+          )}
+          {importResult.errors.map((err, i) => (
+            <div key={i} className="flex items-center gap-2 text-red-400">
+              <X className="h-3 w-3 shrink-0" />
+              {err}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <Button variant="outline" onClick={handleTest} disabled={testing || !jiraUrl}>
           {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Test Connection
+        </Button>
+        <Button
+          variant="outline"
+          onClick={async () => {
+            setImporting(true);
+            setImportResult(null);
+            try {
+              // Save config first to ensure it exists on the server
+              await saveMut.mutateAsync({
+                deploymentType,
+                jiraUrl,
+                jiraProject,
+                jiraUsernameVaultRef: jiraUsername,
+                jiraApiTokenVaultRef: jiraApiToken,
+                jiraPersonalTokenVaultRef: jiraPersonalToken,
+                jiraSslVerify,
+                confluenceUrl,
+                confluenceSpaces: confluenceSpacesRaw
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                confluenceUsernameVaultRef: confluenceUsername,
+                confluenceApiTokenVaultRef: confluenceApiToken,
+                confluencePersonalTokenVaultRef: confluencePersonalToken,
+                confluenceSslVerify,
+              });
+              const result = await importAtlassianData(appId);
+              setImportResult(result);
+            } catch {
+              setImportResult({ success: false, imported: [], totalChunks: 0, errors: ["Import failed"] });
+            } finally {
+              setImporting(false);
+            }
+          }}
+          disabled={importing || (!jiraUrl && !confluenceUrl)}
+        >
+          {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+          Import Data
         </Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? (
@@ -1502,7 +1726,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             "Save & Continue"
           )}
         </Button>
-        <Button variant="ghost" onClick={onComplete}>
+        <Button variant="outline" onClick={onComplete}>
           Skip
         </Button>
       </div>

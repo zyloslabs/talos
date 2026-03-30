@@ -1,7 +1,7 @@
 /**
- * GitHub MCP Client
+ * GitHub API Client
  *
- * Interfaces with GitHub's MCP server for repository content discovery.
+ * Interfaces with GitHub's REST API for repository content discovery.
  * Handles rate limiting, caching, and exponential backoff.
  */
 
@@ -38,13 +38,15 @@ export type RateLimitState = {
   limit: number;
 };
 
-export type GitHubMcpClientOptions = {
+export type GitHubApiClientOptions = {
   /** GitHub Personal Access Token */
   pat: string;
   /** Repository owner */
   owner: string;
   /** Repository name */
   repo: string;
+  /** API base URL (defaults to https://api.github.com) */
+  baseUrl?: string;
   /** Configuration */
   config?: GitHubMcpConfig;
   /** Clock for testing */
@@ -53,10 +55,11 @@ export type GitHubMcpClientOptions = {
 
 // ── Client Implementation ─────────────────────────────────────────────────────
 
-export class GitHubMcpClient {
+export class GitHubApiClient {
   private pat: string;
   private owner: string;
   private repo: string;
+  private baseUrl: string;
   private config: GitHubMcpConfig;
   private clock: () => Date;
 
@@ -64,10 +67,11 @@ export class GitHubMcpClient {
   private cache = new Map<string, { value: unknown; expiresAt: Date }>();
   private backoffAttempts = 0;
 
-  constructor(options: GitHubMcpClientOptions) {
+  constructor(options: GitHubApiClientOptions) {
     this.pat = options.pat;
     this.owner = options.owner;
     this.repo = options.repo;
+    this.baseUrl = options.baseUrl ?? "https://api.github.com";
     this.config = options.config ?? {
       rateLimitPerHour: 5000,
       backoffBaseMs: 1000,
@@ -75,6 +79,18 @@ export class GitHubMcpClient {
       cacheTtlSeconds: 300,
     };
     this.clock = options.clock ?? (() => new Date());
+  }
+
+  /**
+   * Derive the API base URL from a git hostname.
+   * - `github.com` → `https://api.github.com`
+   * - anything else → `https://{host}/api/v3` (GitHub Enterprise convention)
+   */
+  static apiBaseFromHost(host: string): string {
+    if (host === "github.com") {
+      return "https://api.github.com";
+    }
+    return `https://${host}/api/v3`;
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -89,7 +105,7 @@ export class GitHubMcpClient {
     const cached = this.getFromCache<GitHubTree>(cacheKey);
     if (cached) return cached;
 
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/git/trees/${ref}${recursive ? "?recursive=1" : ""}`;
+    const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/git/trees/${ref}${recursive ? "?recursive=1" : ""}`;
     const result = await this.fetchWithRetry<GitHubTree>(url);
 
     this.setCache(cacheKey, result);
@@ -106,7 +122,7 @@ export class GitHubMcpClient {
     const cached = this.getFromCache<GitHubContent>(cacheKey);
     if (cached) return cached;
 
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/contents/${encodeURIComponent(path)}?ref=${ref}`;
+    const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/contents/${encodeURIComponent(path)}?ref=${ref}`;
     const result = await this.fetchWithRetry<GitHubContent>(url);
 
     this.setCache(cacheKey, result);

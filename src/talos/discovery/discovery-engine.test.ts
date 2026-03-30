@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { TalosRepository } from "../repository.js";
-import { DiscoveryEngine } from "./discovery-engine.js";
+import { DiscoveryEngine, type ParsedRepoUrl } from "./discovery-engine.js";
 
 function createRepo() {
   const db = new Database(":memory:");
@@ -131,10 +131,10 @@ describe("DiscoveryEngine", () => {
       config: discoveryConfig,
     });
     // Access private method
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
       .parseRepoUrl;
     const result = parse.call(engine, "https://github.com/myorg/myrepo");
-    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+    expect(result).toEqual({ host: "github.com", owner: "myorg", repo: "myrepo" });
   });
 
   it("parseRepoUrl handles SSH URLs", () => {
@@ -142,10 +142,10 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
       .parseRepoUrl;
     const result = parse.call(engine, "git@github.com:myorg/myrepo.git");
-    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+    expect(result).toEqual({ host: "github.com", owner: "myorg", repo: "myrepo" });
   });
 
   it("parseRepoUrl handles owner/repo format", () => {
@@ -153,10 +153,10 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
       .parseRepoUrl;
     const result = parse.call(engine, "myorg/myrepo");
-    expect(result).toEqual({ owner: "myorg", repo: "myrepo" });
+    expect(result).toEqual({ host: "github.com", owner: "myorg", repo: "myrepo" });
   });
 
   it("parseRepoUrl throws for invalid URL", () => {
@@ -164,9 +164,82 @@ describe("DiscoveryEngine", () => {
       repository: repo,
       config: discoveryConfig,
     });
-    const parse = (engine as unknown as { parseRepoUrl: (url: string) => { owner: string; repo: string } })
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
       .parseRepoUrl;
     expect(() => parse.call(engine, "")).toThrow("Invalid repository URL");
+  });
+
+  it("parseRepoUrl handles GitHub Enterprise HTTPS URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    const result = parse.call(engine, "https://git.nyiso.com/GOT/GFER-Cloud");
+    expect(result).toEqual({ host: "git.nyiso.com", owner: "GOT", repo: "GFER-Cloud" });
+  });
+
+  it("parseRepoUrl handles GHE SSH URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    const result = parse.call(engine, "git@git.nyiso.com:GOT/GFER-Cloud.git");
+    expect(result).toEqual({ host: "git.nyiso.com", owner: "GOT", repo: "GFER-Cloud" });
+  });
+
+  it("parseRepoUrl strips .git suffix from HTTPS URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    const result = parse.call(engine, "https://github.com/org/repo.git");
+    expect(result).toEqual({ host: "github.com", owner: "org", repo: "repo" });
+  });
+
+  it("parseRepoUrl handles trailing slash on HTTPS URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    const result = parse.call(engine, "https://github.com/org/repo/");
+    expect(result).toEqual({ host: "github.com", owner: "org", repo: "repo" });
+  });
+
+  it("parseRepoUrl handles repos with dots in the name", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    expect(parse.call(engine, "https://github.com/vercel/next.js")).toEqual({
+      host: "github.com",
+      owner: "vercel",
+      repo: "next.js",
+    });
+    expect(parse.call(engine, "git@github.com:vercel/next.js.git")).toEqual({
+      host: "github.com",
+      owner: "vercel",
+      repo: "next.js",
+    });
+  });
+
+  it("parseRepoUrl throws for single-segment string", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    expect(() => parse.call(engine, "just-a-name")).toThrow("Invalid repository URL");
   });
 
   it("uses GITHUB_PERSONAL_ACCESS_TOKEN env var when app has no githubPatRef", async () => {

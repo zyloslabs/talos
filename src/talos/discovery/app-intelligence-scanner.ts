@@ -7,7 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { AppIntelligenceReport } from "../types.js";
-import type { GitHubTree } from "./github-mcp-client.js";
+import type { GitHubTree } from "./github-api-client.js";
 import { detectTechStack } from "./detectors/tech-stack-detector.js";
 import { detectDatabases } from "./detectors/database-scanner.js";
 import { detectTestUsers } from "./detectors/test-user-scanner.js";

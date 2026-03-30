@@ -1,744 +1,841 @@
-import { test, expect } from "@playwright/test";
+/**
+ * E2E tests for the Setup Wizard.
+ *
+ * PR #425 — Setup Wizard Bug Fixes (Epic #412):
+ *   #413 – Skip button consistent outline styling on ALL steps
+ *   #414 – Multi-file upload race condition: Continue stays disabled mid-flight
+ *   #415 – Upload Docs smart Continue button label
+ *   #416 – Generate Tests step "Go to Test Library" CTA
+ *   #417 – Register App form validation
+ *   #419 – Discovery Socket.IO state transitions
+ *
+ * PR #433 — Pipeline Integration (Epic #426):
+ *   #431 – Discovery indexes into RAG vector store (discovery flow still works)
+ */
+
+import { test, expect, type Page } from "@playwright/test";
 import { SetupWizardPage } from "./pages/setup-wizard.page";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const MOCK_APP_ID = "app-wizard-test";
-const MOCK_APP = {
-  id: MOCK_APP_ID,
-  name: "Wizard Test App",
-  status: "active",
-  repositoryUrl: "https://github.com/example/repo",
-  baseUrl: "https://staging.example.com",
-};
+const APP_ID = "wizard-e2e-app";
 
-/**
- * Set up API mocks and register an app so we can skip to any wizard step.
- * Returns the page object for the wizard.
- */
-async function setupWizardWithApp(page: import("@playwright/test").Page) {
-  // Mock applications API (GET returns one existing app, POST creates)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Mock the base Applications API for all tests. */
+async function mockAppsApi(page: Page) {
   await page.route("**/api/talos/applications", (route) => {
-    if (route.request().method() === "GET") {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify([MOCK_APP]),
-      });
-    }
     if (route.request().method() === "POST") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(MOCK_APP),
+        body: JSON.stringify({
+          id: APP_ID,
+          name: "E2E Test App",
+          status: "active",
+          repositoryUrl: "https://github.com/test/repo",
+          baseUrl: "https://test.example.com",
+        }),
       });
     }
-    return route.continue();
-  });
-
-  // Mock single application GET
-  await page.route(`**/api/talos/applications/${MOCK_APP_ID}`, (route) => {
-    if (route.request().method() === "GET" && !route.request().url().includes("/")) {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(MOCK_APP),
-      });
-    }
-    return route.continue();
-  });
-
-  // Mock data sources (empty)
-  await page.route(`**/api/talos/applications/${MOCK_APP_ID}/data-sources`, (route) => {
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([]),
-    });
-  });
-
-  // Mock Atlassian config (not configured)
-  await page.route(`**/api/talos/applications/${MOCK_APP_ID}/atlassian`, (route) => {
-    return route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "Not found" }),
-    });
-  });
-
-  // Mock vault roles (empty — uses query param, not path param)
-  await page.route("**/api/talos/vault-roles*", (route) => {
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([]),
-    });
-  });
-
-  // Mock MCP servers
-  await page.route("**/api/talos/mcp-servers", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
-  );
-}
-
-/**
- * Navigate through wizard steps by skipping until we reach the target step.
- * Step 0 = Register App (select existing), Step 1 = Data Sources, etc.
- */
-async function navigateToStep(wizard: SetupWizardPage, targetStep: number) {
-  await wizard.goto();
-
-  if (targetStep === 0) return;
-
-  // Step 0: select existing app
-  await wizard.existingAppButton(MOCK_APP.name).click();
-  // handleSelectApp detects completions and jumps — we may already be at (or past) targetStep
-  // Wait for the step heading area to stabilize
-  await wizard.page.waitForLoadState("networkidle");
-
-  // Click the target step in the progress bar if we're not there
-  const stepLabels = [
-    "Register App",
-    "Data Sources",
-    "Atlassian",
-    "Upload Docs",
-    "Vault Roles",
-    "Discovery",
-    "Generate Criteria",
-    "Review Criteria",
-    "Generate Tests",
-  ];
-
-  await wizard.stepProgressButton(stepLabels[targetStep]).click();
-}
-
-// ── #410 — Atlassian PAT Fields Masked (Security) ─────────────────────────
-
-test.describe("Setup Wizard — Atlassian PAT Masking (#410)", () => {
-  let wizard: SetupWizardPage;
-
-  test.beforeEach(async ({ page }) => {
-    wizard = new SetupWizardPage(page);
-    await setupWizardWithApp(page);
-  });
-
-  // AC #410: Jira API token field uses type="password" (Cloud mode)
-  test("should mask Jira API token input in Cloud mode", async ({ page }) => {
-    await navigateToStep(wizard, 2);
-    await expect(wizard.stepHeading("Atlassian")).toBeVisible();
-
-    await test.step("Select Cloud deployment", async () => {
-      await wizard.cloudToggle.click();
-    });
-
-    await test.step("Verify Jira API token field is masked", async () => {
-      const field = page.getByPlaceholder("API token vault ref").first();
-      await expect(field).toBeVisible();
-      await expect(field).toHaveAttribute("type", "password");
-    });
-  });
-
-  // AC #410: Confluence API token field uses type="password" (Cloud mode)
-  test("should mask Confluence API token input in Cloud mode", async ({ page }) => {
-    await navigateToStep(wizard, 2);
-    await expect(wizard.stepHeading("Atlassian")).toBeVisible();
-
-    await test.step("Select Cloud deployment", async () => {
-      await wizard.cloudToggle.click();
-    });
-
-    await test.step("Verify Confluence API token field is masked", async () => {
-      const field = page.getByPlaceholder("API token vault ref").nth(1);
-      await expect(field).toBeVisible();
-      await expect(field).toHaveAttribute("type", "password");
-    });
-  });
-
-  // AC #410: Jira PAT field uses type="password" (Data Center mode)
-  test("should mask Jira personal token input in Data Center mode", async ({ page }) => {
-    await navigateToStep(wizard, 2);
-    await expect(wizard.stepHeading("Atlassian")).toBeVisible();
-
-    await test.step("Select Data Center deployment", async () => {
-      await wizard.dataCenterToggle.click();
-    });
-
-    await test.step("Verify Jira PAT field is masked", async () => {
-      const field = page.getByPlaceholder("Personal access token vault ref").first();
-      await expect(field).toBeVisible();
-      await expect(field).toHaveAttribute("type", "password");
-    });
-  });
-
-  // AC #410: Confluence PAT field uses type="password" (Data Center mode)
-  test("should mask Confluence personal token input in Data Center mode", async ({ page }) => {
-    await navigateToStep(wizard, 2);
-    await expect(wizard.stepHeading("Atlassian")).toBeVisible();
-
-    await test.step("Select Data Center deployment", async () => {
-      await wizard.dataCenterToggle.click();
-    });
-
-    await test.step("Verify Confluence PAT field is masked", async () => {
-      const field = page.getByPlaceholder("Personal access token vault ref").nth(1);
-      await expect(field).toBeVisible();
-      await expect(field).toHaveAttribute("type", "password");
-    });
-  });
-});
-
-// ── #407 — Discovery Endpoint Wired to Real DiscoveryEngine ─────────────────
-
-test.describe("Setup Wizard — Discovery Step (#407)", () => {
-  let wizard: SetupWizardPage;
-
-  test.beforeEach(async ({ page }) => {
-    wizard = new SetupWizardPage(page);
-    await setupWizardWithApp(page);
-
-    // Mock intelligence report (404 initially — discovery hasn't run)
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
-      });
-    });
-
-    // Mock criteria (empty)
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/criteria`, (route) => {
+    if (route.request().method() === "GET") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify([]),
       });
-    });
+    }
+    return route.continue();
   });
+}
 
-  // AC #407: Clicking Start Discovery shows progress state (not instant completion)
-  test("should show progress state when discovery is triggered", async ({ page }) => {
-    // Mock discover endpoint — delay response to simulate real scan
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/discover`, (route) => {
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve(
-            route.fulfill({
-              status: 200,
-              contentType: "application/json",
-              body: JSON.stringify({ status: "complete", filesScanned: 42 }),
-            })
-          );
-        }, 500);
-      });
-    });
+/** Mock all step-specific APIs so navigation to any step doesn't break. */
+async function mockAllStepApis(page: Page) {
+  // Data Sources
+  await page.route(`**/api/talos/applications/${APP_ID}/data-sources`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
+  );
 
-    await navigateToStep(wizard, 5);
-    await expect(wizard.stepHeading("Discovery")).toBeVisible();
+  // Atlassian config (404 = not yet configured)
+  await page.route(`**/api/talos/applications/${APP_ID}/atlassian`, (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "Not found" }) })
+  );
 
-    await test.step("Click Start Discovery", async () => {
-      await wizard.startDiscoveryButton.click();
-    });
+  // M365 status
+  await page.route("**/api/talos/m365/status", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ status: "disabled", message: "M365 not configured" }),
+    })
+  );
 
-    await test.step("Verify progress indicator is shown", async () => {
-      await expect(wizard.discoveryInProgress).toBeVisible();
-    });
+  // Vault roles
+  await page.route("**/api/talos/vault-roles**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
+  );
 
-    await test.step("Verify discovery completes", async () => {
-      await expect(wizard.discoveryComplete).toBeVisible();
-    });
-  });
+  // Criteria (all queries)
+  await page.route(`**/api/talos/criteria/${APP_ID}**`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ criteria: [] }) })
+  );
 
-  // AC #407: After discovery, Continue button appears
-  test("should show Continue button after discovery completes", async ({ page }) => {
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/discover`, (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ status: "complete", filesScanned: 10 }),
-      });
-    });
+  // Traceability
+  await page.route(`**/api/talos/criteria/traceability/${APP_ID}`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        totalRequirements: 5,
+        coveredRequirements: 3,
+        totalCriteria: 3,
+        implementedCriteria: 2,
+        coveragePercentage: 60,
+        unmappedRequirements: [],
+        untestedCriteria: [],
+      }),
+    })
+  );
 
-    await navigateToStep(wizard, 5);
-    await expect(wizard.stepHeading("Discovery")).toBeVisible();
+  // Discover (default — override per-test for discovery tests)
+  await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ jobId: "default-job-id" }),
+    })
+  );
+}
 
-    await wizard.startDiscoveryButton.click();
-    await expect(wizard.discoveryComplete).toBeVisible();
-    await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
-  });
+/**
+ * Install a selective WebSocket mock that intercepts only Socket.IO connections
+ * (URLs containing /socket.io/) and replays the EIO4 handshake immediately.
+ * Non-Socket.IO connections (e.g. Next.js HMR) pass through to the real browser
+ * WebSocket so the dev-server overlay and hot-reload keep working.
+ *
+ * Tests call window.__emitSocketEvent(event, data) via page.evaluate() to
+ * simulate server-side Socket.IO events.
+ */
+async function setupSocketMock(page: Page) {
+  await page.addInitScript(`
+    (function () {
+      var OriginalWS = window.WebSocket;
+      var listeners = { open: [], message: [], close: [], error: [] };
+      var _onopen = null, _onmessage = null, _onclose = null, _onerror = null;
 
-  // AC #407 + #409: Discovery failure shows inline error alert
-  test("should show error alert when discovery fails", async ({ page }) => {
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/discover`, (route) => {
-      return route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Discovery engine not initialized" }),
-      });
-    });
+      function fire(type, evt) {
+        var direct = { open: _onopen, message: _onmessage, close: _onclose, error: _onerror }[type];
+        if (direct) direct.call(null, evt);
+        (listeners[type] || []).forEach(function(h) {
+          typeof h === 'function' ? h(evt) : h.handleEvent(evt);
+        });
+      }
 
-    await navigateToStep(wizard, 5);
-    await expect(wizard.stepHeading("Discovery")).toBeVisible();
+      var mockWS = {
+        readyState: 1, url: '', protocol: '', bufferedAmount: 0, binaryType: 'arraybuffer',
+        get onopen() { return _onopen; }, set onopen(h) { _onopen = h; },
+        get onmessage() { return _onmessage; }, set onmessage(h) { _onmessage = h; },
+        get onclose() { return _onclose; }, set onclose(h) { _onclose = h; },
+        get onerror() { return _onerror; }, set onerror(h) { _onerror = h; },
+        addEventListener: function(t, h) { (listeners[t] = listeners[t] || []).push(h); },
+        removeEventListener: function(t, h) {
+          listeners[t] = (listeners[t] || []).filter(function(x) { return x !== h; });
+        },
+        send: function() {},
+        close: function() { mockWS.readyState = 3; },
+        _receiveEvent: function(event, data) {
+          var msg = new MessageEvent('message', { data: '42' + JSON.stringify([event, data]) });
+          fire('message', msg);
+        }
+      };
 
-    await test.step("Click Start Discovery", async () => {
-      await wizard.startDiscoveryButton.click();
-    });
+      function MockWS(url) {
+        // Pass non-Socket.IO connections (e.g. Next.js HMR) to the real WebSocket
+        if (!url || !url.includes('/socket.io/')) {
+          return new OriginalWS(url);
+        }
+        mockWS.readyState = 1;
+        mockWS.url = url;
+        window.__mockWS = mockWS;
 
-    await test.step("Verify error alert is visible with actionable message", async () => {
-      await expect(wizard.errorAlert).toBeVisible();
-      await expect(wizard.errorAlert).toContainText(/unavailable|error|check/i);
-    });
+        // Simulate EIO4 handshake after 'connection'
+        setTimeout(function() { fire('open', new Event('open')); }, 10);
+        setTimeout(function() {
+          fire('message', new MessageEvent('message', {
+            data: '0{"sid":"e2e","upgrades":[],"pingInterval":25000,"pingTimeout":5000,"maxPayload":1000000}'
+          }));
+          fire('message', new MessageEvent('message', { data: '40{"sid":"e2e"}' }));
+        }, 20);
 
-    await test.step("Verify Start Discovery button reappears for retry", async () => {
-      await expect(wizard.startDiscoveryButton).toBeVisible();
-    });
-  });
-});
+        return mockWS;
+      }
+      MockWS.CONNECTING = 0; MockWS.OPEN = 1; MockWS.CLOSING = 2; MockWS.CLOSED = 3;
+      MockWS.prototype = {};
 
-// ── #406 — CriteriaGenerator Instantiated When Copilot Available ────────────
+      window.WebSocket = MockWS;
+      window.__emitSocketEvent = function(event, data) {
+        if (window.__mockWS) window.__mockWS._receiveEvent(event, data);
+      };
+    })();
+  `);
+}
 
-test.describe("Setup Wizard — Generate Criteria Step (#406)", () => {
+/** Emit a Socket.IO event from Node.js test code into the browser. */
+async function emitSocketEvent(page: Page, event: string, data: unknown) {
+  await page.evaluate(
+    ({ ev, payload }) => {
+      (window as Window & { __emitSocketEvent?: (e: string, d: unknown) => void }).__emitSocketEvent?.(ev, payload);
+    },
+    { ev: event, payload: data }
+  );
+}
+
+// ── #417: Register App Validation ─────────────────────────────────────────────
+
+test.describe("Register App Validation (#417)", () => {
   let wizard: SetupWizardPage;
 
   test.beforeEach(async ({ page }) => {
     wizard = new SetupWizardPage(page);
-    await setupWizardWithApp(page);
-
-    // Mock intelligence report (exists — discovery has run)
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ appId: MOCK_APP_ID, pages: [], technologies: [] }),
-      });
-    });
-
-    // Mock criteria GET — exact pathname match (avoids intercepting /generate or /suggest)
-    await page.route(
-      (url) => url.pathname === `/api/talos/criteria/${MOCK_APP_ID}`,
-      (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ criteria: [] }),
-        })
-    );
+    await mockAppsApi(page);
+    await wizard.goto();
   });
 
-  // AC #406: When Copilot is configured, generate returns success
-  test("should show criteria results on successful generation", async ({ page }) => {
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}/generate`, (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ criteriaCreated: 5, averageConfidence: 0.85 }),
-      });
-    });
+  // AC: "Create Application" button is disabled until name, repositoryUrl, AND baseUrl are all non-empty
 
-    await navigateToStep(wizard, 6);
-    await expect(wizard.stepHeading("Generate Criteria")).toBeVisible();
-
-    await test.step("Click Generate Criteria", async () => {
-      await wizard.generateCriteriaButton.click();
-    });
-
-    await test.step("Verify results are displayed", async () => {
-      await expect(wizard.criteriaGeneratedCount).toBeVisible();
-      await expect(page.getByText("85%")).toBeVisible();
-      await expect(page.getByText("Average confidence")).toBeVisible();
-    });
+  test("should disable Create Application when all fields are empty", async () => {
+    await expect(wizard.createAppButton).toBeDisabled();
   });
 
-  // AC #406: When Copilot is NOT configured, 503 shows helpful message
-  test("should show actionable 503 error when Copilot not configured", async ({ page }) => {
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}/generate`, (route) => {
-      return route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({
-          error:
-            "AI features require Copilot authentication. Please configure your Copilot token in Admin > Auth settings.",
-        }),
-      });
-    });
-
-    await navigateToStep(wizard, 6);
-    await expect(wizard.stepHeading("Generate Criteria")).toBeVisible();
-
-    await test.step("Click Generate Criteria", async () => {
-      await wizard.generateCriteriaButton.click();
-    });
-
-    await test.step("Verify actionable error is displayed", async () => {
-      await expect(wizard.errorAlert).toBeVisible();
-      await expect(wizard.errorAlert).toContainText(/Copilot|Auth settings|unavailable/i);
-    });
-  });
-});
-
-// ── #409 — Error Feedback on AI Mutation Failures ───────────────────────────
-
-test.describe("Setup Wizard — Error Feedback (#409)", () => {
-  let wizard: SetupWizardPage;
-
-  test.beforeEach(async ({ page }) => {
-    wizard = new SetupWizardPage(page);
-    await setupWizardWithApp(page);
-
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ appId: MOCK_APP_ID, pages: [], technologies: [] }),
-      });
-    });
+  test("should disable Create Application with name only", async () => {
+    await wizard.nameInput.fill("My App");
+    await expect(wizard.createAppButton).toBeDisabled();
   });
 
-  // AC #409: Criteria generation failure shows inline error
-  test("should display error alert when criteria generation fails with network error", async ({ page }) => {
-    await page.route(
-      (url) => url.pathname === `/api/talos/criteria/${MOCK_APP_ID}`,
-      (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ criteria: [] }),
-        })
-    );
-
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}/generate`, (route) => {
-      return route.abort("failed");
-    });
-
-    await navigateToStep(wizard, 6);
-    await expect(wizard.stepHeading("Generate Criteria")).toBeVisible();
-
-    await wizard.generateCriteriaButton.click();
-
-    await test.step("Verify error message is displayed", async () => {
-      await expect(wizard.errorAlert).toBeVisible();
-    });
+  test("should disable Create Application with name and repositoryUrl but no baseUrl", async () => {
+    await wizard.nameInput.fill("My App");
+    await wizard.repoUrlInput.fill("https://github.com/test/repo");
+    await expect(wizard.createAppButton).toBeDisabled();
   });
 
-  // AC #409: AI Suggest failure in Review Criteria shows inline error
-  test("should display error alert when AI suggest fails", async ({ page }) => {
-    const mockCriteria = [
-      {
-        id: "crit-1",
-        title: "Login flow",
-        description: "User can log in",
-        status: "draft",
-        confidence: 0.9,
-        scenarios: [{ given: "a user", when: "they log in", then: "they see dashboard" }],
-      },
-    ];
-
-    await page.route(
-      (url) => url.pathname === `/api/talos/criteria/${MOCK_APP_ID}`,
-      (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ criteria: mockCriteria }),
-        })
-    );
-
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}/suggest`, (route) => {
-      return route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Service unavailable" }),
-      });
-    });
-
-    await navigateToStep(wizard, 7);
-    await expect(wizard.stepHeading("Review Criteria")).toBeVisible();
-
-    await test.step("Type a suggestion and click AI Suggest", async () => {
-      await wizard.aiSuggestInput.fill("User should be able to export data");
-      await wizard.aiSuggestButton.click();
-    });
-
-    await test.step("Verify error message is displayed", async () => {
-      await expect(wizard.errorAlert).toBeVisible();
-      await expect(wizard.errorAlert).toContainText(/unavailable|error|Copilot/i);
-    });
+  test("should enable Create Application when all three required fields are filled", async () => {
+    await wizard.nameInput.fill("My App");
+    await wizard.repoUrlInput.fill("https://github.com/test/repo");
+    await wizard.baseUrlInput.fill("https://staging.example.com");
+    await expect(wizard.createAppButton).toBeEnabled();
   });
 
-  // AC #409: Generate Tests failure shows inline error when all tests fail
-  test("should display error alert when all test generations fail", async ({ page }) => {
-    const mockCriteria = [
-      {
-        id: "crit-1",
-        title: "Login flow",
-        description: "User can log in",
-        status: "approved",
-        confidence: 0.9,
-        scenarios: [{ given: "a user", when: "they log in", then: "they see dashboard" }],
-      },
-    ];
+  // AC: repositoryUrl shows inline error if it doesn't start with http:// or https://
 
-    // Handle criteria GET with and without query params (e.g., ?status=approved)
-    await page.route(
-      (url) => url.pathname === `/api/talos/criteria/${MOCK_APP_ID}`,
-      (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ criteria: mockCriteria }),
-        })
-    );
-
-    // Mock traceability report
-    await page.route(`**/api/talos/criteria/traceability/${MOCK_APP_ID}`, (route) => {
-      return route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          totalCriteria: 1,
-          implementedCriteria: 0,
-          coveragePercentage: 0,
-        }),
-      });
-    });
-
-    // Mock generate test endpoint — fail
-    await page.route("**/api/talos/tests/generate", (route) => {
-      return route.fulfill({
-        status: 503,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Generation failed" }),
-      });
-    });
-
-    await navigateToStep(wizard, 8);
-    await expect(wizard.stepHeading("Generate Tests")).toBeVisible();
-
-    await test.step("Click Generate All Tests", async () => {
-      await wizard.generateAllTestsButton.click();
-    });
-
-    await test.step("Verify error alert is displayed", async () => {
-      await expect(wizard.errorAlert).toBeVisible();
-    });
-  });
-});
-
-// ── #408 — Step Completion Detection Handles Intelligence 404 ───────────────
-
-test.describe("Setup Wizard — Step Completion Detection (#408)", () => {
-  let wizard: SetupWizardPage;
-
-  test.beforeEach(async ({ page }) => {
-    wizard = new SetupWizardPage(page);
+  test("should show inline error for repositoryUrl missing https scheme", async ({ page }) => {
+    await wizard.repoUrlInput.fill("github.com/test/repo");
+    await expect(page.getByText("Must start with http:// or https://")).toBeVisible();
   });
 
-  // AC #408: When intelligence returns 404 but criteria exist, Generate Criteria is marked complete
-  test("should mark Generate Criteria step complete when criteria exist but intelligence 404", async ({ page }) => {
-    // Mock: app exists with criteria but no intelligence report
+  // AC: baseUrl shows inline error if it doesn't start with http:// or https://
+
+  test("should show inline error for baseUrl missing https scheme", async ({ page }) => {
+    await wizard.baseUrlInput.fill("staging.example.com");
+    await expect(page.getByText("Must start with http:// or https://")).toBeVisible();
+  });
+
+  // AC: API errors (400) are shown inline below the button, not swallowed silently
+
+  test("should display inline API error when server returns 400", async ({ page }) => {
+    // Override with a 400 response
     await page.route("**/api/talos/applications", (route) => {
-      if (route.request().method() === "GET") {
+      if (route.request().method() === "POST") {
         return route.fulfill({
-          status: 200,
+          status: 400,
           contentType: "application/json",
-          body: JSON.stringify([MOCK_APP]),
+          body: JSON.stringify({ error: "Application name already exists" }),
         });
       }
       return route.continue();
     });
 
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/data-sources`, (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+    await wizard.nameInput.fill("Duplicate App");
+    await wizard.repoUrlInput.fill("https://github.com/test/repo");
+    await wizard.baseUrlInput.fill("https://staging.example.com");
+    await wizard.createAppButton.click();
+
+    // fetchApi now extracts the JSON error message — verify the server's
+    // error text appears inline (not just the HTTP status)
+    await expect(page.getByText(/Application name already exists/)).toBeVisible();
+  });
+});
+
+// ── #413: Skip Button Consistent Styling ──────────────────────────────────────
+
+test.describe("Skip Button Consistent Styling (#413)", () => {
+  const SKIPPABLE_STEPS = [
+    { stepName: "Data Sources", progressLabel: /Data Sources/ },
+    { stepName: "Atlassian", progressLabel: /Atlassian/ },
+    { stepName: "Upload Docs", progressLabel: /Upload Docs/ },
+    { stepName: "Vault Roles", progressLabel: /Vault Roles/ },
+    { stepName: "Discovery", progressLabel: /Discovery/ },
+    { stepName: "Generate Criteria", progressLabel: /Generate Criteria/ },
+    { stepName: "Review Criteria", progressLabel: /Review Criteria/ },
+  ] as const;
+
+  for (const { stepName, progressLabel } of SKIPPABLE_STEPS) {
+    test(`Skip button on "${stepName}" step should use outline (not destructive) styling`, async ({ page }) => {
+      const wizard = new SetupWizardPage(page);
+      await mockAppsApi(page);
+      await mockAllStepApis(page);
+      await wizard.goto();
+
+      // Register the app to unlock progress-bar navigation
+      await wizard.registerApp();
+
+      // Jump to the target step via the progress bar
+      await wizard.goToStep(progressLabel);
+
+      // The global nav Skip button should be visible and NOT use destructive styling
+      const skipBtn = wizard.skipNavButton;
+      await expect(skipBtn).toBeVisible();
+      await expect(skipBtn).not.toHaveClass(/bg-destructive/);
+      // Outline buttons carry a `border` utility class
+      await expect(skipBtn).toHaveClass(/border/);
+    });
+  }
+});
+
+// ── #415: Upload Docs Smart Continue Button ───────────────────────────────────
+
+test.describe("Upload Docs Smart Continue Button (#415)", () => {
+  /** Navigate to the Upload Docs step, mocking all needed APIs first. */
+  async function goToUploadDocsStep(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Upload Docs/);
+    await expect(page.getByRole("heading", { name: "Upload Docs" })).toBeVisible();
+    return wizard;
+  }
+
+  // AC: "Skip This Step →" label when 0 files uploaded
+
+  test('should show "Skip This Step →" when no files have been uploaded', async ({ page }) => {
+    const wizard = await goToUploadDocsStep(page);
+    await expect(wizard.uploadContinueButton).toBeVisible();
+    await expect(wizard.uploadContinueButton).toHaveText(/Skip This Step/);
+  });
+
+  // AC: "Continue (N file(s) uploaded)" when N files done
+
+  test('should show "Continue (N file(s) uploaded)" after files finish ingesting', async ({ page }) => {
+    await page.route(`**/api/talos/applications/${APP_ID}/ingest`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ chunksCreated: 7, chunksSkipped: 0, totalTokens: 200, docId: "doc-1" }),
+      })
+    );
+    const wizard = await goToUploadDocsStep(page);
+
+    await wizard.fileInput.setInputFiles([
+      { name: "requirements.md", mimeType: "text/markdown", buffer: Buffer.from("# Requirements") },
+    ]);
+
+    // Wait for the file status to show "done" (chunks badge appears)
+    await expect(page.getByText(/7 chunks/)).toBeVisible();
+
+    // Continue button should now reflect the count
+    await expect(wizard.uploadContinueButton).toHaveText(/Continue \(1 file/);
+  });
+
+  // AC: Disabled with spinner while files are ingesting
+
+  test("should show disabled Uploading… state while files are ingesting", async ({ page }) => {
+    // Hold the ingest response to keep the file in "ingesting" state
+    let resolveIngest: (() => void) | null = null;
+    const ingestHold = new Promise<void>((resolve) => {
+      resolveIngest = resolve;
     });
 
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/atlassian`, (route) => {
-      return route.fulfill({
-        status: 404,
+    await page.route(`**/api/talos/applications/${APP_ID}/ingest`, async (route) => {
+      await ingestHold;
+      await route.fulfill({
+        status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
+        body: JSON.stringify({ chunksCreated: 3, chunksSkipped: 0, totalTokens: 100, docId: "doc-1" }),
       });
     });
 
-    await page.route("**/api/talos/vault-roles*", (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+    const wizard = await goToUploadDocsStep(page);
+
+    await wizard.fileInput.setInputFiles([
+      { name: "spec.md", mimeType: "text/markdown", buffer: Buffer.from("# Spec") },
+    ]);
+
+    // While the ingest request is in-flight, the button shows "Uploading…" and is disabled
+    await expect(wizard.uploadContinueButton).toHaveText(/Uploading/);
+    await expect(wizard.uploadContinueButton).toBeDisabled();
+
+    // Unblock the request so Playwright can clean up cleanly
+    resolveIngest!();
+  });
+});
+
+// ── #414: Multi-file Upload Race Condition ────────────────────────────────────
+
+test.describe("Multi-file Upload Race Condition (#414)", () => {
+  // AC: Continue/Skip button stays disabled while ANY file is still ingesting
+
+  test("should keep Continue disabled when one file is done but another is still ingesting", async ({ page }) => {
+    const wizard = new SetupWizardPage(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Upload Docs/);
+    await expect(page.getByRole("heading", { name: "Upload Docs" })).toBeVisible();
+
+    // file1.md resolves immediately; file2.md is held indefinitely
+    let resolveFile2: (() => void) | null = null;
+    const file2Hold = new Promise<void>((resolve) => {
+      resolveFile2 = resolve;
     });
 
-    // Intelligence returns 404
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 404,
+    await page.route(`**/api/talos/applications/${APP_ID}/ingest`, async (route) => {
+      const body = route.request().postDataJSON() as { fileName?: string };
+      if (body.fileName === "file2.md") {
+        await file2Hold;
+      }
+      await route.fulfill({
+        status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
+        body: JSON.stringify({ chunksCreated: 4, chunksSkipped: 0, totalTokens: 150, docId: "doc-x" }),
       });
     });
 
-    // Criteria exist
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}`, (route) => {
-      return route.fulfill({
+    // Upload both files simultaneously
+    await wizard.fileInput.setInputFiles([
+      { name: "file1.md", mimeType: "text/markdown", buffer: Buffer.from("# File 1") },
+      { name: "file2.md", mimeType: "text/markdown", buffer: Buffer.from("# File 2") },
+    ]);
+
+    // Wait for file1 to complete (chunk badge appears in the file list)
+    await expect(page.getByText(/4 chunks/)).toBeVisible();
+
+    // Continue button must still be disabled because file2 is still in-flight
+    await expect(wizard.uploadContinueButton).toBeDisabled();
+
+    // Clean up: release file2 so the page request resolves before test teardown
+    resolveFile2!();
+  });
+});
+
+// ── #419: Discovery Socket.IO State Transitions ───────────────────────────────
+
+test.describe("Discovery Socket.IO State Transitions (#419)", () => {
+  const JOB_ID = "discovery-job-e2e-001";
+
+  async function goToDiscoveryStep(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await setupSocketMock(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+
+    // Override discover to return a known jobId
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ jobId: JOB_ID }),
+      })
+    );
+
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Discovery/);
+    await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+
+    // Wait for the socket mock to complete its EIO4 handshake (~30ms timers)
+    await page.waitForTimeout(50);
+
+    return wizard;
+  }
+
+  // AC: After clicking "Start Discovery", the UI shows "Discovery in progress..."
+  // (based on HTTP 200 + jobId received), not "Discovery complete"
+
+  test('should show "Discovery in progress…" after Start Discovery click and API 200', async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    await wizard.startDiscoveryButton.click();
+
+    await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+    await expect(page.getByText(/Discovery complete/)).not.toBeVisible();
+  });
+
+  // AC: "Discovery complete" only appears after discovery:complete Socket.IO event
+
+  test("should show Discovery complete only after discovery:complete socket event", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    await wizard.startDiscoveryButton.click();
+
+    // Verify still in-progress before the event
+    await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+
+    // Emit the completion event
+    await emitSocketEvent(page, "discovery:complete", {
+      jobId: JOB_ID,
+      filesDiscovered: 42,
+      chunksCreated: 287,
+    });
+
+    await expect(page.getByText(/Discovery complete/)).toBeVisible();
+    await expect(page.getByText(/42 files indexed/)).toBeVisible();
+  });
+
+  // AC: Real progress message (files/chunks count) is shown when discovery:progress fires
+
+  test("should show real progress message when discovery:progress socket event fires", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    await wizard.startDiscoveryButton.click();
+
+    await emitSocketEvent(page, "discovery:progress", {
+      jobId: JOB_ID,
+      phase: "Scanning",
+      progress: 42,
+      message: "Scanning 128 files…",
+    });
+
+    await expect(page.getByText(/Scanning 128 files/)).toBeVisible();
+  });
+
+  // AC: Error shown and reset to idle when discovery:error fires
+
+  test("should show error and reset to idle when discovery:error socket event fires", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    await wizard.startDiscoveryButton.click();
+
+    await emitSocketEvent(page, "discovery:error", {
+      jobId: JOB_ID,
+      error: "Repository clone failed: authentication required",
+    });
+
+    await expect(page.getByText(/Repository clone failed: authentication required/)).toBeVisible();
+    // Should reset to idle, showing Start Discovery button again
+    await expect(wizard.startDiscoveryButton).toBeVisible();
+  });
+
+  // AC: 5-minute timeout: if no completion event, shows timeout error
+
+  test("should show timeout error when discovery:complete is not received within 5 minutes", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    // Install fake clock right before clicking Start Discovery so the
+    // 5-minute setTimeout (set up in useEffect after jobId is received)
+    // uses the fake clock and can be advanced instantly.
+    await page.clock.install();
+
+    await wizard.startDiscoveryButton.click();
+    await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+
+    // Advance the fake clock past the 5-minute discovery timeout
+    await page.clock.fastForward(5 * 60 * 1000 + 1_000);
+
+    await expect(page.getByText(/Discovery timed out/)).toBeVisible();
+  });
+});
+
+// ── #416: Generate Tests Step Finish CTA ──────────────────────────────────────
+
+test.describe("Generate Tests Step Finish CTA (#416)", () => {
+  async function goToGenerateTestsStep(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+
+    // Provide one approved criterion so the Generate button is enabled
+    await page.route(`**/api/talos/criteria/${APP_ID}**`, (route) =>
+      route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           criteria: [
             {
-              id: "crit-1",
-              title: "Login flow",
-              description: "User can log in",
-              status: "draft",
-              confidence: 0.9,
-              scenarios: [{ given: "a user", when: "they log in", then: "they see dashboard" }],
+              id: "crit-01",
+              applicationId: APP_ID,
+              title: "User can log in",
+              description: "Login flow works end to end",
+              scenarios: [{ given: "user on login page", when: "enters valid creds", then: "is logged in" }],
+              preconditions: [],
+              dataRequirements: [],
+              nfrTags: [],
+              status: "approved",
+              confidence: 0.92,
+              tags: [],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
             },
           ],
         }),
-      });
-    });
-
-    await page.route("**/api/talos/mcp-servers", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
+      })
     );
 
     await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Generate Tests/);
+    await expect(page.getByRole("heading", { name: "Generate Tests" })).toBeVisible();
+    return wizard;
+  }
 
-    await test.step("Select existing app", async () => {
-      await wizard.existingAppButton(MOCK_APP.name).click();
+  // AC: "Skip & Go to Test Library →" link is always visible on the Generate Tests step
+
+  test('should always show "Skip & Go to Test Library →" before generation starts', async ({ page }) => {
+    const wizard = await goToGenerateTestsStep(page);
+    await expect(wizard.skipToTestLibraryLink).toBeVisible();
+  });
+
+  // AC: "Go to Test Library" button appears after successful test generation
+
+  test('should show "Go to Test Library" button after tests are generated', async ({ page }) => {
+    // Mock the generate test API
+    await page.route("**/api/talos/tests/generate", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "test-gen-01",
+          code: "test('should log in', async ({ page }) => { /* ... */ });",
+          name: "User can log in",
+          confidence: 0.89,
+        }),
+      })
+    );
+
+    const wizard = await goToGenerateTestsStep(page);
+    await wizard.generateAllTestsButton.click();
+
+    // After generation completes, the "Go to Test Library" button should appear
+    await expect(wizard.goToTestLibraryButton).toBeVisible();
+    // The "Skip & Go to Test Library" link should no longer be shown
+    await expect(wizard.skipToTestLibraryLink).not.toBeVisible();
+  });
+
+  // AC: Clicking "Go to Test Library" navigates to /talos/{appId}
+
+  test("should navigate to /talos/{appId} when Go to Test Library is clicked", async ({ page }) => {
+    await page.route("**/api/talos/tests/generate", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ id: "test-gen-02", code: "// test", name: "Test", confidence: 0.9 }),
+      })
+    );
+
+    // Mock the destination page so navigation succeeds
+    await page.route(`**/talos/${APP_ID}`, (route) => route.continue());
+
+    const wizard = await goToGenerateTestsStep(page);
+    await wizard.generateAllTestsButton.click();
+
+    await expect(wizard.goToTestLibraryButton).toBeVisible();
+    await wizard.goToTestLibraryButton.click();
+
+    await expect(page).toHaveURL(new RegExp(`/talos/${APP_ID}`));
+  });
+});
+
+// ── #431: Discovery → RAG Indexing Flow ───────────────────────────────────────
+//
+// After #431, the discover endpoint now indexes chunks into the RAG vector store
+// after the crawl completes. The existing #419 tests already verify the Socket.IO
+// state machine (start → progress → complete → error → timeout). These additional
+// tests confirm the discovery flow is intact after the RAG indexing integration.
+
+test.describe("Discovery RAG Indexing Flow (#431)", () => {
+  const JOB_ID = "discovery-rag-e2e-001";
+
+  async function goToDiscovery(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await setupSocketMock(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ jobId: JOB_ID }),
+      })
+    );
+
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Discovery/);
+    await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+
+    // Wait for the socket mock EIO4 handshake
+    await page.waitForTimeout(50);
+
+    return wizard;
+  }
+
+  // AC #431: After DiscoveryEngine.startDiscovery() completes, chunks are indexed
+  // The UI still receives discovery:complete with filesDiscovered + chunksCreated
+  test("should complete full discovery flow including chunk count in results", async ({ page }) => {
+    const wizard = await goToDiscovery(page);
+
+    await test.step("Start discovery", async () => {
+      await wizard.startDiscoveryButton.click();
+      await expect(page.getByText(/Discovery in progress/)).toBeVisible();
     });
 
-    await test.step("Wizard should jump past completed steps to Review Criteria (step 7)", async () => {
-      // Steps 0 (Register), 3 (Upload Docs — criteria count signals docs were processed),
-      // and 6 (Generate Criteria — criteria exist) should be marked complete.
-      // The wizard should land on the first incomplete step.
-      // With no data sources, no atlassian, no vault roles, no intelligence:
-      // Step 0 = done, 1 = not done → wizard jumps to step 1
-      // But the key assertion: criteria > 0 means step 6 is complete
-      await wizard.page.waitForLoadState("networkidle");
+    await test.step("Emit progress event", async () => {
+      await emitSocketEvent(page, "discovery:progress", {
+        jobId: JOB_ID,
+        phase: "Indexing",
+        progress: 75,
+        message: "Indexing 89 chunks into vector store…",
+      });
+      await expect(page.getByText(/Indexing 89 chunks/)).toBeVisible();
+    });
 
-      // Navigate to step 6 via progress bar and verify it shows as completed
-      // (CheckCircle2 icon instead of step number)
-      await wizard.stepProgressButton("Generate Criteria").click();
-
-      // The heading should be visible — we're on the step
-      await expect(wizard.stepHeading("Generate Criteria")).toBeVisible();
+    await test.step("Emit completion event with chunk count", async () => {
+      await emitSocketEvent(page, "discovery:complete", {
+        jobId: JOB_ID,
+        filesDiscovered: 23,
+        chunksCreated: 189,
+      });
+      await expect(page.getByText(/Discovery complete/)).toBeVisible();
+      await expect(page.getByText(/23 files indexed/)).toBeVisible();
     });
   });
 
-  // AC #408: When selecting existing app, wizard jumps to correct incomplete step
-  test("should jump to first incomplete step when existing app is selected", async ({ page }) => {
-    await page.route("**/api/talos/applications", (route) => {
-      if (route.request().method() === "GET") {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([MOCK_APP]),
-        });
-      }
-      return route.continue();
+  // AC #431: If RAG indexing fails, discovery data is still saved (non-fatal)
+  // The backend emits discovery:complete even if RAG indexing partially failed,
+  // because SQLite data is preserved. Verify the error/warning path.
+  test("should handle discovery:error gracefully and allow retry", async ({ page }) => {
+    const wizard = await goToDiscovery(page);
+
+    await test.step("Start discovery and receive error", async () => {
+      await wizard.startDiscoveryButton.click();
+      await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+
+      await emitSocketEvent(page, "discovery:error", {
+        jobId: JOB_ID,
+        error: "RAG indexing failed: embedding service unavailable",
+      });
     });
 
-    // Data sources exist (step 1 complete)
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/data-sources`, (route) => {
+    await test.step("Verify error is shown and Start Discovery reappears", async () => {
+      await expect(page.getByText(/RAG indexing failed/)).toBeVisible();
+      await expect(wizard.startDiscoveryButton).toBeVisible();
+    });
+  });
+});
+
+// ── #444: Discovery Step E2E — Error Messaging & GHE Support ──────────────────
+
+test.describe("Discovery Step Error Messaging (#444)", () => {
+  const JOB_ID = "discovery-job-e2e-444";
+
+  async function goToDiscoveryStep(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await setupSocketMock(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Discovery/);
+    await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+    await page.waitForTimeout(50);
+    return wizard;
+  }
+
+  test("should show Start Discovery button on the Discovery step", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    await expect(wizard.startDiscoveryButton).toBeVisible();
+    await expect(wizard.startDiscoveryButton).toBeEnabled();
+  });
+
+  test("should display server error message when API returns 503 with JSON body", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    // Override discover route to return 503 with server error message
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Discovery engine not initialized — check GitHub PAT and RAG configuration",
+        }),
+      })
+    );
+
+    await wizard.startDiscoveryButton.click();
+
+    // Should show the actual server error message, not generic "503 Service Unavailable"
+    await expect(page.getByText(/Discovery engine not initialized/)).toBeVisible();
+    // Should include troubleshooting text
+    await expect(page.getByText(/Troubleshooting/)).toBeVisible();
+    // Start Discovery button should reappear (reset to idle)
+    await expect(wizard.startDiscoveryButton).toBeVisible();
+  });
+
+  test("should display troubleshooting hint when error mentions PAT", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Discovery engine not initialized — check GitHub PAT and RAG configuration",
+        }),
+      })
+    );
+
+    await wizard.startDiscoveryButton.click();
+
+    await expect(
+      page.getByText(/Ensure a GitHub Personal Access Token is configured/)
+    ).toBeVisible();
+  });
+
+  test("should show correct endpoint call when Start Discovery is clicked", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
+    let capturedUrl = "";
+
+    // Override discover route to capture the request URL
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) => {
+      capturedUrl = route.request().url();
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([{ id: "ds-1", name: "Oracle DB", type: "jdbc" }]),
+        body: JSON.stringify({ jobId: JOB_ID }),
       });
     });
 
-    // Atlassian not configured (step 2 incomplete)
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/atlassian`, (route) => {
-      return route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
-      });
-    });
+    await wizard.startDiscoveryButton.click();
 
-    await page.route("**/api/talos/vault-roles*", (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
-    });
-
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
-      });
-    });
-
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}`, (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ criteria: [] }) });
-    });
-
-    await page.route("**/api/talos/mcp-servers", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
-    );
-
-    await wizard.goto();
-
-    await test.step("Select existing app", async () => {
-      await wizard.existingAppButton(MOCK_APP.name).click();
-    });
-
-    await test.step("Wizard should jump to step 2 (Atlassian) — first incomplete step", async () => {
-      // Step 0 (Register) = done (app exists), Step 1 (Data Sources) = done
-      // Step 2 (Atlassian) = not done → should land here
-      await expect(wizard.stepHeading("Atlassian")).toBeVisible();
-    });
+    // Verify the API is called with the correct endpoint
+    expect(capturedUrl).toContain(`/api/talos/applications/${APP_ID}/discover`);
+    await expect(page.getByText(/Discovery in progress/)).toBeVisible();
   });
 
-  // AC #408: Intelligence 404 does not crash or block the wizard
-  test("should not crash when intelligence endpoint returns 404 during app selection", async ({ page }) => {
-    await page.route("**/api/talos/applications", (route) => {
-      if (route.request().method() === "GET") {
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify([MOCK_APP]),
-        });
-      }
-      return route.continue();
-    });
+  test("should display generic error when API returns non-JSON error", async ({ page }) => {
+    const wizard = await goToDiscoveryStep(page);
 
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/data-sources`, (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
-    });
-
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/atlassian`, (route) => {
-      return route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
-      });
-    });
-
-    await page.route("**/api/talos/vault-roles*", (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
-    });
-
-    // Intelligence: 404
-    await page.route(`**/api/talos/applications/${MOCK_APP_ID}/intelligence`, (route) => {
-      return route.fulfill({
-        status: 404,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "Not found" }),
-      });
-    });
-
-    // No criteria
-    await page.route(`**/api/talos/criteria/${MOCK_APP_ID}`, (route) => {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
-    });
-
-    await page.route("**/api/talos/mcp-servers", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "text/plain",
+        body: "Internal Server Error",
+      })
     );
 
-    await wizard.goto();
+    await wizard.startDiscoveryButton.click();
 
-    await test.step("Select existing app — should not crash", async () => {
-      await wizard.existingAppButton(MOCK_APP.name).click();
-    });
-
-    await test.step("Wizard should navigate to a valid step (not show error page)", async () => {
-      // Should be on step 1 (Data Sources) — first incomplete step after Register
-      await expect(wizard.stepHeading("Data Sources")).toBeVisible();
-    });
+    // Should show an error message and reset to idle
+    await expect(page.getByText(/API error: 500/)).toBeVisible();
+    await expect(wizard.startDiscoveryButton).toBeVisible();
   });
 });

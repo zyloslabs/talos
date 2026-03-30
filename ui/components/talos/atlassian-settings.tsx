@@ -20,7 +20,11 @@ import { cn } from "@/lib/utils";
 
 export function AtlassianSettings({ appId }: { appId: string }) {
   const queryClient = useQueryClient();
-  const { data: config, isLoading, error } = useQuery({
+  const {
+    data: config,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ["atlassian-config", appId],
     queryFn: () => getAtlassianConfig(appId),
     retry: false,
@@ -82,7 +86,10 @@ export function AtlassianSettings({ appId }: { appId: string }) {
       jiraPersonalTokenVaultRef: jiraPersonalToken,
       jiraSslVerify,
       confluenceUrl,
-      confluenceSpaces: confluenceSpacesRaw.split(",").map((s) => s.trim()).filter(Boolean),
+      confluenceSpaces: confluenceSpacesRaw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
       confluenceUsernameVaultRef: confluenceUsername,
       confluenceApiTokenVaultRef: confluenceApiToken,
       confluencePersonalTokenVaultRef: confluencePersonalToken,
@@ -105,7 +112,11 @@ export function AtlassianSettings({ appId }: { appId: string }) {
   };
 
   if (isLoading) {
-    return <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading...</div>;
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading...
+      </div>
+    );
   }
 
   return (
@@ -120,22 +131,48 @@ export function AtlassianSettings({ appId }: { appId: string }) {
       </div>
 
       <div className="flex gap-2">
-        <Button variant={deploymentType === "cloud" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("cloud")}>Cloud</Button>
-        <Button variant={deploymentType === "datacenter" ? "default" : "outline"} size="sm" onClick={() => setDeploymentType("datacenter")}>Data Center</Button>
+        <Button
+          variant={deploymentType === "cloud" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setDeploymentType("cloud")}
+        >
+          Cloud
+        </Button>
+        <Button
+          variant={deploymentType === "datacenter" ? "default" : "outline"}
+          size="sm"
+          onClick={() => setDeploymentType("datacenter")}
+        >
+          Data Center
+        </Button>
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Jira</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-sm">Jira</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
           <Input placeholder="Jira URL" value={jiraUrl} onChange={(e) => setJiraUrl(e.target.value)} />
           <Input placeholder="Project key" value={jiraProject} onChange={(e) => setJiraProject(e.target.value)} />
           {deploymentType === "cloud" ? (
             <>
-              <Input placeholder="Username vault ref" value={jiraUsername} onChange={(e) => setJiraUsername(e.target.value)} />
-              <Input placeholder="API token vault ref" value={jiraApiToken} onChange={(e) => setJiraApiToken(e.target.value)} />
+              <Input
+                placeholder="Username vault ref"
+                value={jiraUsername}
+                onChange={(e) => setJiraUsername(e.target.value)}
+              />
+              <Input
+                placeholder="API token vault ref"
+                value={jiraApiToken}
+                onChange={(e) => setJiraApiToken(e.target.value)}
+              />
             </>
           ) : (
-            <Input placeholder="Personal access token vault ref" value={jiraPersonalToken} onChange={(e) => setJiraPersonalToken(e.target.value)} />
+            <Input
+              placeholder="Personal access token vault ref"
+              value={jiraPersonalToken}
+              onChange={(e) => setJiraPersonalToken(e.target.value)}
+            />
           )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={jiraSslVerify} onChange={(e) => setJiraSslVerify(e.target.checked)} />
@@ -145,20 +182,46 @@ export function AtlassianSettings({ appId }: { appId: string }) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Confluence</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-sm">Confluence</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-3">
-          <Input placeholder="Confluence URL" value={confluenceUrl} onChange={(e) => setConfluenceUrl(e.target.value)} />
-          <Input placeholder="Space keys (comma-separated)" value={confluenceSpacesRaw} onChange={(e) => setConfluenceSpacesRaw(e.target.value)} />
+          <Input
+            placeholder="Confluence URL"
+            value={confluenceUrl}
+            onChange={(e) => setConfluenceUrl(e.target.value)}
+          />
+          <Input
+            placeholder="Space keys (comma-separated)"
+            value={confluenceSpacesRaw}
+            onChange={(e) => setConfluenceSpacesRaw(e.target.value)}
+          />
           {deploymentType === "cloud" ? (
             <>
-              <Input placeholder="Username vault ref" value={confluenceUsername} onChange={(e) => setConfluenceUsername(e.target.value)} />
-              <Input placeholder="API token vault ref" value={confluenceApiToken} onChange={(e) => setConfluenceApiToken(e.target.value)} />
+              <Input
+                placeholder="Username vault ref"
+                value={confluenceUsername}
+                onChange={(e) => setConfluenceUsername(e.target.value)}
+              />
+              <Input
+                placeholder="API token vault ref"
+                value={confluenceApiToken}
+                onChange={(e) => setConfluenceApiToken(e.target.value)}
+              />
             </>
           ) : (
-            <Input placeholder="Personal access token vault ref" value={confluencePersonalToken} onChange={(e) => setConfluencePersonalToken(e.target.value)} />
+            <Input
+              placeholder="Personal access token vault ref"
+              value={confluencePersonalToken}
+              onChange={(e) => setConfluencePersonalToken(e.target.value)}
+            />
           )}
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={confluenceSslVerify} onChange={(e) => setConfluenceSslVerify(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={confluenceSslVerify}
+              onChange={(e) => setConfluenceSslVerify(e.target.checked)}
+            />
             Verify SSL
           </label>
         </CardContent>
@@ -177,7 +240,13 @@ export function AtlassianSettings({ appId }: { appId: string }) {
           Test Connection
         </Button>
         <Button onClick={handleSave} disabled={saving}>
-          {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save"}
+          {saving ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+            </>
+          ) : (
+            "Save"
+          )}
         </Button>
       </div>
     </div>

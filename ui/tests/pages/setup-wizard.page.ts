@@ -1,134 +1,94 @@
 import type { Page, Locator } from "@playwright/test";
 
 /**
- * Page Object for the Talos Setup Wizard at /talos/setup.
- * Covers all 9 wizard steps and their common UI elements.
+ * Page Object Model for the Talos Setup Wizard at /talos/setup.
+ * Covers all nine steps: Register App → Data Sources → Atlassian → Upload Docs →
+ * Vault Roles → Discovery → Generate Criteria → Review Criteria → Generate Tests.
  */
 export class SetupWizardPage {
   readonly page: Page;
 
-  // ── Step progress bar ─────────────────────────────────────────────────────
-
-  readonly stepButtons: Locator;
-
-  // ── Step header (changes per step) ────────────────────────────────────────
-
-  readonly stepHeading: (name: string) => Locator;
-  readonly stepDescription: (text: string) => Locator;
-
-  // ── Navigation ────────────────────────────────────────────────────────────
-
+  // ── Bottom navigation ────────────────────────────────────────────────────
+  /** The global "Skip" button in the wizard bottom-nav (steps 1–7). */
+  readonly skipNavButton: Locator;
+  /** The global "Back" button in the wizard bottom-nav. */
   readonly backButton: Locator;
-  readonly nextButton: Locator;
-  readonly skipButton: Locator;
 
-  // ── Step 0: Register App ──────────────────────────────────────────────────
-
-  readonly appNameInput: Locator;
+  // ── Step 0: Register App ─────────────────────────────────────────────────
+  readonly nameInput: Locator;
+  readonly repoUrlInput: Locator;
+  readonly baseUrlInput: Locator;
   readonly createAppButton: Locator;
 
-  // ── Step 2: Atlassian ─────────────────────────────────────────────────────
+  // ── Step 3: Upload Docs ──────────────────────────────────────────────────
+  /** Hidden <input type="file"> – use setInputFiles() to upload. */
+  readonly fileInput: Locator;
+  /**
+   * The dynamic continue/skip button inside the Upload Docs step card.
+   * Label is "Skip This Step →" (0 files), "Continue (N file(s) uploaded)"
+   * (files done), or disabled "Uploading…" (files in-flight).
+   */
+  readonly uploadContinueButton: Locator;
 
-  readonly cloudToggle: Locator;
-  readonly dataCenterToggle: Locator;
-
-  // Cloud token fields (identified by placeholder)
-  readonly jiraApiTokenInput: Locator;
-  readonly confluenceApiTokenInput: Locator;
-
-  // Data Center PAT fields (identified by placeholder)
-  readonly jiraPersonalTokenInput: Locator;
-  readonly confluencePersonalTokenInput: Locator;
-
-  // ── Step 5: Discovery ─────────────────────────────────────────────────────
-
+  // ── Step 5: Discovery ────────────────────────────────────────────────────
   readonly startDiscoveryButton: Locator;
-  readonly discoveryInProgress: Locator;
-  readonly discoveryComplete: Locator;
 
-  // ── Step 6: Generate Criteria ─────────────────────────────────────────────
-
-  readonly generateCriteriaButton: Locator;
-  readonly criteriaGeneratedCount: Locator;
-
-  // ── Step 7: Review Criteria ───────────────────────────────────────────────
-
-  readonly aiSuggestInput: Locator;
-  readonly aiSuggestButton: Locator;
-
-  // ── Step 8: Generate Tests ────────────────────────────────────────────────
-
+  // ── Step 8: Generate Tests ───────────────────────────────────────────────
   readonly generateAllTestsButton: Locator;
-
-  // ── Error alert (shared across steps) ─────────────────────────────────────
-
-  readonly errorAlert: Locator;
+  readonly goToTestLibraryButton: Locator;
+  /** The "Skip & Go to Test Library →" underline link. */
+  readonly skipToTestLibraryLink: Locator;
 
   constructor(page: Page) {
     this.page = page;
 
-    // Step bar
-    this.stepButtons = page
-      .locator("button")
-      .filter({
-        hasText: /^\d+$|Register|Data Sources|Atlassian|Upload|Vault|Discovery|Generate Criteria|Review|Generate Tests/,
-      });
-
-    // Headings
-    this.stepHeading = (name: string) => page.getByRole("heading", { name });
-    this.stepDescription = (text: string) => page.getByText(text);
-
-    // Nav
+    // Navigation — use .last() to target the wizard footer nav Skip, not any
+    // step-internal "Skip" button (e.g. AtlassianStep has its own).
+    this.skipNavButton = page.getByRole("button", { name: "Skip", exact: true }).last();
     this.backButton = page.getByRole("button", { name: "Back" });
-    this.nextButton = page.getByRole("button", { name: "Continue" });
-    this.skipButton = page.getByRole("button", { name: "Skip" }).last();
 
-    // Step 0
-    this.appNameInput = page.getByPlaceholder("Application name");
+    // Register App
+    this.nameInput = page.getByPlaceholder("Application name");
+    this.repoUrlInput = page.getByPlaceholder(/Repository URL/);
+    this.baseUrlInput = page.getByPlaceholder(/Base URL/);
     this.createAppButton = page.getByRole("button", { name: "Create Application" });
 
-    // Step 2: Atlassian
-    this.cloudToggle = page.getByRole("button", { name: "Cloud" });
-    this.dataCenterToggle = page.getByRole("button", { name: "Data Center" });
-    this.jiraApiTokenInput = page.getByPlaceholder("API token vault ref").first();
-    this.confluenceApiTokenInput = page.getByPlaceholder("API token vault ref").nth(1);
-    this.jiraPersonalTokenInput = page.getByPlaceholder("Personal access token vault ref").first();
-    this.confluencePersonalTokenInput = page.getByPlaceholder("Personal access token vault ref").nth(1);
+    // Upload Docs
+    this.fileInput = page.locator('input[type="file"]');
+    this.uploadContinueButton = page.getByRole("button", { name: /Skip This Step|Continue \(|Uploading/ });
 
-    // Step 5: Discovery
+    // Discovery
     this.startDiscoveryButton = page.getByRole("button", { name: "Start Discovery" });
-    this.discoveryInProgress = page.getByText("Discovery in progress...");
-    this.discoveryComplete = page.getByText("Discovery complete");
 
-    // Step 6: Generate Criteria — use exact to avoid matching the step progress bar button
-    this.generateCriteriaButton = page.getByRole("button", { name: "Generate Criteria", exact: true });
-    this.criteriaGeneratedCount = page.getByText("Criteria generated");
-
-    // Step 7: Review Criteria
-    this.aiSuggestInput = page.getByPlaceholder("Describe a new criterion for AI to suggest...");
-    this.aiSuggestButton = page.getByRole("button", { name: "AI Suggest" });
-
-    // Step 8: Generate Tests
-    this.generateAllTestsButton = page.getByRole("button", { name: "Generate Tests for All Criteria" });
-
-    // Shared error alert — matches the red error border pattern
-    this.errorAlert = page.locator("[class*='border-red']");
+    // Generate Tests
+    this.generateAllTestsButton = page.getByRole("button", {
+      name: /Generate Tests for All Criteria/,
+    });
+    this.goToTestLibraryButton = page.getByRole("button", { name: "Go to Test Library" });
+    this.skipToTestLibraryLink = page.getByText(/Skip.*Go to Test Library/);
   }
 
   async goto() {
     await this.page.goto("/talos/setup");
   }
 
-  existingAppButton(appName: string): Locator {
-    return this.page.getByRole("button", { name: appName });
+  /** Fill in the Register App form and submit it. */
+  async registerApp(
+    name = "E2E Test App",
+    repoUrl = "https://github.com/test/repo",
+    baseUrl = "https://test.example.com"
+  ) {
+    await this.nameInput.fill(name);
+    await this.repoUrlInput.fill(repoUrl);
+    await this.baseUrlInput.fill(baseUrl);
+    await this.createAppButton.click();
   }
 
-  stepProgressButton(label: string): Locator {
-    return this.page.getByRole("button", { name: label });
-  }
-
-  completedStepIcon(stepIndex: number): Locator {
-    // Completed steps show a CheckCircle2 icon instead of the step number
-    return this.page.locator("button").filter({ hasText: new RegExp(`^${stepIndex + 1}$`) });
+  /**
+   * After app registration, click a step in the progress bar by its label.
+   * Works for any step once appId is set.
+   */
+  async goToStep(stepLabel: string | RegExp) {
+    await this.page.getByRole("button", { name: stepLabel }).click();
   }
 }

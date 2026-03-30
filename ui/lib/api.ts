@@ -95,7 +95,17 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     },
   });
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    // Try to extract the error message from the JSON response body
+    let message = `API error: ${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.error === "string") {
+        message = body.error;
+      }
+    } catch {
+      // Response body wasn't JSON — keep the generic message
+    }
+    throw new Error(message);
   }
   return res.json();
 }
@@ -728,6 +738,16 @@ export const deleteAtlassianConfig = (appId: string) =>
   fetchApi<void>(`/api/talos/applications/${appId}/atlassian`, { method: "DELETE" });
 export const testAtlassianConnection = (appId: string) =>
   fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/atlassian/test`, {
+    method: "POST",
+  });
+
+export const importAtlassianData = (appId: string) =>
+  fetchApi<{
+    success: boolean;
+    imported: Array<{ source: string; title: string; type: string }>;
+    totalChunks: number;
+    errors: string[];
+  }>(`/api/talos/applications/${appId}/atlassian/import`, {
     method: "POST",
   });
 

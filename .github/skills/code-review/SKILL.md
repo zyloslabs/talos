@@ -78,10 +78,35 @@ Execute with the **Code Review** agent (`code-review.agent.md`), which has the s
    gh pr view {PR_NUMBER} --json files --jq '.files[].path'
    ```
 6. **Read each changed file in full** — not just the diff hunks. Context matters.
+7. **Check CI status immediately** — run this before reading any code:
+   ```bash
+   gh pr view {PR_NUMBER} --json statusCheckRollup --jq '.statusCheckRollup[] | {name: .name, conclusion: .conclusion}'
+   ```
+   If any job is **FAILURE**, fetch its logs now:
+   ```bash
+   gh run list --branch {BRANCH} --json databaseId,name,conclusion --jq '.[] | select(.conclusion == "failure") | .databaseId'
+   gh run view {RUN_ID} --log-failed
+   ```
+   **ALL CI failures must be fixed — even ones predating this PR.** A failing pipeline blocks deployment regardless of cause. When you find any failure:
+   - Identify the root cause from the logs
+   - Fix it directly in the current branch
+   - Include "Fixed pre-existing CI failure: [description]" in your review
+   Do not accept the rationalization that a CI failure is "pre-existing and unrelated" — all red must be green before merge.
 
 ### Step 1b: Security Scanner Comments (CodeQL / GHAS)
 
 **Goal:** Collect all findings from automated security scanners so they can be cross-referenced during the security review and tracked in the final verdict.
+
+#### Auto-detect CodeQL PR Status
+
+Before fetching scanner comments, determine whether CodeQL actually runs on pull requests in this repository:
+
+```bash
+grep -E '^\s*pull_request' .github/workflows/codeql.yml 2>/dev/null
+```
+
+- **Output found** (active `pull_request:` trigger exists): CodeQL runs on PRs. Continue with the full procedure below — scanner comments may exist and unresolved High/Critical findings are blocking.
+- **No output** (file missing or `pull_request:` trigger is commented out): CodeQL does **not** run on PRs. `github-advanced-security` bot comments will not exist. **Skip to Step 1c** and rely on manual OWASP review in Step 4 as the security gate. Do NOT wait for or block on CodeQL results.
 
 GitHub Advanced Security (GHAS) runs CodeQL analysis on PRs and posts review comments from the `github-advanced-security` bot. These comments identify real vulnerabilities (injection, path traversal, missing rate limiting, XSS, etc.) that the human/agent reviewer must acknowledge.
 
@@ -185,6 +210,41 @@ Other people or automated reviewers (e.g., GitHub Copilot code review) may have 
 | mgcronin | 2 | 3 | 0 |
 | copilot | 0 | 1 | 1 (false positive) |
 ```
+
+### Step 1d: CI Status Check
+
+**Goal:** Verify the CI pipeline is fully green before proceeding with the review. ALL failing CI jobs are blocking — including pre-existing failures not introduced by this PR.
+
+**Procedure:**
+
+1. **Fetch CI job status:**
+   ```bash
+   gh pr checks {PR_NUMBER}
+   ```
+
+2. **Build a CI status table:**
+
+   ```markdown
+   | Job | Status | Introduced by PR? | Notes |
+   |-----|--------|--------------------|-------|
+   | api | ❌ FAILED | No — pre-existing type error | Blocking |
+   | ui | ✅ Passed | — | — |
+   ```
+
+   > **Note:** This repository does NOT have a CodeQL workflow on pull requests. Do not expect or wait for CodeQL entries in `gh pr checks` output. Only CI jobs (`api`, `ui`) will appear.
+
+3. **For each failing job:**
+   - Fetch the failure logs: `gh run view {RUN_ID} --log-failed` or check the Actions tab URL
+   - Determine **root cause** — is it a type error, test failure, lint error, build error?
+   - Determine **whether this PR introduced it** — check if the same job fails on `main` branch
+   - **Regardless of origin, the failure is blocking.** Pre-existing failures must be fixed in this PR as a prerequisite to merging. We do not merge into a red pipeline.
+
+4. **Include the CI status table in Step 9 (Publish) review body** and in the verdict.
+
+**Gate logic:**
+- **Any failing CI job** → `REQUEST_CHANGES` (blocking). The PR must fix it, even if the failure is pre-existing.
+- The review body must include remediation guidance: what file/line causes the failure and how to fix it.
+- If ALL jobs pass → no CI impact on verdict.
 
 ### Step 2: Requirements Validation
 
@@ -382,11 +442,18 @@ gh pr review {PR_NUMBER} --request-changes --body "$(cat review-body.md)"
 - docs/ARCHITECTURE.md: ⚠️ New `/api/widgets` endpoint not documented
 - README: No changes needed
 
-### Security Scanners: {CLEAN|FINDINGS}
+### Security Scanners: {CLEAN|FINDINGS|N/A}
 | Scanner | Finding | File | Severity | Status |
 |---------|---------|------|----------|--------|
 | CodeQL | Missing rate limiting | src/api/m365.ts:151 | High | Still present |
 | CodeQL | Path traversal | src/api/m365.ts:122 | Critical | Fixed |
+
+### CI Status: {ALL GREEN|FAILURES}
+| Job | Status | Introduced by PR? | Blocking? |
+|-----|--------|--------------------|-----------|
+| api | ❌ FAILED — type error in service.ts:12 | No — pre-existing | Yes |
+| ui | ✅ Passed | — | — |
+
 
 ### Prior Review Comments: {N total, M unresolved}
 | Reviewer | Type | Unresolved | Addressed | Disagreed |
@@ -398,6 +465,7 @@ gh pr review {PR_NUMBER} --request-changes --body "$(cat review-body.md)"
 ```
 
 **Verdict escalation rules:**
+- Any **failing CI job** (regardless of whether this PR introduced it) → `REQUEST_CHANGES` (blocking). Pre-existing failures must be fixed as a prerequisite to merge.
 - Any `Still present` CodeQL **Critical** or **High** → `REQUEST_CHANGES` (blocking)
 - Any `Still present` CodeQL **Medium** → `COMMENT` (non-blocking, but noted)
 - All scanner findings `Fixed` or `False positive` → no impact on verdict
