@@ -25,6 +25,9 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Screenshot artifacts (UI Vision walkthroughs, Playwright)
+*.png
+
 # Editor
 .vscode/settings.json
 .idea/
