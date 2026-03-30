@@ -33,6 +33,7 @@ import {
   getAtlassianConfig,
   saveAtlassianConfig,
   testAtlassianConnection,
+  importAtlassianData,
   getMcpServers,
   type TalosApplication,
   type AcceptanceCriteria,
@@ -1234,83 +1235,85 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Add JDBC database data sources for schema-aware test generation. Each data source runs in an isolated Docker
-        container with read-only access.
-      </p>
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
+          Coming Soon
+        </Badge>
+        <p className="text-sm text-muted-foreground">
+          JDBC database data sources are not yet available. This feature is under active development.
+        </p>
+      </div>
 
-      {existing && existing.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Existing Data Sources:</p>
-          {existing.map((ds) => (
-            <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
-              <Database className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">{ds.label}</span>
-              <Badge variant="secondary">{ds.driverType}</Badge>
+      <div className="relative">
+        {/* Disabled overlay */}
+        <div className="pointer-events-none opacity-50">
+          {existing && existing.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Existing Data Sources:</p>
+              {existing.map((ds) => (
+                <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
+                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm">{ds.label}</span>
+                  <Badge variant="secondary">{ds.driverType}</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {drafts.map((draft, i) => (
+            <div key={i} className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Data Source {i + 1}</span>
+                {drafts.length > 1 && (
+                  <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <Input
+                placeholder="Label (e.g., Production Oracle)"
+                value={draft.label}
+                onChange={(e) => updateDraft(i, "label", e.target.value)}
+                disabled
+              />
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={draft.driverType}
+                onChange={(e) => updateDraft(i, "driverType", e.target.value)}
+                disabled
+              >
+                <option value="postgresql">PostgreSQL</option>
+                <option value="oracle">Oracle</option>
+                <option value="mysql">MySQL</option>
+                <option value="sqlserver">SQL Server</option>
+                <option value="sqlite">SQLite</option>
+                <option value="other">Other</option>
+              </select>
+              <Input
+                placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
+                value={draft.jdbcUrl}
+                onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
+                disabled
+              />
+              <Input
+                placeholder="Username vault ref (vault:db-user)"
+                value={draft.usernameVaultRef}
+                onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
+                disabled
+              />
+              <Input
+                placeholder="Password vault ref (vault:db-pass)"
+                value={draft.passwordVaultRef}
+                onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
+                disabled
+              />
             </div>
           ))}
         </div>
-      )}
-
-      {drafts.map((draft, i) => (
-        <div key={i} className="rounded-lg border p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Data Source {i + 1}</span>
-            {drafts.length > 1 && (
-              <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
-          </div>
-          <Input
-            placeholder="Label (e.g., Production Oracle)"
-            value={draft.label}
-            onChange={(e) => updateDraft(i, "label", e.target.value)}
-          />
-          <select
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            value={draft.driverType}
-            onChange={(e) => updateDraft(i, "driverType", e.target.value)}
-          >
-            <option value="postgresql">PostgreSQL</option>
-            <option value="oracle">Oracle</option>
-            <option value="mysql">MySQL</option>
-            <option value="sqlserver">SQL Server</option>
-            <option value="sqlite">SQLite</option>
-            <option value="other">Other</option>
-          </select>
-          <Input
-            placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
-            value={draft.jdbcUrl}
-            onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
-          />
-          <Input
-            placeholder="Username vault ref (vault:db-user)"
-            value={draft.usernameVaultRef}
-            onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
-          />
-          <Input
-            placeholder="Password vault ref (vault:db-pass)"
-            value={draft.passwordVaultRef}
-            onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
-          />
-        </div>
-      ))}
-
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={addDraft}>
-          <Plus className="mr-1 h-4 w-4" /> Add Data Source
-        </Button>
       </div>
 
-      <Button onClick={handleSaveAll} disabled={saving || !drafts.some((d) => d.label && d.jdbcUrl)}>
-        {saving ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
-          </>
-        ) : (
-          "Save & Continue"
-        )}
+      <Button variant="outline" onClick={onComplete}>
+        Skip — Continue to Next Step <ChevronRight className="ml-2 h-4 w-4" />
       </Button>
     </div>
   );
@@ -1336,6 +1339,13 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [preFilledFrom, setPreFilledFrom] = useState<"saved" | "mcp" | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    imported: Array<{ source: string; title: string }>;
+    totalChunks: number;
+    errors: string[];
+  } | null>(null);
 
   // Load saved Atlassian config for this app
   const { data: savedConfig } = useQuery({
@@ -1580,10 +1590,75 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
         </div>
       )}
 
+      {importResult && (
+        <div
+          className={cn(
+            "rounded-lg border p-3 text-sm space-y-1",
+            importResult.success
+              ? "border-green-600/30 bg-green-950/20 text-green-400"
+              : "border-red-600/30 bg-red-950/20 text-red-400"
+          )}
+        >
+          {importResult.imported.map((doc, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Check className="h-3 w-3 shrink-0" />
+              {doc.source}: {doc.title}
+            </div>
+          ))}
+          {importResult.totalChunks > 0 && (
+            <div className="text-xs text-muted-foreground">{importResult.totalChunks} chunks indexed into RAG</div>
+          )}
+          {importResult.errors.map((err, i) => (
+            <div key={i} className="flex items-center gap-2 text-red-400">
+              <X className="h-3 w-3 shrink-0" />
+              {err}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <Button variant="outline" onClick={handleTest} disabled={testing || !jiraUrl}>
           {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Test Connection
+        </Button>
+        <Button
+          variant="outline"
+          onClick={async () => {
+            setImporting(true);
+            setImportResult(null);
+            try {
+              // Save config first to ensure it exists on the server
+              await saveMut.mutateAsync({
+                deploymentType,
+                jiraUrl,
+                jiraProject,
+                jiraUsernameVaultRef: jiraUsername,
+                jiraApiTokenVaultRef: jiraApiToken,
+                jiraPersonalTokenVaultRef: jiraPersonalToken,
+                jiraSslVerify,
+                confluenceUrl,
+                confluenceSpaces: confluenceSpacesRaw
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                confluenceUsernameVaultRef: confluenceUsername,
+                confluenceApiTokenVaultRef: confluenceApiToken,
+                confluencePersonalTokenVaultRef: confluencePersonalToken,
+                confluenceSslVerify,
+              });
+              const result = await importAtlassianData(appId);
+              setImportResult(result);
+            } catch {
+              setImportResult({ success: false, imported: [], totalChunks: 0, errors: ["Import failed"] });
+            } finally {
+              setImporting(false);
+            }
+          }}
+          disabled={importing || (!jiraUrl && !confluenceUrl)}
+        >
+          {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+          Import Data
         </Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? (

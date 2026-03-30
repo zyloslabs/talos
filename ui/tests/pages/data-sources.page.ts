@@ -3,6 +3,9 @@ import type { Page, Locator } from "@playwright/test";
 /**
  * Page Object for Data Sources — covers both the Setup Wizard "Data Sources"
  * step and the standalone DataSourceSettings panel.
+ *
+ * After #428 the wizard step shows a "Coming Soon" badge and all JDBC form
+ * fields are disabled. The primary CTA is "Skip — Continue to Next Step".
  */
 export class DataSourcesPage {
   readonly page: Page;
@@ -10,6 +13,10 @@ export class DataSourcesPage {
   // Wizard step header
   readonly stepHeading: Locator;
   readonly stepDescription: Locator;
+
+  // #428: Coming Soon indicator
+  readonly comingSoonBadge: Locator;
+  readonly comingSoonExplanation: Locator;
 
   // Draft data source form fields (wizard step uses placeholder-based inputs)
   readonly labelInput: Locator;
@@ -24,6 +31,7 @@ export class DataSourcesPage {
 
   // Navigation
   readonly skipButton: Locator;
+  readonly skipContinueButton: Locator;
   readonly backButton: Locator;
 
   constructor(page: Page) {
@@ -32,6 +40,10 @@ export class DataSourcesPage {
     // Step header
     this.stepHeading = page.getByRole("heading", { name: "Data Sources" });
     this.stepDescription = page.getByText("Configure JDBC database connections");
+
+    // #428: Coming Soon
+    this.comingSoonBadge = page.getByText("Coming Soon");
+    this.comingSoonExplanation = page.getByText("JDBC database data sources are not yet available");
 
     // Form fields (first draft block)
     this.labelInput = page.getByPlaceholder("Label (e.g., Production Oracle)").first();
@@ -46,6 +58,7 @@ export class DataSourcesPage {
 
     // Navigation
     this.skipButton = page.getByRole("button", { name: "Skip" });
+    this.skipContinueButton = page.getByRole("button", { name: /Skip.*Continue to Next Step/ });
     this.backButton = page.getByRole("button", { name: "Back" });
   }
 
@@ -72,7 +85,10 @@ export class DataSourcesPage {
 
   /** Get the remove button for a specific draft (button with Trash icon). */
   getRemoveButton(index: number): Locator {
-    return this.page.getByText(`Data Source ${index + 1}`).locator("..").getByRole("button");
+    return this.page
+      .getByText(`Data Source ${index + 1}`)
+      .locator("..")
+      .getByRole("button");
   }
 
   /** Get the data source draft card by 1-based number label. */
@@ -80,7 +96,10 @@ export class DataSourcesPage {
     return this.page.getByText(`Data Source ${num}`);
   }
 
-  async fillDraft(index: number, data: { label: string; driverType?: string; jdbcUrl: string; usernameVaultRef?: string; passwordVaultRef?: string }) {
+  async fillDraft(
+    index: number,
+    data: { label: string; driverType?: string; jdbcUrl: string; usernameVaultRef?: string; passwordVaultRef?: string }
+  ) {
     await this.getLabelInput(index).fill(data.label);
     if (data.driverType) {
       await this.getDriverTypeSelect(index).selectOption(data.driverType);

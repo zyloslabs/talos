@@ -1,7 +1,7 @@
 /**
- * GitHub MCP Client
+ * GitHub API Client
  *
- * Interfaces with GitHub's MCP server for repository content discovery.
+ * Interfaces with GitHub's REST API for repository content discovery.
  * Handles rate limiting, caching, and exponential backoff.
  */
 
@@ -38,7 +38,7 @@ export type RateLimitState = {
   limit: number;
 };
 
-export type GitHubMcpClientOptions = {
+export type GitHubApiClientOptions = {
   /** GitHub Personal Access Token */
   pat: string;
   /** Repository owner */
@@ -53,7 +53,7 @@ export type GitHubMcpClientOptions = {
 
 // ── Client Implementation ─────────────────────────────────────────────────────
 
-export class GitHubMcpClient {
+export class GitHubApiClient {
   private pat: string;
   private owner: string;
   private repo: string;
@@ -64,7 +64,7 @@ export class GitHubMcpClient {
   private cache = new Map<string, { value: unknown; expiresAt: Date }>();
   private backoffAttempts = 0;
 
-  constructor(options: GitHubMcpClientOptions) {
+  constructor(options: GitHubApiClientOptions) {
     this.pat = options.pat;
     this.owner = options.owner;
     this.repo = options.repo;

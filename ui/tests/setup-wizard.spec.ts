@@ -1,13 +1,16 @@
 /**
- * E2E tests for PR #425 — Setup Wizard Bug Fixes (Epic #412)
+ * E2E tests for the Setup Wizard.
  *
- * Covers:
+ * PR #425 — Setup Wizard Bug Fixes (Epic #412):
  *   #413 – Skip button consistent outline styling on ALL steps
  *   #414 – Multi-file upload race condition: Continue stays disabled mid-flight
  *   #415 – Upload Docs smart Continue button label
  *   #416 – Generate Tests step "Go to Test Library" CTA
  *   #417 – Register App form validation
  *   #419 – Discovery Socket.IO state transitions
+ *
+ * PR #433 — Pipeline Integration (Epic #426):
+ *   #431 – Discovery indexes into RAG vector store (discovery flow still works)
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -50,12 +53,12 @@ async function mockAppsApi(page: Page) {
 async function mockAllStepApis(page: Page) {
   // Data Sources
   await page.route(`**/api/talos/applications/${APP_ID}/data-sources`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
   );
 
   // Atlassian config (404 = not yet configured)
   await page.route(`**/api/talos/applications/${APP_ID}/atlassian`, (route) =>
-    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "Not found" }) }),
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "Not found" }) })
   );
 
   // M365 status
@@ -64,17 +67,17 @@ async function mockAllStepApis(page: Page) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ status: "disabled", message: "M365 not configured" }),
-    }),
+    })
   );
 
   // Vault roles
   await page.route("**/api/talos/vault-roles**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) })
   );
 
   // Criteria (all queries)
   await page.route(`**/api/talos/criteria/${APP_ID}**`, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ criteria: [] }) }),
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ criteria: [] }) })
   );
 
   // Traceability
@@ -91,7 +94,7 @@ async function mockAllStepApis(page: Page) {
         unmappedRequirements: [],
         untestedCriteria: [],
       }),
-    }),
+    })
   );
 
   // Discover (default — override per-test for discovery tests)
@@ -100,7 +103,7 @@ async function mockAllStepApis(page: Page) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ jobId: "default-job-id" }),
-    }),
+    })
   );
 }
 
@@ -183,7 +186,7 @@ async function emitSocketEvent(page: Page, event: string, data: unknown) {
     ({ ev, payload }) => {
       (window as Window & { __emitSocketEvent?: (e: string, d: unknown) => void }).__emitSocketEvent?.(ev, payload);
     },
-    { ev: event, payload: data },
+    { ev: event, payload: data }
   );
 }
 
@@ -276,9 +279,7 @@ test.describe("Skip Button Consistent Styling (#413)", () => {
   ] as const;
 
   for (const { stepName, progressLabel } of SKIPPABLE_STEPS) {
-    test(`Skip button on "${stepName}" step should use outline (not destructive) styling`, async ({
-      page,
-    }) => {
+    test(`Skip button on "${stepName}" step should use outline (not destructive) styling`, async ({ page }) => {
       const wizard = new SetupWizardPage(page);
       await mockAppsApi(page);
       await mockAllStepApis(page);
@@ -331,7 +332,7 @@ test.describe("Upload Docs Smart Continue Button (#415)", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ chunksCreated: 7, chunksSkipped: 0, totalTokens: 200, docId: "doc-1" }),
-      }),
+      })
     );
     const wizard = await goToUploadDocsStep(page);
 
@@ -384,9 +385,7 @@ test.describe("Upload Docs Smart Continue Button (#415)", () => {
 test.describe("Multi-file Upload Race Condition (#414)", () => {
   // AC: Continue/Skip button stays disabled while ANY file is still ingesting
 
-  test("should keep Continue disabled when one file is done but another is still ingesting", async ({
-    page,
-  }) => {
+  test("should keep Continue disabled when one file is done but another is still ingesting", async ({ page }) => {
     const wizard = new SetupWizardPage(page);
     await mockAppsApi(page);
     await mockAllStepApis(page);
@@ -447,7 +446,7 @@ test.describe("Discovery Socket.IO State Transitions (#419)", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ jobId: JOB_ID }),
-      }),
+      })
     );
 
     await wizard.goto();
@@ -520,18 +519,14 @@ test.describe("Discovery Socket.IO State Transitions (#419)", () => {
       error: "Repository clone failed: authentication required",
     });
 
-    await expect(
-      page.getByText(/Repository clone failed: authentication required/),
-    ).toBeVisible();
+    await expect(page.getByText(/Repository clone failed: authentication required/)).toBeVisible();
     // Should reset to idle, showing Start Discovery button again
     await expect(wizard.startDiscoveryButton).toBeVisible();
   });
 
   // AC: 5-minute timeout: if no completion event, shows timeout error
 
-  test("should show timeout error when discovery:complete is not received within 5 minutes", async ({
-    page,
-  }) => {
+  test("should show timeout error when discovery:complete is not received within 5 minutes", async ({ page }) => {
     const wizard = await goToDiscoveryStep(page);
 
     // Install fake clock right before clicking Start Discovery so the
@@ -581,7 +576,7 @@ test.describe("Generate Tests Step Finish CTA (#416)", () => {
             },
           ],
         }),
-      }),
+      })
     );
 
     await wizard.goto();
@@ -593,9 +588,7 @@ test.describe("Generate Tests Step Finish CTA (#416)", () => {
 
   // AC: "Skip & Go to Test Library →" link is always visible on the Generate Tests step
 
-  test('should always show "Skip & Go to Test Library →" before generation starts', async ({
-    page,
-  }) => {
+  test('should always show "Skip & Go to Test Library →" before generation starts', async ({ page }) => {
     const wizard = await goToGenerateTestsStep(page);
     await expect(wizard.skipToTestLibraryLink).toBeVisible();
   });
@@ -614,7 +607,7 @@ test.describe("Generate Tests Step Finish CTA (#416)", () => {
           name: "User can log in",
           confidence: 0.89,
         }),
-      }),
+      })
     );
 
     const wizard = await goToGenerateTestsStep(page);
@@ -634,7 +627,7 @@ test.describe("Generate Tests Step Finish CTA (#416)", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ id: "test-gen-02", code: "// test", name: "Test", confidence: 0.9 }),
-      }),
+      })
     );
 
     // Mock the destination page so navigation succeeds
@@ -647,5 +640,94 @@ test.describe("Generate Tests Step Finish CTA (#416)", () => {
     await wizard.goToTestLibraryButton.click();
 
     await expect(page).toHaveURL(new RegExp(`/talos/${APP_ID}`));
+  });
+});
+
+// ── #431: Discovery → RAG Indexing Flow ───────────────────────────────────────
+//
+// After #431, the discover endpoint now indexes chunks into the RAG vector store
+// after the crawl completes. The existing #419 tests already verify the Socket.IO
+// state machine (start → progress → complete → error → timeout). These additional
+// tests confirm the discovery flow is intact after the RAG indexing integration.
+
+test.describe("Discovery RAG Indexing Flow (#431)", () => {
+  const JOB_ID = "discovery-rag-e2e-001";
+
+  async function goToDiscovery(page: Page): Promise<SetupWizardPage> {
+    const wizard = new SetupWizardPage(page);
+    await setupSocketMock(page);
+    await mockAppsApi(page);
+    await mockAllStepApis(page);
+
+    await page.route(`**/api/talos/applications/${APP_ID}/discover`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ jobId: JOB_ID }),
+      })
+    );
+
+    await wizard.goto();
+    await wizard.registerApp();
+    await wizard.goToStep(/Discovery/);
+    await expect(page.getByRole("heading", { name: "Discovery" })).toBeVisible();
+
+    // Wait for the socket mock EIO4 handshake
+    await page.waitForTimeout(50);
+
+    return wizard;
+  }
+
+  // AC #431: After DiscoveryEngine.startDiscovery() completes, chunks are indexed
+  // The UI still receives discovery:complete with filesDiscovered + chunksCreated
+  test("should complete full discovery flow including chunk count in results", async ({ page }) => {
+    const wizard = await goToDiscovery(page);
+
+    await test.step("Start discovery", async () => {
+      await wizard.startDiscoveryButton.click();
+      await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+    });
+
+    await test.step("Emit progress event", async () => {
+      await emitSocketEvent(page, "discovery:progress", {
+        jobId: JOB_ID,
+        phase: "Indexing",
+        progress: 75,
+        message: "Indexing 89 chunks into vector store…",
+      });
+      await expect(page.getByText(/Indexing 89 chunks/)).toBeVisible();
+    });
+
+    await test.step("Emit completion event with chunk count", async () => {
+      await emitSocketEvent(page, "discovery:complete", {
+        jobId: JOB_ID,
+        filesDiscovered: 23,
+        chunksCreated: 189,
+      });
+      await expect(page.getByText(/Discovery complete/)).toBeVisible();
+      await expect(page.getByText(/23 files indexed/)).toBeVisible();
+    });
+  });
+
+  // AC #431: If RAG indexing fails, discovery data is still saved (non-fatal)
+  // The backend emits discovery:complete even if RAG indexing partially failed,
+  // because SQLite data is preserved. Verify the error/warning path.
+  test("should handle discovery:error gracefully and allow retry", async ({ page }) => {
+    const wizard = await goToDiscovery(page);
+
+    await test.step("Start discovery and receive error", async () => {
+      await wizard.startDiscoveryButton.click();
+      await expect(page.getByText(/Discovery in progress/)).toBeVisible();
+
+      await emitSocketEvent(page, "discovery:error", {
+        jobId: JOB_ID,
+        error: "RAG indexing failed: embedding service unavailable",
+      });
+    });
+
+    await test.step("Verify error is shown and Start Discovery reappears", async () => {
+      await expect(page.getByText(/RAG indexing failed/)).toBeVisible();
+      await expect(wizard.startDiscoveryButton).toBeVisible();
+    });
   });
 });

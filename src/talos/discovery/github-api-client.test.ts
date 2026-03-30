@@ -1,11 +1,11 @@
 /**
- * Tests for GitHubMcpClient
+ * Tests for GitHubApiClient
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GitHubMcpClient, GitHubNotFoundError, GitHubApiError } from "./github-mcp-client.js";
+import { GitHubApiClient, GitHubNotFoundError, GitHubApiError } from "./github-api-client.js";
 
-function createClient(overrides?: Partial<ConstructorParameters<typeof GitHubMcpClient>[0]>) {
-  return new GitHubMcpClient({
+function createClient(overrides?: Partial<ConstructorParameters<typeof GitHubApiClient>[0]>) {
+  return new GitHubApiClient({
     pat: "ghp_test",
     owner: "acme",
     repo: "app",
@@ -15,7 +15,7 @@ function createClient(overrides?: Partial<ConstructorParameters<typeof GitHubMcp
   });
 }
 
-describe("GitHubMcpClient", () => {
+describe("GitHubApiClient", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -23,14 +23,26 @@ describe("GitHubMcpClient", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  afterEach(() => { vi.restoreAllMocks(); });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("getTree fetches recursive tree", async () => {
-    const tree = { sha: "abc", url: "u", tree: [{ path: "src/a.ts", type: "file", size: 100, sha: "s1", url: "u1" }], truncated: false };
+    const tree = {
+      sha: "abc",
+      url: "u",
+      tree: [{ path: "src/a.ts", type: "file", size: 100, sha: "s1", url: "u1" }],
+      truncated: false,
+    };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(tree),
-      headers: new Headers({ "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -39,16 +51,21 @@ describe("GitHubMcpClient", () => {
     expect(result.tree[0].path).toBe("src/a.ts");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/git/trees/main?recursive=1"),
-      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer ghp_test" }) }),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer ghp_test" }) })
     );
   });
 
   it("getTree uses cache on repeat call", async () => {
     const tree = { sha: "abc", url: "u", tree: [], truncated: false };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(tree),
-      headers: new Headers({ "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -60,9 +77,14 @@ describe("GitHubMcpClient", () => {
   it("getFileContent fetches file", async () => {
     const content = { path: "README.md", content: btoa("hello"), encoding: "base64", sha: "s", size: 5 };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(content),
-      headers: new Headers({ "x-ratelimit-remaining": "4998", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4998",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -72,11 +94,22 @@ describe("GitHubMcpClient", () => {
   });
 
   it("getFileText decodes base64", async () => {
-    const content = { path: "a.ts", content: Buffer.from("const x = 1;").toString("base64"), encoding: "base64", sha: "s", size: 12 };
+    const content = {
+      path: "a.ts",
+      content: Buffer.from("const x = 1;").toString("base64"),
+      encoding: "base64",
+      sha: "s",
+      size: 12,
+    };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(content),
-      headers: new Headers({ "x-ratelimit-remaining": "4998", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4998",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -87,9 +120,14 @@ describe("GitHubMcpClient", () => {
   it("getFileText returns utf-8 content directly", async () => {
     const content = { path: "a.ts", content: "const x = 1;", encoding: "utf-8", sha: "s", size: 12 };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(content),
-      headers: new Headers({ "x-ratelimit-remaining": "4998", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4998",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -99,7 +137,9 @@ describe("GitHubMcpClient", () => {
 
   it("listFiles filters by extension", async () => {
     const tree = {
-      sha: "abc", url: "u", truncated: false,
+      sha: "abc",
+      url: "u",
+      truncated: false,
       tree: [
         { path: "src/a.ts", type: "file", size: 100, sha: "s1", url: "u1" },
         { path: "src/b.js", type: "file", size: 50, sha: "s2", url: "u2" },
@@ -107,9 +147,14 @@ describe("GitHubMcpClient", () => {
       ],
     };
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve(tree),
-      headers: new Headers({ "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -120,8 +165,14 @@ describe("GitHubMcpClient", () => {
 
   it("throws GitHubNotFoundError on 404", async () => {
     fetchMock.mockResolvedValue({
-      ok: false, status: 404, statusText: "Not Found",
-      headers: new Headers({ "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -130,8 +181,14 @@ describe("GitHubMcpClient", () => {
 
   it("throws on non-ok response", async () => {
     fetchMock.mockResolvedValue({
-      ok: false, status: 500, statusText: "Server Error",
-      headers: new Headers({ "x-ratelimit-remaining": "4999", "x-ratelimit-reset": "1735689600", "x-ratelimit-limit": "5000" }),
+      ok: false,
+      status: 500,
+      statusText: "Server Error",
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
     });
 
     const client = createClient();
@@ -155,7 +212,8 @@ describe("GitHubMcpClient", () => {
 
   it("updates rate limit from headers", async () => {
     fetchMock.mockResolvedValue({
-      ok: true, status: 200,
+      ok: true,
+      status: 200,
       json: () => Promise.resolve({ sha: "a", url: "u", tree: [], truncated: false }),
       headers: new Headers({
         "x-ratelimit-remaining": "100",

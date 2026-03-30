@@ -135,6 +135,33 @@ export class CriteriaGenerator {
       .map((c, i) => `[Chunk ${i + 1} | type: ${c.type} | file: ${c.filePath}]\n${c.content}`)
       .join("\n\n---\n\n");
 
+    // Include intelligence data if available (#429)
+    let intelligenceBlock = "";
+    const intelligence = this.repository.getIntelligenceReport(appId);
+    if (intelligence) {
+      const parts: string[] = [];
+      if (intelligence.techStack.length > 0) {
+        parts.push(
+          "Tech Stack: " +
+            intelligence.techStack
+              .map((t) => `${t.name}${t.version ? ` v${t.version}` : ""} (${t.category})`)
+              .join(", ")
+        );
+      }
+      if (intelligence.databases.length > 0) {
+        parts.push("Databases: " + intelligence.databases.map((d) => `${d.type} via ${d.source}`).join(", "));
+      }
+      if (intelligence.testUsers.length > 0) {
+        parts.push(
+          "Test Users: " +
+            intelligence.testUsers.map((u) => `${u.variableName}${u.roleHint ? ` [${u.roleHint}]` : ""}`).join(", ")
+        );
+      }
+      if (parts.length > 0) {
+        intelligenceBlock = `\n\nAPPLICATION INTELLIGENCE (from repository scan):\n${parts.join("\n")}`;
+      }
+    }
+
     const prompt = `${SYSTEM_PROMPT}
 
 ${FEW_SHOT_EXAMPLE}
@@ -142,7 +169,7 @@ ${FEW_SHOT_EXAMPLE}
 ---
 
 CONTEXT (from knowledge base):
-${contextBlock}
+${contextBlock}${intelligenceBlock}
 
 Generate up to ${maxCriteria} acceptance criteria from the above context. Respond with ONLY valid JSON.`;
 

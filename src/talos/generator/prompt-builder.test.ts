@@ -238,4 +238,54 @@ describe("PromptBuilder", () => {
     expect(chunks[0].applicationId).toBe("app-1");
     expect(mockRag.retrieve).toHaveBeenCalledWith("app-1", "button component", { limit: 5 });
   });
+
+  it("buildPrompt includes intelligence data when provided (#429)", async () => {
+    const builder = new PromptBuilder(makeRagPipeline());
+    const prompt = await builder.buildPrompt({
+      application: makeApp(),
+      existingTests: [],
+      relevantCode: [],
+      userRequest: "test login",
+      intelligence: {
+        id: "intel-1",
+        applicationId: "app-1",
+        techStack: [
+          { name: "React", version: "18.2.0", category: "framework", source: "package.json" },
+          { name: "TypeScript", category: "language", source: "package.json" },
+        ],
+        databases: [{ type: "PostgreSQL", connectionPattern: "postgresql://", source: "docker-compose.yml" }],
+        testUsers: [{ variableName: "ADMIN_USER", source: ".env.test", roleHint: "admin" }],
+        documentation: [{ filePath: "README.md", type: "readme" }],
+        configFiles: [],
+        scannedAt: new Date(),
+      },
+    });
+    expect(prompt.context.applicationInfo).toContain("React v18.2.0");
+    expect(prompt.context.applicationInfo).toContain("TypeScript");
+    expect(prompt.context.applicationInfo).toContain("PostgreSQL");
+    expect(prompt.context.applicationInfo).toContain("ADMIN_USER [admin]");
+    expect(prompt.context.applicationInfo).toContain("README.md");
+  });
+
+  it("buildPrompt omits intelligence sections when empty (#429)", async () => {
+    const builder = new PromptBuilder(makeRagPipeline());
+    const prompt = await builder.buildPrompt({
+      application: makeApp(),
+      existingTests: [],
+      relevantCode: [],
+      userRequest: "test login",
+      intelligence: {
+        id: "intel-2",
+        applicationId: "app-1",
+        techStack: [],
+        databases: [],
+        testUsers: [],
+        documentation: [],
+        configFiles: [],
+        scannedAt: new Date(),
+      },
+    });
+    expect(prompt.context.applicationInfo).not.toContain("Tech Stack");
+    expect(prompt.context.applicationInfo).not.toContain("Databases");
+  });
 });

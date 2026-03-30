@@ -5,5 +5,5 @@
  */
 
 export { DiscoveryEngine, type DiscoveryEngineOptions } from "./discovery-engine.js";
-export { GitHubMcpClient, type GitHubMcpClientOptions, type GitHubFile, type GitHubTree } from "./github-mcp-client.js";
+export { GitHubApiClient, type GitHubApiClientOptions, type GitHubFile, type GitHubTree } from "./github-api-client.js";
 export { FileChunker, type ChunkResult, type ChunkerOptions } from "./file-chunker.js";
