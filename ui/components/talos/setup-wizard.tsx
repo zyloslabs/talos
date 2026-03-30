@@ -1065,7 +1065,7 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
         </p>
       )}
 
-      <Button onClick={onComplete}>
+      <Button variant="outline" onClick={onComplete}>
         Continue to Test Generation <ChevronRight className="ml-2 h-4 w-4" />
       </Button>
     </div>
@@ -1510,6 +1510,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             />
             <Input
               placeholder="API token vault ref"
+              type="password"
               value={jiraApiToken}
               onChange={(e) => setJiraApiToken(e.target.value)}
             />
@@ -1517,6 +1518,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
         ) : (
           <Input
             placeholder="Personal access token vault ref"
+            type="password"
             value={jiraPersonalToken}
             onChange={(e) => setJiraPersonalToken(e.target.value)}
           />
@@ -1548,6 +1550,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             />
             <Input
               placeholder="API token vault ref"
+              type="password"
               value={confluenceApiToken}
               onChange={(e) => setConfluenceApiToken(e.target.value)}
             />
@@ -1555,6 +1558,7 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
         ) : (
           <Input
             placeholder="Personal access token vault ref"
+            type="password"
             value={confluencePersonalToken}
             onChange={(e) => setConfluencePersonalToken(e.target.value)}
           />
