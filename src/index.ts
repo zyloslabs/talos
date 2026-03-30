@@ -385,12 +385,70 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
     return;
   }
 
-  const jobId = `discovery-${req.params.id}-${Date.now()}`;
+  if (!discoveryEngine) {
+    res.status(503).json({ error: "Discovery engine not initialized — check GitHub PAT and RAG configuration" });
+    return;
+  }
 
-  // Emit initial event, then track discovery asynchronously.
-  // A real DiscoveryEngine would be wired here; for now we emit start
-  // and the engine (when configured) will emit progress + completion.
+  const jobId = `discovery-${req.params.id}-${Date.now()}`;
   io.emit("discovery:started", { jobId, applicationId: req.params.id });
+
+  // Start discovery asynchronously — return jobId immediately
+  discoveryEngine
+    .startDiscovery(app_)
+    .then(async (job) => {
+      io.emit("discovery:progress", {
+        jobId,
+        phase: "discovery",
+        progress: 100,
+        message: `Discovered ${job.filesDiscovered} files, created ${job.chunksCreated} chunks`,
+      });
+
+      // Run AppIntelligenceScanner after discovery completes
+      try {
+        const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
+        const { GitHubMcpClient } = await import("./talos/discovery/github-mcp-client.js");
+
+        const pat =
+          process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
+          process.env.GITHUB_TOKEN ??
+          process.env.COPILOT_GITHUB_TOKEN ??
+          envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
+          envManager.getRaw("GITHUB_TOKEN") ??
+          "";
+
+        if (pat) {
+          const repoMatch =
+            app_.repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/) ??
+            app_.repositoryUrl.match(/^([^\/]+)\/([^\/]+)$/);
+          if (repoMatch) {
+            const [, owner, repoName] = repoMatch;
+            const client = new GitHubMcpClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+            const tree = await client.getTree(app_.branch || "HEAD", true);
+            const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
+            const report = await scanner.scan(tree, (path) => client.getFileText(path));
+            repo.saveIntelligenceReport(report);
+            io.emit("intelligence:scanned", { applicationId: app_.id, report });
+          }
+        }
+      } catch (scanErr) {
+        console.warn(
+          `[discovery] Intelligence scan failed for ${app_.id}:`,
+          scanErr instanceof Error ? scanErr.message : String(scanErr)
+        );
+      }
+
+      io.emit("discovery:complete", {
+        jobId,
+        filesDiscovered: job.filesDiscovered,
+        chunksCreated: job.chunksCreated,
+      });
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[discovery] Failed for ${app_.id}:`, message);
+      io.emit("discovery:error", { jobId, error: message });
+    });
 
   res.json({ jobId });
 });

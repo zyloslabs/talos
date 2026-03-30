@@ -886,10 +886,16 @@ function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () =>
 
 function GenerateCriteriaStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
   const [result, setResult] = useState<{ criteriaCreated: number; averageConfidence: number } | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const generateMutation = useMutation({
     mutationFn: () => generateCriteria(appId),
-    onSuccess: (data) => setResult(data),
+    onSuccess: (data) => {
+      setResult(data);
+      setErrorMsg(null);
+    },
+    onError: (error: Error) =>
+      setErrorMsg(error.message || "AI service unavailable — please check your Copilot configuration in Admin > Auth settings."),
   });
 
   return (
@@ -897,6 +903,12 @@ function GenerateCriteriaStep({ appId, onComplete }: { appId: string; onComplete
       <p className="text-sm text-muted-foreground">
         Generate acceptance criteria from your indexed requirements using AI.
       </p>
+      {errorMsg && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-600/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
       {!result && (
         <Button onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
           {generateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
