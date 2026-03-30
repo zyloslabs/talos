@@ -47,6 +47,7 @@ export class AtlassianWizardPage {
 
   // Actions
   readonly testConnectionButton: Locator;
+  readonly importDataButton: Locator;
   readonly saveAndContinueButton: Locator;
   readonly skipButton: Locator;
 
@@ -81,6 +82,7 @@ export class AtlassianWizardPage {
 
     // Actions
     this.testConnectionButton = page.getByRole("button", { name: "Test Connection" });
+    this.importDataButton = page.getByRole("button", { name: "Import Data" });
     this.saveAndContinueButton = page.getByRole("button", { name: "Save & Continue" });
     this.skipButton = page.getByRole("button", { name: "Skip" }).last();
   }

@@ -1,3 +1,11 @@
+/**
+ * E2E tests for Atlassian wizard step.
+ *
+ * Covers:
+ *   #337 – Atlassian step configuration (existing tests)
+ *   #430 – Import Atlassian data (Jira + Confluence) into RAG knowledge base
+ */
+
 import { test, expect } from "@playwright/test";
 import { AtlassianWizardPage } from "./pages/atlassian.page";
 
@@ -239,7 +247,7 @@ test.describe("Atlassian Wizard Step (#337)", () => {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({ success: true, message: "Connected successfully" }),
-          }),
+          })
         );
       });
 
@@ -261,7 +269,7 @@ test.describe("Atlassian Wizard Step (#337)", () => {
             status: 200,
             contentType: "application/json",
             body: JSON.stringify({ success: false, message: "Connection refused" }),
-          }),
+          })
         );
       });
 
@@ -367,6 +375,218 @@ test.describe("Atlassian Wizard Step (#337)", () => {
           jiraPersonalTokenVaultRef: "vault:jira-pat",
         });
       });
+    });
+  });
+});
+
+// ── #430: Atlassian Import Data into RAG ──────────────────────────────────────
+
+test.describe("Atlassian Import Data (#430)", () => {
+  let atl: AtlassianWizardPage;
+
+  test.beforeEach(async ({ page }) => {
+    atl = new AtlassianWizardPage(page);
+    await navigateToAtlassianStep(page);
+  });
+
+  // ── Import Button Visibility ──────────────────────────────────────────────
+
+  test.describe("Import Button State", () => {
+    // AC #430: "Import Data" button appears in Step 2
+    test("should display the Import Data button", async () => {
+      await expect(atl.importDataButton).toBeVisible();
+    });
+
+    // AC #430: Import Data disabled until Jira/Confluence config provided
+    test("should disable Import Data when no Jira or Confluence URL is set", async () => {
+      await expect(atl.importDataButton).toBeDisabled();
+    });
+
+    // AC #430: Import Data enabled when Jira URL is provided
+    test("should enable Import Data after filling Jira URL", async () => {
+      await atl.jiraUrlInput.fill("https://acme.atlassian.net");
+      await expect(atl.importDataButton).toBeEnabled();
+    });
+
+    // AC #430: Import Data enabled when only Confluence URL is provided
+    test("should enable Import Data after filling only Confluence URL", async () => {
+      await atl.confluenceUrlInput.fill("https://acme.atlassian.net/wiki");
+      await expect(atl.importDataButton).toBeEnabled();
+    });
+  });
+
+  // ── Successful Import ─────────────────────────────────────────────────────
+
+  test.describe("Successful Import", () => {
+    // AC #430: Imported items are displayed after completion
+    // AC #430: Number of imported items shown after completion
+    test("should show import results with imported items and chunk count on success", async ({ page }) => {
+      await test.step("Mock Atlassian save and import APIs", async () => {
+        await page.route("**/api/talos/applications/app-atl-test/atlassian", (route) => {
+          if (route.request().method() === "POST") {
+            return route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ id: "atl-cfg-1" }),
+            });
+          }
+          return route.continue();
+        });
+
+        await page.route("**/api/talos/applications/app-atl-test/atlassian/import", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              success: true,
+              imported: [
+                { source: "Jira", title: "PROJ-101: Login flow", type: "issue" },
+                { source: "Jira", title: "PROJ-102: Dashboard", type: "issue" },
+                { source: "Confluence", title: "Architecture Overview", type: "page" },
+              ],
+              totalChunks: 47,
+              errors: [],
+            }),
+          })
+        );
+      });
+
+      await test.step("Fill Jira URL and trigger import", async () => {
+        await atl.jiraUrlInput.fill("https://acme.atlassian.net");
+        await atl.jiraProjectKeyInput.fill("PROJ");
+        await atl.importDataButton.click();
+      });
+
+      await test.step("Verify import results", async () => {
+        await expect(page.getByText("PROJ-101: Login flow")).toBeVisible();
+        await expect(page.getByText("PROJ-102: Dashboard")).toBeVisible();
+        await expect(page.getByText("Architecture Overview")).toBeVisible();
+        await expect(page.getByText("47 chunks indexed into RAG")).toBeVisible();
+      });
+    });
+  });
+
+  // ── Import Error Handling ─────────────────────────────────────────────────
+
+  test.describe("Import Error Handling", () => {
+    // AC #430: Errors during import are shown to the user
+    test("should show error message when import fails", async ({ page }) => {
+      await test.step("Mock Atlassian save (success) and import (failure)", async () => {
+        await page.route("**/api/talos/applications/app-atl-test/atlassian", (route) => {
+          if (route.request().method() === "POST") {
+            return route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ id: "atl-cfg-2" }),
+            });
+          }
+          return route.continue();
+        });
+
+        await page.route("**/api/talos/applications/app-atl-test/atlassian/import", (route) =>
+          route.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "Internal server error" }),
+          })
+        );
+      });
+
+      await test.step("Fill Jira URL and trigger import", async () => {
+        await atl.jiraUrlInput.fill("https://acme.atlassian.net");
+        await atl.importDataButton.click();
+      });
+
+      await test.step("Verify error is displayed", async () => {
+        await expect(page.getByText("Import failed")).toBeVisible();
+      });
+    });
+
+    // AC #430: Partial errors shown alongside successful imports
+    test("should show partial errors alongside successfully imported items", async ({ page }) => {
+      await test.step("Mock Atlassian save and import with partial errors", async () => {
+        await page.route("**/api/talos/applications/app-atl-test/atlassian", (route) => {
+          if (route.request().method() === "POST") {
+            return route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ id: "atl-cfg-3" }),
+            });
+          }
+          return route.continue();
+        });
+
+        await page.route("**/api/talos/applications/app-atl-test/atlassian/import", (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              success: false,
+              imported: [{ source: "Jira", title: "PROJ-200: Search API", type: "issue" }],
+              totalChunks: 12,
+              errors: ["Failed to fetch Confluence page: timeout after 30s"],
+            }),
+          })
+        );
+      });
+
+      await test.step("Fill URLs and trigger import", async () => {
+        await atl.jiraUrlInput.fill("https://acme.atlassian.net");
+        await atl.confluenceUrlInput.fill("https://acme.atlassian.net/wiki");
+        await atl.importDataButton.click();
+      });
+
+      await test.step("Verify partial success and errors", async () => {
+        await expect(page.getByText("PROJ-200: Search API")).toBeVisible();
+        await expect(page.getByText("12 chunks indexed into RAG")).toBeVisible();
+        await expect(page.getByText(/Failed to fetch Confluence page/)).toBeVisible();
+      });
+    });
+  });
+
+  // ── Import Loading State ──────────────────────────────────────────────────
+
+  test.describe("Import Loading State", () => {
+    // AC #430: UI shows a progress indicator during import
+    test("should disable Import Data button while import is in progress", async ({ page }) => {
+      let resolveImport: (() => void) | null = null;
+      const importHold = new Promise<void>((resolve) => {
+        resolveImport = resolve;
+      });
+
+      await test.step("Mock save (instant) and import (held)", async () => {
+        await page.route("**/api/talos/applications/app-atl-test/atlassian", (route) => {
+          if (route.request().method() === "POST") {
+            return route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ id: "atl-cfg-4" }),
+            });
+          }
+          return route.continue();
+        });
+
+        await page.route("**/api/talos/applications/app-atl-test/atlassian/import", async (route) => {
+          await importHold;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ success: true, imported: [], totalChunks: 0, errors: [] }),
+          });
+        });
+      });
+
+      await test.step("Fill URL and start import", async () => {
+        await atl.jiraUrlInput.fill("https://acme.atlassian.net");
+        await atl.importDataButton.click();
+      });
+
+      await test.step("Verify button is disabled during import", async () => {
+        await expect(atl.importDataButton).toBeDisabled();
+      });
+
+      // Clean up: release held request
+      resolveImport!();
     });
   });
 });
