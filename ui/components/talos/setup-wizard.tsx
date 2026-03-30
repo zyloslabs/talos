@@ -1574,7 +1574,6 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             <Input
               type="password"
               placeholder="API token vault ref"
-              type="password"
               value={jiraApiToken}
               onChange={(e) => setJiraApiToken(e.target.value)}
             />
@@ -1583,7 +1582,6 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           <Input
             type="password"
             placeholder="Personal access token vault ref"
-            type="password"
             value={jiraPersonalToken}
             onChange={(e) => setJiraPersonalToken(e.target.value)}
           />
@@ -1616,7 +1614,6 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
             <Input
               type="password"
               placeholder="API token vault ref"
-              type="password"
               value={confluenceApiToken}
               onChange={(e) => setConfluenceApiToken(e.target.value)}
             />
@@ -1625,7 +1622,6 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           <Input
             type="password"
             placeholder="Personal access token vault ref"
-            type="password"
             value={confluencePersonalToken}
             onChange={(e) => setConfluencePersonalToken(e.target.value)}
           />
