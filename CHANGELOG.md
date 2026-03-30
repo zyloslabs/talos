@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Pipeline Integration** (Epic #426): Wire discovery, intelligence, and Atlassian data through the RAG and generation pipelines.
+  - **#431** — Discovery chunks are now indexed into the RAG vector store (LanceDB) after repository discovery completes. Progress events emitted via Socket.IO (`discovery:progress` with `phase: "indexing"`).
+  - **#429** — App intelligence scan data (tech stack, databases, test users, documentation paths) is now fed to `PromptBuilder` and `CriteriaGenerator` for richer, context-aware test generation and acceptance criteria.
+  - **#430** — New `POST /api/talos/applications/:id/atlassian/import` endpoint fetches Jira issues and Confluence pages, converts them to markdown, and ingests into RAG via `DocumentIngester`. "Import Data" button added to wizard Atlassian step with real-time Socket.IO progress.
+  - **#427** — Test generation endpoint now logs which fallback path is used (`rag-backed`, `raw-copilot`, or `skeleton-template`) and includes `generationPath` in the API response.
+
+### Changed
+
+- **#432** — Renamed `GitHubMcpClient` → `GitHubApiClient` and `github-mcp-client.ts` → `github-api-client.ts` to accurately reflect that the class is a REST API client, not an MCP client.
+- **#428** — Data Sources wizard step (Step 2) now shows a "Coming Soon" badge with disabled form fields, since JDBC support is not yet available. Users can skip to the next step.
+
 ### Fixed
 
 - **Setup Wizard UX & Discovery** (Epic #412): Comprehensive validation, Socket.IO wiring, and UX polish across the setup wizard.

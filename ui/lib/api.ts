@@ -731,6 +731,16 @@ export const testAtlassianConnection = (appId: string) =>
     method: "POST",
   });
 
+export const importAtlassianData = (appId: string) =>
+  fetchApi<{
+    success: boolean;
+    imported: Array<{ source: string; title: string; type: string }>;
+    totalChunks: number;
+    errors: string[];
+  }>(`/api/talos/applications/${appId}/atlassian/import`, {
+    method: "POST",
+  });
+
 // ── GitHub Export ─────────────────────────────────────────────────────────────
 
 export interface GitHubExportResult {

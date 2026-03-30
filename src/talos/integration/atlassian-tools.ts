@@ -44,10 +44,14 @@ export function createAtlassianTools(options: AtlassianToolsOptions): ToolDefini
 
     if (config.jiraUsernameVaultRef) creds.jiraUsername = await resolveSecret(config.jiraUsernameVaultRef);
     if (config.jiraApiTokenVaultRef) creds.jiraApiToken = await resolveSecret(config.jiraApiTokenVaultRef);
-    if (config.jiraPersonalTokenVaultRef) creds.jiraPersonalToken = await resolveSecret(config.jiraPersonalTokenVaultRef);
-    if (config.confluenceUsernameVaultRef) creds.confluenceUsername = await resolveSecret(config.confluenceUsernameVaultRef);
-    if (config.confluenceApiTokenVaultRef) creds.confluenceApiToken = await resolveSecret(config.confluenceApiTokenVaultRef);
-    if (config.confluencePersonalTokenVaultRef) creds.confluencePersonalToken = await resolveSecret(config.confluencePersonalTokenVaultRef);
+    if (config.jiraPersonalTokenVaultRef)
+      creds.jiraPersonalToken = await resolveSecret(config.jiraPersonalTokenVaultRef);
+    if (config.confluenceUsernameVaultRef)
+      creds.confluenceUsername = await resolveSecret(config.confluenceUsernameVaultRef);
+    if (config.confluenceApiTokenVaultRef)
+      creds.confluenceApiToken = await resolveSecret(config.confluenceApiTokenVaultRef);
+    if (config.confluencePersonalTokenVaultRef)
+      creds.confluencePersonalToken = await resolveSecret(config.confluencePersonalTokenVaultRef);
 
     const handle = await dockerManager.startAtlassianServer(config, creds);
     return { config, handle };
@@ -56,7 +60,8 @@ export function createAtlassianTools(options: AtlassianToolsOptions): ToolDefini
   return [
     {
       name: "talos_jira_search",
-      description: "Search Jira issues using JQL, scoped to the configured project. Returns issue keys, summaries, and descriptions.",
+      description:
+        "Search Jira issues using JQL, scoped to the configured project. Returns issue keys, summaries, and descriptions.",
       inputSchema: {
         type: "object",
         properties: {
@@ -83,24 +88,32 @@ export function createAtlassianTools(options: AtlassianToolsOptions): ToolDefini
           }
 
           return {
-            text: JSON.stringify({
-              jiraUrl: config.jiraUrl,
-              project: config.jiraProject,
-              jql: scopedJql,
-              maxResults: parsed.maxResults ?? 20,
-              status: "searched",
-              message: `JQL search sent to Atlassian MCP server`,
-            }, null, 2),
+            text: JSON.stringify(
+              {
+                jiraUrl: config.jiraUrl,
+                project: config.jiraProject,
+                jql: scopedJql,
+                maxResults: parsed.maxResults ?? 20,
+                status: "searched",
+                message: `JQL search sent to Atlassian MCP server`,
+              },
+              null,
+              2
+            ),
           };
         } catch (error) {
-          return { text: `Jira search error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+          return {
+            text: `Jira search error: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
         }
       },
     },
 
     {
       name: "talos_confluence_search",
-      description: "Search Confluence pages using CQL, scoped to configured space(s). Returns page titles and content excerpts.",
+      description:
+        "Search Confluence pages using CQL, scoped to configured space(s). Returns page titles and content excerpts.",
       inputSchema: {
         type: "object",
         properties: {
@@ -128,17 +141,24 @@ export function createAtlassianTools(options: AtlassianToolsOptions): ToolDefini
           }
 
           return {
-            text: JSON.stringify({
-              confluenceUrl: config.confluenceUrl,
-              spaces: config.confluenceSpaces,
-              cql: scopedCql,
-              maxResults: parsed.maxResults ?? 10,
-              status: "searched",
-              message: `CQL search sent to Atlassian MCP server`,
-            }, null, 2),
+            text: JSON.stringify(
+              {
+                confluenceUrl: config.confluenceUrl,
+                spaces: config.confluenceSpaces,
+                cql: scopedCql,
+                maxResults: parsed.maxResults ?? 10,
+                status: "searched",
+                message: `CQL search sent to Atlassian MCP server`,
+              },
+              null,
+              2
+            ),
           };
         } catch (error) {
-          return { text: `Confluence search error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+          return {
+            text: `Confluence search error: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
         }
       },
     },

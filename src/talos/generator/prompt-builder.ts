@@ -4,7 +4,7 @@
  * Builds context-aware prompts for test generation.
  */
 
-import type { TalosApplication, TalosTest, TalosChunk } from "../types.js";
+import type { TalosApplication, TalosTest, TalosChunk, AppIntelligenceReport } from "../types.js";
 import type { RagPipeline } from "../rag/rag-pipeline.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -13,6 +13,7 @@ export type PromptContext = {
   application: TalosApplication;
   existingTests: TalosTest[];
   relevantCode: TalosChunk[];
+  intelligence?: AppIntelligenceReport;
   userRequest: string;
   framework?: "playwright" | "cypress" | "puppeteer";
   style?: "bdd" | "tdd" | "pom";
@@ -85,18 +86,15 @@ export class PromptBuilder {
     const style = context.style ?? "pom";
 
     // Build system prompt
-    const systemPrompt = SYSTEM_PROMPT_TEMPLATE
-      .replace("{{FRAMEWORK}}", framework)
-      .replace("{{STYLE}}", style);
+    const systemPrompt = SYSTEM_PROMPT_TEMPLATE.replace("{{FRAMEWORK}}", framework).replace("{{STYLE}}", style);
 
     // Build context sections
-    const applicationInfo = this.buildApplicationInfo(context.application);
+    const applicationInfo = this.buildApplicationInfo(context.application, context.intelligence);
     const codeSnippets = this.buildCodeSnippets(context.relevantCode);
     const existingTestExamples = this.buildExistingTestExamples(context.existingTests);
 
     // Build user prompt
-    const userPrompt = USER_PROMPT_TEMPLATE
-      .replace("{{APPLICATION_INFO}}", applicationInfo)
+    const userPrompt = USER_PROMPT_TEMPLATE.replace("{{APPLICATION_INFO}}", applicationInfo)
       .replace("{{CODE_SNIPPETS}}", codeSnippets.join("\n\n"))
       .replace("{{EXISTING_TESTS}}", existingTestExamples.join("\n\n"))
       .replace("{{USER_REQUEST}}", context.userRequest);
@@ -156,11 +154,7 @@ Provide the modified test code that incorporates the requested changes.`;
   /**
    * Build a prompt for Page Object generation.
    */
-  buildPageObjectPrompt(
-    pageName: string,
-    pageUrl: string,
-    relevantCode: TalosChunk[]
-  ): GeneratedPrompt {
+  buildPageObjectPrompt(pageName: string, pageUrl: string, relevantCode: TalosChunk[]): GeneratedPrompt {
     const systemPrompt = `You are an expert test automation engineer.
 Your task is to create a Page Object Model class for Playwright.
 
@@ -194,14 +188,10 @@ Generate a complete Page Object class for this page.`;
   /**
    * Retrieve relevant code chunks for a request.
    */
-  async getRelevantCode(
-    applicationId: string,
-    request: string,
-    limit = 5
-  ): Promise<TalosChunk[]> {
+  async getRelevantCode(applicationId: string, request: string, limit = 5): Promise<TalosChunk[]> {
     const results = await this.ragPipeline.retrieve(applicationId, request, { limit });
     // Map VectorSearchResult to TalosChunk format
-    return results.chunks.map(chunk => ({
+    return results.chunks.map((chunk) => ({
       id: chunk.id,
       applicationId,
       type: chunk.type,
@@ -215,20 +205,35 @@ Generate a complete Page Object class for this page.`;
     }));
   }
 
-  private buildApplicationInfo(app: TalosApplication): string {
-    return `
+  private buildApplicationInfo(app: TalosApplication, intelligence?: AppIntelligenceReport): string {
+    let info = `
 Application: ${app.name}
 Repository: ${app.repositoryUrl ?? "N/A"}
-Base URL: ${app.baseUrl ?? "N/A"}
-`.trim();
+Base URL: ${app.baseUrl ?? "N/A"}`.trim();
+
+    if (intelligence) {
+      const techStack = intelligence.techStack
+        .map((t) => `${t.name}${t.version ? ` v${t.version}` : ""} (${t.category})`)
+        .join(", ");
+      const databases = intelligence.databases.map((d) => `${d.type} (${d.source})`).join(", ");
+      const testUsers = intelligence.testUsers
+        .map((u) => `${u.variableName}${u.roleHint ? ` [${u.roleHint}]` : ""}`)
+        .join(", ");
+      const docs = intelligence.documentation.map((d) => `${d.filePath} (${d.type})`).join(", ");
+
+      if (techStack) info += `\nTech Stack: ${techStack}`;
+      if (databases) info += `\nDatabases: ${databases}`;
+      if (testUsers) info += `\nTest Users: ${testUsers}`;
+      if (docs) info += `\nDocumentation: ${docs}`;
+    }
+
+    return info;
   }
 
   private buildCodeSnippets(chunks: TalosChunk[]): string[] {
     return chunks.map((chunk, i) => {
       const header = `### Code Snippet ${i + 1}: ${chunk.filePath}`;
-      const lines = chunk.startLine
-        ? `Lines ${chunk.startLine}-${chunk.endLine}`
-        : "";
+      const lines = chunk.startLine ? `Lines ${chunk.startLine}-${chunk.endLine}` : "";
       const code = `\`\`\`${this.getLanguageFromPath(chunk.filePath)}\n${chunk.content}\n\`\`\``;
 
       return `${header}${lines ? ` (${lines})` : ""}\n${code}`;

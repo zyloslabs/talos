@@ -1801,7 +1801,7 @@ talos/
 │   ├── tools.ts                 # MCP tool definitions (14 tools)
 │   ├── discovery/               # GitHub crawling & chunking
 │   │   ├── discovery-engine.ts
-│   │   ├── github-mcp-client.ts
+│   │   ├── github-api-client.ts
 │   │   ├── file-chunker.ts
 │   │   ├── file-chunker.test.ts # Chunker tests (11 tests)
 │   │   └── index.ts

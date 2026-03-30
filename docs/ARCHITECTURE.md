@@ -217,7 +217,7 @@ Crawls a GitHub repository, filters relevant source files, and chunks them for R
 | Class | Responsibility |
 |-------|---------------|
 | `DiscoveryEngine` | Orchestrates the full discovery flow — resolves vault secrets, creates GitHub client, filters files, chunks content, stores vectors |
-| `GitHubMcpClient` | GitHub REST API client with rate limiting, exponential backoff, response caching |
+| `GitHubApiClient` | GitHub REST API client with rate limiting, exponential backoff, response caching |
 | `FileChunker` | Splits source files into semantically meaningful chunks using structural or sliding-window strategies |
 | `AppIntelligenceScanner` | Coordinates 4 detectors (tech stack, databases, test users, docs) to produce an `AppIntelligenceReport` |
 
@@ -236,7 +236,7 @@ Pure regex/string-matching analysis of repository config files — no AI require
 
 Reports are persisted to `talos_app_intelligence` SQLite table and exposed via API endpoints.
 
-#### GitHubMcpClient
+#### GitHubApiClient
 
 - **Authentication**: Personal Access Token (PAT) resolved from vault reference (e.g., `vault:github-pat-myapp`).
 - **Operations**: `getTree()` (recursive file listing), `getFileContent()`, `getFileText()`, `listFiles()` (by extension).
@@ -1128,13 +1128,13 @@ POST /api/talos/applications/:id/discover
   └─ async pipeline:
        │
        ▼
-     GitHubMcpClient.getTree("HEAD", recursive=true)
+     GitHubApiClient.getTree("HEAD", recursive=true)
        │
        ▼
      Filter (extensions, patterns, size)
        │
        ▼
-     GitHubMcpClient.getFileText(path)  ← per file
+     GitHubApiClient.getFileText(path)  ← per file
        │
        ▼
      FileChunker.chunk(path, content, appId)
@@ -1251,7 +1251,7 @@ As of this version, all orchestration steps are wired to real engine implementat
 
 | Step | Engine | Fallback |
 |------|--------|---------|
-| `discover` | `DiscoveryEngine` → `GitHubMcpClient` | Emits warning, step result includes `reason: "Discovery engine not configured"` |
+| `discover` | `DiscoveryEngine` → `GitHubApiClient` | Emits warning, step result includes `reason: "Discovery engine not configured"` |
 | `index` | `RagPipeline.indexChunks()` via `EmbeddingService` | Skipped with `{ indexed: 0, reason: "RAG not configured" }` |
 | `generate` | `TestGenerator.generate()` with RAG context | Falls back to direct Copilot chat if TestGenerator unavailable |
 | `execute` | `PlaywrightRunner.executeTest()` | DB records created with pending status if runner unavailable |

@@ -7,7 +7,7 @@
 import type { TalosApplication, DiscoveryJob, DiscoveryStatus, TalosChunk } from "../types.js";
 import type { TalosRepository } from "../repository.js";
 import type { DiscoveryConfig } from "../config.js";
-import { GitHubMcpClient, type GitHubFile } from "./github-mcp-client.js";
+import { GitHubApiClient, type GitHubFile } from "./github-api-client.js";
 import { FileChunker } from "./file-chunker.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export class DiscoveryEngine {
       const { owner, repo } = this.parseRepoUrl(application.repositoryUrl);
 
       // Create GitHub client
-      const client = new GitHubMcpClient({
+      const client = new GitHubApiClient({
         pat,
         owner,
         repo,

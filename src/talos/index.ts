@@ -22,7 +22,7 @@ export { parseTalosConfig, getDefaultTalosConfig, talosConfigSchema } from "./co
 
 export { DiscoveryEngine } from "./discovery/index.js";
 export { FileChunker } from "./discovery/index.js";
-export { GitHubMcpClient } from "./discovery/index.js";
+export { GitHubApiClient } from "./discovery/index.js";
 
 export { EmbeddingService } from "./rag/index.js";
 export { VectorStore } from "./rag/index.js";
