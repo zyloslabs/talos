@@ -184,13 +184,13 @@ export class DiscoveryEngine {
 
   private parseRepoUrl(url: string): ParsedRepoUrl {
     // HTTPS URLs: https://github.com/org/repo or https://git.nyiso.com/GOT/GFER-Cloud
-    const httpsMatch = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/.]+?)(?:\.git)?$/);
+    const httpsMatch = url.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
     if (httpsMatch) {
       return { host: httpsMatch[1], owner: httpsMatch[2], repo: httpsMatch[3] };
     }
 
     // SSH URLs: git@github.com:org/repo.git or git@git.nyiso.com:org/repo.git
-    const sshMatch = url.match(/^git@([^:]+):([^/]+)\/([^/.]+?)(?:\.git)?$/);
+    const sshMatch = url.match(/^git@([^:]+):([^/]+)\/([^/]+?)(?:\.git)?$/);
     if (sshMatch) {
       return { host: sshMatch[1], owner: sshMatch[2], repo: sshMatch[3] };
     }

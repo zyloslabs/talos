@@ -202,6 +202,36 @@ describe("DiscoveryEngine", () => {
     expect(result).toEqual({ host: "github.com", owner: "org", repo: "repo" });
   });
 
+  it("parseRepoUrl handles trailing slash on HTTPS URLs", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    const result = parse.call(engine, "https://github.com/org/repo/");
+    expect(result).toEqual({ host: "github.com", owner: "org", repo: "repo" });
+  });
+
+  it("parseRepoUrl handles repos with dots in the name", () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+    });
+    const parse = (engine as unknown as { parseRepoUrl: (url: string) => ParsedRepoUrl })
+      .parseRepoUrl;
+    expect(parse.call(engine, "https://github.com/vercel/next.js")).toEqual({
+      host: "github.com",
+      owner: "vercel",
+      repo: "next.js",
+    });
+    expect(parse.call(engine, "git@github.com:vercel/next.js.git")).toEqual({
+      host: "github.com",
+      owner: "vercel",
+      repo: "next.js",
+    });
+  });
+
   it("parseRepoUrl throws for single-segment string", () => {
     const engine = new DiscoveryEngine({
       repository: repo,

@@ -14,12 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
   - **#441** — Discovery engine wires the parsed host to the API client, so GHE repositories are discovered using the correct API endpoint.
   - **#443** — Unit tests for GHE URL parsing, custom API base URL, and PAT fallback logic.
   - **#444** — E2E Playwright test for the discovery step: verifies Start Discovery button, API call interception, and error display.
-
-### Changed
-
-- **#440** — Discovery engine initialization no longer requires a Copilot token. If only `GITHUB_PERSONAL_ACCESS_TOKEN` is set, discovery works independently while the RAG pipeline remains disabled.
-- **#442** — Setup wizard discovery step now shows the actual server error message (parsed from JSON response body) instead of generic "API error: 503 Service Unavailable". Troubleshooting hints are displayed when the error relates to PAT/initialization.
-
 - **Pipeline Integration** (Epic #426): Wire discovery, intelligence, and Atlassian data through the RAG and generation pipelines.
   - **#431** — Discovery chunks are now indexed into the RAG vector store (LanceDB) after repository discovery completes. Progress events emitted via Socket.IO (`discovery:progress` with `phase: "indexing"`).
   - **#429** — App intelligence scan data (tech stack, databases, test users, documentation paths) is now fed to `PromptBuilder` and `CriteriaGenerator` for richer, context-aware test generation and acceptance criteria.
@@ -28,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Changed
 
+- **#440** — Discovery engine initialization no longer requires a Copilot token. If only `GITHUB_PERSONAL_ACCESS_TOKEN` is set, discovery works independently while the RAG pipeline remains disabled.
+- **#442** — Setup wizard discovery step now shows the actual server error message (parsed from JSON response body) instead of generic "API error: 503 Service Unavailable". Troubleshooting hints are displayed when the error relates to PAT/initialization.
 - **#432** — Renamed `GitHubMcpClient` → `GitHubApiClient` and `github-mcp-client.ts` → `github-api-client.ts` to accurately reflect that the class is a REST API client, not an MCP client.
 - **#428** — Data Sources wizard step (Step 2) now shows a "Coming Soon" badge with disabled form fields, since JDBC support is not yet available. Users can skip to the next step.
 
