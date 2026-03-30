@@ -21,6 +21,7 @@ import { createAdminRouter } from "./api/admin.js";
 import { createCriteriaRouter } from "./api/criteria.js";
 import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
+import { CriteriaGenerator } from "./talos/knowledge/criteria-generator.js";
 import { DocumentIngester, type DocFormat, type DocMetadata } from "./talos/knowledge/document-ingester.js";
 import { BrowserAuth } from "./talos/m365/browser-auth.js";
 import { CopilotScraper } from "./talos/m365/scraper.js";
@@ -144,6 +145,7 @@ let ragPipeline: RagPipeline | undefined;
 let discoveryEngine: DiscoveryEngine | undefined;
 let playwrightRunner: PlaywrightRunner | undefined;
 let testGenerator: TestGenerator | undefined;
+let criteriaGenerator: CriteriaGenerator | undefined;
 
 // Temporary per-app chunk buffer used by the orchestration pipeline
 const discoveredChunksBuffer = new Map<string, ChunkResult[]>();
@@ -223,6 +225,22 @@ const initRag = async () => {
       return result;
     },
   });
+
+  // CriteriaGenerator for AI-powered acceptance criteria generation
+  if (capturedCopilot) {
+    criteriaGenerator = new CriteriaGenerator({
+      ragPipeline,
+      repository: repo,
+      generateWithLLM: async (prompt: string): Promise<string> => {
+        let result = "";
+        for await (const chunk of capturedCopilot.chat(prompt)) {
+          result += chunk;
+        }
+        return result;
+      },
+    });
+    console.log("[criteria] CriteriaGenerator initialized");
+  }
 
   console.log("[RAG] Initialized with GitHub Models embeddings provider");
 };
@@ -1243,7 +1261,7 @@ app.post("/api/talos/applications/:appId/ingest", async (req, res) => {
 
 // ── Criteria API ──────────────────────────────────────────────────────────────
 
-app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo }));
+app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, criteriaGenerator }));
 
 // ── Test Generation (#220) ────────────────────────────────────────────────────
 

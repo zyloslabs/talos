@@ -63,6 +63,22 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// ── Error Helper ──────────────────────────────────────────────────────────────
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    // Check for HTTP status codes in the error message
+    if (error.message.includes("503")) {
+      return "AI service unavailable — please check your Copilot configuration in Admin > Auth settings.";
+    }
+    if (error.message.includes("Failed to fetch") || error.message.includes("NetworkError")) {
+      return "Network error — please check your connection and try again.";
+    }
+    return error.message;
+  }
+  return "An unexpected error occurred. Please try again.";
+}
+
 // ── Step Definitions ──────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -114,11 +130,16 @@ export function SetupWizard() {
 
       if (dataSources.status === "fulfilled" && dataSources.value?.length > 0) done.add(1);
       if (atlassianConfig.status === "fulfilled" && atlassianConfig.value) done.add(2);
-      // Step 3 (upload docs) — we consider it done if discovery has run (docs feed into discovery)
-      if (intelligence.status === "fulfilled" && intelligence.value) done.add(3);
+      // Step 3 (upload docs) — consider done if intelligence or criteria exist (docs feed into discovery)
+      const hasIntelligence = intelligence.status === "fulfilled" && intelligence.value;
+      const hasCriteria = criteria.status === "fulfilled" && criteria.value?.length > 0;
+      if (hasIntelligence || hasCriteria) done.add(3);
       if (roles.status === "fulfilled" && roles.value?.length > 0) done.add(4);
-      if (intelligence.status === "fulfilled" && intelligence.value) done.add(5);
-      if (criteria.status === "fulfilled" && criteria.value?.length > 0) done.add(6);
+      // Step 5 (Discovery) — complete if intelligence report exists
+      // A 404 on intelligence just means discovery hasn't run yet — not an error
+      if (hasIntelligence) done.add(5);
+      // Step 6 (Generate Criteria) — complete if criteria exist regardless of intelligence
+      if (hasCriteria) done.add(6);
       if (criteria.status === "fulfilled" && criteria.value?.some((c: AcceptanceCriteria) => c.status === "approved"))
         done.add(7);
     } catch {
@@ -958,6 +979,7 @@ function GenerateCriteriaStep({ appId, onComplete }: { appId: string; onComplete
 
 function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: () => void }) {
   const queryClient = useQueryClient();
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { data: criteria, isLoading } = useQuery({
     queryKey: ["criteria", appId],
     queryFn: () => getCriteria(appId),
@@ -979,6 +1001,10 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["criteria", appId] });
       setSuggestDesc("");
+      setErrorMsg(null);
+    },
+    onError: (error: unknown) => {
+      setErrorMsg(getErrorMessage(error));
     },
   });
 
@@ -991,6 +1017,12 @@ function ReviewCriteriaStep({ appId, onComplete }: { appId: string; onComplete: 
 
   return (
     <div className="space-y-4">
+      {errorMsg && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-600/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
       {/* AI Suggest */}
       <div className="flex gap-2">
         <Input
@@ -1095,11 +1127,14 @@ function GenerateTestsStep({ appId }: { appId: string }) {
   const [generating, setGenerating] = useState(false);
   const [generatedCount, setGeneratedCount] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleGenerateAll = useCallback(async () => {
     if (!criteria) return;
     setGenerating(true);
+    setErrorMsg(null);
     let count = 0;
+    let lastError: unknown = null;
     for (const c of criteria) {
       try {
         await generateTest({
@@ -1109,12 +1144,18 @@ function GenerateTestsStep({ appId }: { appId: string }) {
         });
         count++;
         setGeneratedCount(count);
-      } catch {
+      } catch (err) {
+        lastError = err;
         // continue with next criterion
       }
     }
     setGenerating(false);
-    setIsComplete(true);
+    if (count > 0) {
+      setIsComplete(true);
+    }
+    if (lastError && count === 0) {
+      setErrorMsg(getErrorMessage(lastError));
+    }
   }, [criteria, appId]);
 
   return (
@@ -1145,6 +1186,13 @@ function GenerateTestsStep({ appId }: { appId: string }) {
       <p className="text-sm text-muted-foreground">
         {criteria?.length ?? 0} approved criteria ready for test generation.
       </p>
+
+      {errorMsg && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-600/30 bg-red-950/20 px-4 py-2 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          {errorMsg}
+        </div>
+      )}
 
       {!isComplete && (
         <div className="space-y-3">
@@ -1524,16 +1572,16 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
               onChange={(e) => setJiraUsername(e.target.value)}
             />
             <Input
-              placeholder="API token vault ref"
               type="password"
+              placeholder="API token vault ref"
               value={jiraApiToken}
               onChange={(e) => setJiraApiToken(e.target.value)}
             />
           </>
         ) : (
           <Input
-            placeholder="Personal access token vault ref"
             type="password"
+            placeholder="Personal access token vault ref"
             value={jiraPersonalToken}
             onChange={(e) => setJiraPersonalToken(e.target.value)}
           />
@@ -1564,16 +1612,16 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
               onChange={(e) => setConfluenceUsername(e.target.value)}
             />
             <Input
-              placeholder="API token vault ref"
               type="password"
+              placeholder="API token vault ref"
               value={confluenceApiToken}
               onChange={(e) => setConfluenceApiToken(e.target.value)}
             />
           </>
         ) : (
           <Input
-            placeholder="Personal access token vault ref"
             type="password"
+            placeholder="Personal access token vault ref"
             value={confluencePersonalToken}
             onChange={(e) => setConfluencePersonalToken(e.target.value)}
           />

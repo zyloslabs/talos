@@ -227,11 +227,11 @@ describe("#414 & #415 – UploadDocsStep", () => {
     await waitFor(() => expect(screen.getByText("Existing App")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Existing App"));
     await waitFor(() => expect(screen.getByText("Configure JDBC database connections")).toBeInTheDocument());
-    // Navigate to upload docs step (step 3 = index 3, displayed as button 4)
-    const stepBtns = document.querySelectorAll("button span.rounded-full");
-    const step4Btn = Array.from(stepBtns).find((s) => s.textContent === "4");
-    if (step4Btn?.closest("button")) {
-      fireEvent.click(step4Btn.closest("button")!);
+    // Navigate to upload docs step — click the step button containing "Upload Docs" label
+    // (completed steps show CheckCircle2 instead of step number, so find by label text)
+    const uploadBtn = screen.getAllByRole("button").find((btn) => btn.textContent?.includes("Upload Docs"));
+    if (uploadBtn) {
+      fireEvent.click(uploadBtn);
     }
     await waitFor(() => {
       // Check that the Upload docs step is displayed

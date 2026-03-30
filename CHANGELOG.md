@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **Discovery endpoint wired to DiscoveryEngine** (#407): `POST /api/talos/applications/{id}/discover` now invokes the real `DiscoveryEngine`, runs `AppIntelligenceScanner` after discovery, and emits Socket.IO progress/complete/error events.
+- **CriteriaGenerator instantiated on startup** (#406): `CriteriaGenerator` is now created when Copilot SDK is available and passed to criteria routes. 503 error messages are descriptive with configuration guidance.
+- **Intelligence 404 no longer breaks step completion** (#408): `handleSelectApp` step detection now correctly treats a 404 intelligence response as "not started" rather than an error, and uses criteria count as an independent signal for Generate Criteria step completion.
+- **AI mutation error handlers added** (#409): All AI-related `useMutation` hooks in the setup wizard now have `onError` callbacks that display inline error alerts with user-friendly messages, including specific guidance for 503 (Copilot config) and network errors.
+
+### Security
+
+- **Atlassian PAT fields masked** (#410): All token/PAT input fields in the Atlassian step now use `type="password"` to prevent plaintext exposure of secrets on screen.
+
 ### Added
 
 - **GitHub Enterprise Support** (Epic #437): Discovery engine and API client now support GitHub Enterprise Server (GHE) alongside github.com.
