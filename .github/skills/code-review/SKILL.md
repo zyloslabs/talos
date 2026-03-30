@@ -78,6 +78,20 @@ Execute with the **Code Review** agent (`code-review.agent.md`), which has the s
    gh pr view {PR_NUMBER} --json files --jq '.files[].path'
    ```
 6. **Read each changed file in full** — not just the diff hunks. Context matters.
+7. **Check CI status immediately** — run this before reading any code:
+   ```bash
+   gh pr view {PR_NUMBER} --json statusCheckRollup --jq '.statusCheckRollup[] | {name: .name, conclusion: .conclusion}'
+   ```
+   If any job is **FAILURE**, fetch its logs now:
+   ```bash
+   gh run list --branch {BRANCH} --json databaseId,name,conclusion --jq '.[] | select(.conclusion == "failure") | .databaseId'
+   gh run view {RUN_ID} --log-failed
+   ```
+   **ALL CI failures must be fixed — even ones predating this PR.** A failing pipeline blocks deployment regardless of cause. When you find any failure:
+   - Identify the root cause from the logs
+   - Fix it directly in the current branch
+   - Include "Fixed pre-existing CI failure: [description]" in your review
+   Do not accept the rationalization that a CI failure is "pre-existing and unrelated" — all red must be green before merge.
 
 ### Step 1b: Security Scanner Comments (CodeQL / GHAS)
 
