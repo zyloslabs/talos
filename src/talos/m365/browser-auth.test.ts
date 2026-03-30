@@ -41,7 +41,7 @@ describe("BrowserAuth", () => {
   describe("constructor", () => {
     it("uses default values", () => {
       const auth = new BrowserAuth();
-      expect(auth.getUserDataDir()).toContain(".browser-data");
+      expect(auth.getUserDataDir()).toContain(".talos/browser-data");
     });
 
     it("accepts custom options", () => {
@@ -122,7 +122,7 @@ describe("BrowserAuth", () => {
       await auth.initialize();
       expect(chromium.launchPersistentContext).toHaveBeenCalledWith(
         expect.any(String),
-        expect.objectContaining({ proxy: { server: "http://proxy:8080" } }),
+        expect.objectContaining({ proxy: { server: "http://proxy:8080" } })
       );
     });
   });
