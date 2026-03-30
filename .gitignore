@@ -40,3 +40,6 @@ docs/research/
 
 # Ignore attachment-style terminal logs (filename begins with '#')
 \#file:terminal.log
+
+# Agent hook runtime logs (auto-generated, not versioned)
+.github/hooks/logs/*.log
