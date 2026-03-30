@@ -783,7 +783,12 @@ function DiscoveryStep({ appId, onComplete }: { appId: string; onComplete: () =>
       setProgress(null);
     },
     onSuccess: (data) => setJobId(data.jobId),
-    onError: () => setDiscoveryStatus("idle"),
+    onError: (error: Error) => {
+      setDiscoveryStatus("idle");
+      setErrorMsg(
+        error.message || "Discovery failed — check GitHub PAT and RAG configuration in Admin > Auth settings."
+      );
+    },
   });
 
   useEffect(() => {
@@ -895,7 +900,9 @@ function GenerateCriteriaStep({ appId, onComplete }: { appId: string; onComplete
       setErrorMsg(null);
     },
     onError: (error: Error) =>
-      setErrorMsg(error.message || "AI service unavailable — please check your Copilot configuration in Admin > Auth settings."),
+      setErrorMsg(
+        error.message || "AI service unavailable — please check your Copilot configuration in Admin > Auth settings."
+      ),
   });
 
   return (
