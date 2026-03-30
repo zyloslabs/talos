@@ -40,6 +40,7 @@ import type { TalosChunk } from "./talos/types.js";
 import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js";
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
+import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -293,6 +294,10 @@ function appendSessionMessage(conversationId: string, message: { role: string; c
 const app = express();
 app.use(express.json());
 
+// ── Rate Limiters ─────────────────────────────────────────────────────────────
+
+const atlassianImportLimiter = new RateLimiter(60_000); // 60 seconds per app
+
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
 
 const httpServer = createServer(app);
@@ -426,7 +431,8 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
           });
         } catch (indexErr) {
           console.warn(
-            `[discovery] RAG indexing failed for ${req.params.id}:`,
+            "[discovery] RAG indexing failed for %s:",
+            req.params.id,
             indexErr instanceof Error ? indexErr.message : String(indexErr)
           );
         }
@@ -855,6 +861,17 @@ app.post("/api/talos/applications/:appId/atlassian/test", async (req, res) => {
 
 app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => {
   const appId = req.params.appId;
+
+  // ── Rate limiting ───────────────────────────────────────────────────────────
+  const rl = atlassianImportLimiter.check(appId);
+  if (rl.limited) {
+    res.status(429).json({
+      error: "Import rate limited. Please wait before importing again.",
+      retryAfterMs: rl.retryAfterMs,
+    });
+    return;
+  }
+
   const app_ = repo.getApplication(appId);
   if (!app_) {
     res.status(404).json({ error: "Application not found" });
@@ -864,6 +881,31 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
   const config = repo.getAtlassianConfigByApp(appId);
   if (!config) {
     res.status(404).json({ error: "No Atlassian config found. Save your config first." });
+    return;
+  }
+
+  // ── Input validation (SSRF + JQL injection) ─────────────────────────────────
+  const isDev = process.env.NODE_ENV === "development";
+  if (config.jiraUrl) {
+    try {
+      validateExternalUrl(config.jiraUrl, { allowLocalhostHttp: isDev });
+    } catch (e) {
+      res.status(400).json({ error: `Invalid Jira URL: ${e instanceof Error ? e.message : String(e)}` });
+      return;
+    }
+  }
+  if (config.confluenceUrl) {
+    try {
+      validateExternalUrl(config.confluenceUrl, { allowLocalhostHttp: isDev });
+    } catch (e) {
+      res.status(400).json({ error: `Invalid Confluence URL: ${e instanceof Error ? e.message : String(e)}` });
+      return;
+    }
+  }
+  if (config.jiraProject && !isValidJiraProjectKey(config.jiraProject)) {
+    res
+      .status(400)
+      .json({ error: "Invalid Jira project key format. Expected uppercase alphanumeric (e.g. PROJ, MY_APP)." });
     return;
   }
 
@@ -902,7 +944,7 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
     if (config.jiraUrl && config.jiraProject) {
       const jiraBase = config.jiraUrl.replace(/\/+$/, "");
       const headers = buildJiraHeaders();
-      const jql = `project = "${config.jiraProject}" ORDER BY updated DESC`;
+      const jql = `project = ${config.jiraProject} ORDER BY updated DESC`;
 
       io.emit("atlassian:import:progress", { applicationId: appId, phase: "jira", message: "Fetching Jira issues..." });
 
@@ -946,7 +988,11 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
                 tags: ["atlassian", "jira", config.jiraProject],
               });
               totalChunks += result.chunksCreated;
-            } catch {
+            } catch (err) {
+              console.warn(
+                "[atlassian-import] Jira RAG ingestion failed:",
+                err instanceof Error ? err.message : String(err)
+              );
               // Fallback: just count the issues as chunks
               totalChunks += data.issues.length;
             }
@@ -1015,7 +1061,12 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
                   tags: ["atlassian", "confluence", space],
                 });
                 totalChunks += result.chunksCreated;
-              } catch {
+              } catch (err) {
+                console.warn(
+                  "[atlassian-import] Confluence RAG ingestion failed for space %s:",
+                  space,
+                  err instanceof Error ? err.message : String(err)
+                );
                 totalChunks += data.results.length;
               }
             }
