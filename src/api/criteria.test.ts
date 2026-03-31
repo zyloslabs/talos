@@ -22,7 +22,7 @@ function createTestApp(criteriaGenerator?: CriteriaGenerator) {
   repository.migrate();
   const app = express();
   app.use(express.json());
-  app.use("/api/talos/criteria", createCriteriaRouter({ repository, criteriaGenerator }));
+  app.use("/api/talos/criteria", createCriteriaRouter({ repository, getCriteriaGenerator: () => criteriaGenerator }));
   return { app, repository, db };
 }
 

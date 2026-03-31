@@ -1056,7 +1056,24 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
           });
         }
       } else {
-        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraRes.statusText}`);
+        let jiraErrorDetail = jiraRes.statusText || "";
+        try {
+          const errBody = (await jiraRes.json()) as {
+            errorMessages?: string[];
+            errors?: Record<string, string>;
+            message?: string;
+          };
+          if (errBody.errorMessages?.length) {
+            jiraErrorDetail = errBody.errorMessages.join("; ");
+          } else if (errBody.errors && Object.keys(errBody.errors).length) {
+            jiraErrorDetail = Object.values(errBody.errors).join("; ");
+          } else if (errBody.message) {
+            jiraErrorDetail = errBody.message;
+          }
+        } catch {
+          // Response body is not JSON — keep statusText
+        }
+        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraErrorDetail || "Unknown error"}`);
       }
     }
 
@@ -1129,7 +1146,18 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
             });
           }
         } else {
-          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confRes.statusText}`);
+          let confErrorDetail = confRes.statusText || "";
+          try {
+            const errBody = (await confRes.json()) as { message?: string; errorMessages?: string[] };
+            if (errBody.errorMessages?.length) {
+              confErrorDetail = errBody.errorMessages.join("; ");
+            } else if (errBody.message) {
+              confErrorDetail = errBody.message;
+            }
+          } catch {
+            // Response body is not JSON — keep statusText
+          }
+          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confErrorDetail || "Unknown error"}`);
         }
       }
     }
@@ -1164,7 +1192,7 @@ app.get("/api/talos/applications/:appId/intelligence", (req, res) => {
   }
   const report = repo.getIntelligenceReport(req.params.appId);
   if (!report) {
-    res.status(404).json({ error: "No intelligence report found. Run a scan first." });
+    res.json(null); // 200 with null — discovery hasn't run yet, not an error
     return;
   }
   res.json(report);
@@ -1278,7 +1306,7 @@ app.post("/api/talos/applications/:appId/ingest", async (req, res) => {
 
 // ── Criteria API ──────────────────────────────────────────────────────────────
 
-app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, criteriaGenerator }));
+app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, getCriteriaGenerator: () => criteriaGenerator }));
 
 // ── Test Generation (#220) ────────────────────────────────────────────────────
 

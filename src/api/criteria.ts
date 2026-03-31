@@ -62,10 +62,10 @@ const SuggestSchema = z.object({
 
 export type CriteriaRouterDeps = {
   repository: TalosRepository;
-  criteriaGenerator?: CriteriaGenerator;
+  getCriteriaGenerator: () => CriteriaGenerator | undefined;
 };
 
-export function createCriteriaRouter({ repository, criteriaGenerator }: CriteriaRouterDeps): Router {
+export function createCriteriaRouter({ repository, getCriteriaGenerator }: CriteriaRouterDeps): Router {
   const router = Router();
 
   // ── List criteria for an app ────────────────────────────────────────────────
@@ -138,6 +138,7 @@ export function createCriteriaRouter({ repository, criteriaGenerator }: Criteria
   // ── Bulk AI generation ──────────────────────────────────────────────────────
 
   router.post("/:appId/generate", async (req: Request, res: Response) => {
+    const criteriaGenerator = getCriteriaGenerator();
     if (!criteriaGenerator) {
       res
         .status(503)
@@ -167,6 +168,7 @@ export function createCriteriaRouter({ repository, criteriaGenerator }: Criteria
   // ── AI suggest single criterion ─────────────────────────────────────────────
 
   router.post("/:appId/suggest", async (req: Request, res: Response) => {
+    const criteriaGenerator = getCriteriaGenerator();
     if (!criteriaGenerator) {
       res
         .status(503)
