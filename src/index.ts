@@ -430,7 +430,18 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
 
   // Start discovery asynchronously — return jobId immediately
   discoveryEngine
-    .startDiscovery(app_)
+    .startDiscovery(app_, false, (progress) => {
+      io.emit("discovery:progress", {
+        jobId,
+        phase: "discovery",
+        progress: progress.filesDiscovered > 0
+          ? Math.round((progress.filesIndexed / progress.filesDiscovered) * 100)
+          : 0,
+        message: progress.currentFile
+          ? `Processing ${progress.currentFile} (${progress.filesIndexed}/${progress.filesDiscovered})`
+          : "Starting discovery...",
+      });
+    })
     .then(async (job) => {
       io.emit("discovery:progress", {
         jobId,

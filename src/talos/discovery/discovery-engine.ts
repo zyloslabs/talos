@@ -67,8 +67,14 @@ export class DiscoveryEngine {
 
   /**
    * Start discovery for an application.
+   * Awaits the full discovery run and returns the final job state with real counts.
+   * An optional `onProgress` callback receives per-file progress updates during the scan.
    */
-  async startDiscovery(application: TalosApplication, force = false): Promise<DiscoveryJob> {
+  async startDiscovery(
+    application: TalosApplication,
+    force = false,
+    onProgress?: (progress: DiscoveryProgress) => void,
+  ): Promise<DiscoveryJob> {
     const jobId = crypto.randomUUID();
 
     // Initialize progress tracking
@@ -81,25 +87,28 @@ export class DiscoveryEngine {
     };
     this.jobs.set(jobId, progress);
 
-    // Start discovery in background
-    this.runDiscovery(jobId, application, force).catch((error) => {
+    try {
+      await this.runDiscovery(jobId, application, force, onProgress);
+    } catch (error) {
       const job = this.jobs.get(jobId);
       if (job) {
         job.status = "failed";
         job.errorMessage = error instanceof Error ? error.message : String(error);
       }
-    });
+      throw error;
+    }
 
+    const finalProgress = this.jobs.get(jobId)!;
     return {
       id: jobId,
       applicationId: application.id,
-      status: "pending",
-      filesDiscovered: 0,
-      filesIndexed: 0,
-      chunksCreated: 0,
-      errorMessage: null,
+      status: finalProgress.status,
+      filesDiscovered: finalProgress.filesDiscovered,
+      filesIndexed: finalProgress.filesIndexed,
+      chunksCreated: finalProgress.chunksCreated,
+      errorMessage: finalProgress.errorMessage ?? null,
       createdAt: this.clock(),
-      completedAt: null,
+      completedAt: finalProgress.status === "completed" ? this.clock() : null,
     };
   }
 
@@ -112,7 +121,12 @@ export class DiscoveryEngine {
 
   // ── Private Methods ─────────────────────────────────────────────────────────
 
-  private async runDiscovery(jobId: string, application: TalosApplication, _force: boolean): Promise<void> {
+  private async runDiscovery(
+    jobId: string,
+    application: TalosApplication,
+    _force: boolean,
+    onProgress?: (progress: DiscoveryProgress) => void,
+  ): Promise<void> {
     const progress = this.jobs.get(jobId)!;
     progress.status = "running";
 
@@ -147,6 +161,7 @@ export class DiscoveryEngine {
       const ref = application.branch || "HEAD";
       const tree = await client.getTree(ref, true);
       progress.filesDiscovered = tree.tree.filter((f) => f.type === "file").length;
+      onProgress?.(progress);
 
       // Filter files by extension and exclude patterns
       const filesToIndex = this.filterFiles(tree.tree);
@@ -167,6 +182,7 @@ export class DiscoveryEngine {
           allChunks.push(...chunks);
           progress.filesIndexed++;
           progress.chunksCreated = allChunks.length;
+          onProgress?.(progress);
         } catch (error) {
           // Log and continue on individual file errors
           console.warn(`Failed to process ${file.path}:`, error);

@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Fixed
 
+- **Discovery race condition — fire-and-forget returns zero counts** (#447): `DiscoveryEngine.startDiscovery()` now `await`s the full discovery run instead of detaching with `.catch()`. The returned `DiscoveryJob` contains real `filesDiscovered`, `filesIndexed`, and `chunksCreated` values. An optional `onProgress` callback streams per-file progress to callers. The `/api/talos/applications/:id/discover` endpoint passes this callback to emit `discovery:progress` Socket.IO events during the scan, giving the UI real-time file-level updates.
 - **Criteria generator 503 on startup**: `CriteriaGenerator` was captured before async `initRag()` completed, leaving it undefined in the router closure. Router now uses a getter `() => criteriaGenerator` so it resolves lazily after initialization.
 - **Jira/Confluence import HTTP errors show actionable detail**: Import endpoint now reads the Jira/Confluence JSON error body (`errorMessages`, `errors`, `message`) and surfaces it in the error response instead of the empty `statusText`.
 - **Intelligence endpoint no longer returns 404 before first scan**: `GET /intelligence` returns `200 null` when no report exists (was `404`), eliminating console noise on every page load in the setup wizard.

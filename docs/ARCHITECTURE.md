@@ -1114,7 +1114,7 @@ The discovery pipeline is triggered by `POST /api/talos/applications/:id/discove
 | Event | Payload | When |
 |-------|---------|------|
 | `discovery:started` | `{ jobId, applicationId }` | Immediately on POST |
-| `discovery:progress` | `{ jobId, phase, progress, message }` | After `DiscoveryEngine.startDiscovery()` completes |
+| `discovery:progress` | `{ jobId, phase, progress, message }` | Streams per-file during the scan (progress 0–99%), then once at 100% on completion |
 | `discovery:complete` | `{ jobId, filesDiscovered, chunksCreated }` | After AppIntelligenceScanner finishes |
 | `discovery:error` | `{ jobId, error }` | On any failure (error message is sanitized before broadcast) |
 
