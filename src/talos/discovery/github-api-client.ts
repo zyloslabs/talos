@@ -11,6 +11,7 @@ import type { GitHubMcpConfig } from "../config.js";
 
 export type GitHubFile = {
   path: string;
+  /** Normalized type: the Git Trees API returns "blob"/"tree"/"commit" but we normalize to "file"/"dir"/"submodule". */
   type: "file" | "dir" | "symlink" | "submodule";
   size: number;
   sha: string;
@@ -107,6 +108,14 @@ export class GitHubApiClient {
 
     const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/git/trees/${ref}${recursive ? "?recursive=1" : ""}`;
     const result = await this.fetchWithRetry<GitHubTree>(url);
+
+    // Normalize Git Trees API types: "blob" → "file", "tree" → "dir", "commit" → "submodule"
+    for (const entry of result.tree) {
+      const raw = entry.type as string;
+      if (raw === "blob") entry.type = "file";
+      else if (raw === "tree") entry.type = "dir";
+      else if (raw === "commit") entry.type = "submodule";
+    }
 
     this.setCache(cacheKey, result);
     return result;
