@@ -6,14 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
-### Fixed
+### Added
 
 - **GHE_PERSONAL_ACCESS_TOKEN support for GitHub Enterprise discovery**: Discovery engine now checks `GHE_PERSONAL_ACCESS_TOKEN` first for non-github.com repo hosts and falls back to `GITHUB_PERSONAL_ACCESS_TOKEN`. Exposed as a configurable env var in Admin > Environment Variables.
+
+### Fixed
+
 - **Criteria generator 503 on startup**: `CriteriaGenerator` was captured before async `initRag()` completed, leaving it undefined in the router closure. Router now uses a getter `() => criteriaGenerator` so it resolves lazily after initialization.
 - **Jira/Confluence import HTTP errors show actionable detail**: Import endpoint now reads the Jira/Confluence JSON error body (`errorMessages`, `errors`, `message`) and surfaces it in the error response instead of the empty `statusText`.
 - **Intelligence endpoint no longer returns 404 before first scan**: `GET /intelligence` returns `200 null` when no report exists (was `404`), eliminating console noise on every page load in the setup wizard.
-
-### Fixed
 
 - **Discovery endpoint wired to DiscoveryEngine** (#407): `POST /api/talos/applications/{id}/discover` now invokes the real `DiscoveryEngine`, runs `AppIntelligenceScanner` after discovery, and emits Socket.IO progress/complete/error events.
 - **CriteriaGenerator instantiated on startup** (#406): `CriteriaGenerator` is now created when Copilot SDK is available and passed to criteria routes. 503 error messages are descriptive with configuration guidance.

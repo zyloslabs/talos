@@ -32,6 +32,7 @@ import { ExportEngine } from "./talos/export/export-engine.js";
 import { GitHubExportService } from "./talos/export/github-export-service.js";
 import { RagPipeline } from "./talos/rag/rag-pipeline.js";
 import { DiscoveryEngine } from "./talos/discovery/discovery-engine.js";
+import { resolveGitHubPat } from "./talos/discovery/resolve-pat.js";
 import { ArtifactManager } from "./talos/runner/artifact-manager.js";
 import { CredentialInjector } from "./talos/runner/credential-injector.js";
 import { PlaywrightRunner } from "./talos/runner/playwright-runner.js";
@@ -476,7 +477,7 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
 
         // Parse repo URL to determine host (github.com vs GHE)
         const repoMatch =
-          app_.repositoryUrl.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/.]+)/) ??
+          app_.repositoryUrl.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/) ??
           app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
         if (repoMatch) {
           const isGeneralMatch = repoMatch.length === 3;
@@ -485,21 +486,10 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
           const repoName = (isGeneralMatch ? repoMatch[2] : repoMatch[3]).replace(/\.git$/, "");
           const isGhe = host.toLowerCase() !== "github.com";
 
-          const pat = isGhe
-            ? (process.env.GHE_PERSONAL_ACCESS_TOKEN ??
-                envManager.getRaw("GHE_PERSONAL_ACCESS_TOKEN") ??
-                process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
-                envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
-                process.env.GITHUB_TOKEN ??
-                process.env.COPILOT_GITHUB_TOKEN ??
-                envManager.getRaw("GITHUB_TOKEN") ??
-                "")
-            : (process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
-                process.env.GITHUB_TOKEN ??
-                process.env.COPILOT_GITHUB_TOKEN ??
-                envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
-                envManager.getRaw("GITHUB_TOKEN") ??
-                "");
+          const pat = resolveGitHubPat({
+            isGhe,
+            envLookup: (key) => envManager.getRaw(key),
+          });
 
           if (pat) {
             const apiBase = host.toLowerCase() === "github.com"

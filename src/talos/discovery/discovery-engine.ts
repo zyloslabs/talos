@@ -9,6 +9,7 @@ import type { TalosRepository } from "../repository.js";
 import type { DiscoveryConfig } from "../config.js";
 import { GitHubApiClient, type GitHubFile } from "./github-api-client.js";
 import { FileChunker } from "./file-chunker.js";
+import { resolveGitHubPat } from "./resolve-pat.js";
 
 export type ParsedRepoUrl = { host: string; owner: string; repo: string };
 
@@ -124,14 +125,13 @@ export class DiscoveryEngine {
       let pat: string;
       if (application.githubPatRef) {
         pat = await this.resolveSecret(application.githubPatRef);
-      } else if (isGhe && process.env.GHE_PERSONAL_ACCESS_TOKEN) {
-        pat = process.env.GHE_PERSONAL_ACCESS_TOKEN;
-      } else if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
-        pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
       } else {
-        throw new Error(
-          `No GitHub PAT configured for application (set githubPatRef on the application, ${isGhe ? "GHE_PERSONAL_ACCESS_TOKEN" : "GITHUB_PERSONAL_ACCESS_TOKEN"} in the environment)`
-        );
+        pat = resolveGitHubPat({ isGhe });
+        if (!pat) {
+          throw new Error(
+            `No GitHub PAT configured for application (set githubPatRef on the application, ${isGhe ? "GHE_PERSONAL_ACCESS_TOKEN" : "GITHUB_PERSONAL_ACCESS_TOKEN"} in the environment)`
+          );
+        }
       }
 
       // Create GitHub client with appropriate API base URL
