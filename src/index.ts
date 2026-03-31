@@ -474,21 +474,38 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
         const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
         const { GitHubApiClient } = await import("./talos/discovery/github-api-client.js");
 
-        const pat =
-          process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
-          process.env.GITHUB_TOKEN ??
-          process.env.COPILOT_GITHUB_TOKEN ??
-          envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
-          envManager.getRaw("GITHUB_TOKEN") ??
-          "";
+        // Parse repo URL to determine host (github.com vs GHE)
+        const repoMatch =
+          app_.repositoryUrl.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/.]+)/) ??
+          app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
+        if (repoMatch) {
+          const isGeneralMatch = repoMatch.length === 3;
+          const host = isGeneralMatch ? "github.com" : repoMatch[1];
+          const owner = isGeneralMatch ? repoMatch[1] : repoMatch[2];
+          const repoName = (isGeneralMatch ? repoMatch[2] : repoMatch[3]).replace(/\.git$/, "");
+          const isGhe = host.toLowerCase() !== "github.com";
 
-        if (pat) {
-          const repoMatch =
-            app_.repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/) ??
-            app_.repositoryUrl.match(/^([^\/]+)\/([^\/]+)$/);
-          if (repoMatch) {
-            const [, owner, repoName] = repoMatch;
-            const client = new GitHubApiClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+          const pat = isGhe
+            ? (process.env.GHE_PERSONAL_ACCESS_TOKEN ??
+                envManager.getRaw("GHE_PERSONAL_ACCESS_TOKEN") ??
+                process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
+                envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
+                process.env.GITHUB_TOKEN ??
+                process.env.COPILOT_GITHUB_TOKEN ??
+                envManager.getRaw("GITHUB_TOKEN") ??
+                "")
+            : (process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
+                process.env.GITHUB_TOKEN ??
+                process.env.COPILOT_GITHUB_TOKEN ??
+                envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
+                envManager.getRaw("GITHUB_TOKEN") ??
+                "");
+
+          if (pat) {
+            const apiBase = host.toLowerCase() === "github.com"
+              ? "https://api.github.com"
+              : `https://${host}/api/v3`;
+            const client = new GitHubApiClient({ pat, owner, repo: repoName, baseUrl: apiBase });
             const tree = await client.getTree(app_.branch || "HEAD", true);
             const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
             const report = await scanner.scan(tree, (path) => client.getFileText(path));

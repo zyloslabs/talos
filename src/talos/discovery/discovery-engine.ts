@@ -116,20 +116,23 @@ export class DiscoveryEngine {
     progress.status = "running";
 
     try {
-      // Resolve GitHub PAT from vault, then fall back to the global env var.
+      // Parse repository URL first so we know the host (github.com vs GHE).
+      const { host, owner, repo } = this.parseRepoUrl(application.repositoryUrl);
+      const isGhe = host.toLowerCase() !== "github.com";
+
+      // Resolve GitHub PAT: per-app vault ref → host-appropriate env var → generic env var → error.
       let pat: string;
       if (application.githubPatRef) {
         pat = await this.resolveSecret(application.githubPatRef);
+      } else if (isGhe && process.env.GHE_PERSONAL_ACCESS_TOKEN) {
+        pat = process.env.GHE_PERSONAL_ACCESS_TOKEN;
       } else if (process.env.GITHUB_PERSONAL_ACCESS_TOKEN) {
         pat = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
       } else {
         throw new Error(
-          "No GitHub PAT configured for application (set githubPatRef on the application or GITHUB_PERSONAL_ACCESS_TOKEN in the environment)"
+          `No GitHub PAT configured for application (set githubPatRef on the application, ${isGhe ? "GHE_PERSONAL_ACCESS_TOKEN" : "GITHUB_PERSONAL_ACCESS_TOKEN"} in the environment)`
         );
       }
-
-      // Parse repository URL
-      const { host, owner, repo } = this.parseRepoUrl(application.repositoryUrl);
 
       // Create GitHub client with appropriate API base URL
       const client = new GitHubApiClient({

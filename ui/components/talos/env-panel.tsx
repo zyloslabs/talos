@@ -42,6 +42,14 @@ const KNOWN_VARS: KnownVar[] = [
     category: "Authentication",
   },
   {
+    key: "GHE_PERSONAL_ACCESS_TOKEN",
+    label: "GitHub Enterprise PAT",
+    description:
+      "PAT for GitHub Enterprise Server API access (discovery engine). Used automatically for non-github.com repos.",
+    required: false,
+    category: "Authentication",
+  },
+  {
     key: "COPILOT_GITHUB_TOKEN",
     label: "Copilot GitHub Token",
     description: "Alternative token for Copilot SDK auth (fallback if GITHUB_TOKEN not set)",
