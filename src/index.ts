@@ -32,6 +32,7 @@ import { ExportEngine } from "./talos/export/export-engine.js";
 import { GitHubExportService } from "./talos/export/github-export-service.js";
 import { RagPipeline } from "./talos/rag/rag-pipeline.js";
 import { DiscoveryEngine } from "./talos/discovery/discovery-engine.js";
+import { resolveGitHubPat } from "./talos/discovery/resolve-pat.js";
 import { ArtifactManager } from "./talos/runner/artifact-manager.js";
 import { CredentialInjector } from "./talos/runner/credential-injector.js";
 import { PlaywrightRunner } from "./talos/runner/playwright-runner.js";
@@ -474,21 +475,27 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
         const { AppIntelligenceScanner } = await import("./talos/discovery/app-intelligence-scanner.js");
         const { GitHubApiClient } = await import("./talos/discovery/github-api-client.js");
 
-        const pat =
-          process.env.GITHUB_PERSONAL_ACCESS_TOKEN ??
-          process.env.GITHUB_TOKEN ??
-          process.env.COPILOT_GITHUB_TOKEN ??
-          envManager.getRaw("GITHUB_PERSONAL_ACCESS_TOKEN") ??
-          envManager.getRaw("GITHUB_TOKEN") ??
-          "";
+        // Parse repo URL to determine host (github.com vs GHE)
+        const repoMatch =
+          app_.repositoryUrl.match(/^https?:\/\/([^/]+)\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/) ??
+          app_.repositoryUrl.match(/^([^/]+)\/([^/]+)$/);
+        if (repoMatch) {
+          const isGeneralMatch = repoMatch.length === 3;
+          const host = isGeneralMatch ? "github.com" : repoMatch[1];
+          const owner = isGeneralMatch ? repoMatch[1] : repoMatch[2];
+          const repoName = (isGeneralMatch ? repoMatch[2] : repoMatch[3]).replace(/\.git$/, "");
+          const isGhe = host.toLowerCase() !== "github.com";
 
-        if (pat) {
-          const repoMatch =
-            app_.repositoryUrl.match(/github\.com[\/:]([^\/]+)\/([^\/\.]+)/) ??
-            app_.repositoryUrl.match(/^([^\/]+)\/([^\/]+)$/);
-          if (repoMatch) {
-            const [, owner, repoName] = repoMatch;
-            const client = new GitHubApiClient({ pat, owner, repo: repoName.replace(/\.git$/, "") });
+          const pat = resolveGitHubPat({
+            isGhe,
+            envLookup: (key) => envManager.getRaw(key),
+          });
+
+          if (pat) {
+            const apiBase = host.toLowerCase() === "github.com"
+              ? "https://api.github.com"
+              : `https://${host}/api/v3`;
+            const client = new GitHubApiClient({ pat, owner, repo: repoName, baseUrl: apiBase });
             const tree = await client.getTree(app_.branch || "HEAD", true);
             const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
             const report = await scanner.scan(tree, (path) => client.getFileText(path));
@@ -1039,7 +1046,24 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
           });
         }
       } else {
-        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraRes.statusText}`);
+        let jiraErrorDetail = jiraRes.statusText || "";
+        try {
+          const errBody = (await jiraRes.json()) as {
+            errorMessages?: string[];
+            errors?: Record<string, string>;
+            message?: string;
+          };
+          if (errBody.errorMessages?.length) {
+            jiraErrorDetail = errBody.errorMessages.join("; ");
+          } else if (errBody.errors && Object.keys(errBody.errors).length) {
+            jiraErrorDetail = Object.values(errBody.errors).join("; ");
+          } else if (errBody.message) {
+            jiraErrorDetail = errBody.message;
+          }
+        } catch {
+          // Response body is not JSON — keep statusText
+        }
+        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraErrorDetail || "Unknown error"}`);
       }
     }
 
@@ -1112,7 +1136,18 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
             });
           }
         } else {
-          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confRes.statusText}`);
+          let confErrorDetail = confRes.statusText || "";
+          try {
+            const errBody = (await confRes.json()) as { message?: string; errorMessages?: string[] };
+            if (errBody.errorMessages?.length) {
+              confErrorDetail = errBody.errorMessages.join("; ");
+            } else if (errBody.message) {
+              confErrorDetail = errBody.message;
+            }
+          } catch {
+            // Response body is not JSON — keep statusText
+          }
+          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confErrorDetail || "Unknown error"}`);
         }
       }
     }
@@ -1147,7 +1182,7 @@ app.get("/api/talos/applications/:appId/intelligence", (req, res) => {
   }
   const report = repo.getIntelligenceReport(req.params.appId);
   if (!report) {
-    res.status(404).json({ error: "No intelligence report found. Run a scan first." });
+    res.json(null); // 200 with null — discovery hasn't run yet, not an error
     return;
   }
   res.json(report);
@@ -1261,7 +1296,7 @@ app.post("/api/talos/applications/:appId/ingest", async (req, res) => {
 
 // ── Criteria API ──────────────────────────────────────────────────────────────
 
-app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, criteriaGenerator }));
+app.use("/api/talos/criteria", createCriteriaRouter({ repository: repo, getCriteriaGenerator: () => criteriaGenerator }));
 
 // ── Test Generation (#220) ────────────────────────────────────────────────────
 

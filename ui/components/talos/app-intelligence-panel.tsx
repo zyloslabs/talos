@@ -76,6 +76,12 @@ export function AppIntelligencePanel({ appId }: { appId: string }) {
 
         {error && !report && !isLoading && (
           <p className="text-sm text-muted-foreground">
+            Scan failed: {(error as Error).message}
+          </p>
+        )}
+
+        {!isLoading && !report && !error && (
+          <p className="text-sm text-muted-foreground">
             No intelligence report yet. Click &quot;Scan&quot; to analyze the repository.
           </p>
         )}

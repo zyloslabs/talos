@@ -274,6 +274,114 @@ describe("DiscoveryEngine", () => {
     }
   });
 
+  it("uses GHE_PERSONAL_ACCESS_TOKEN env var for non-github.com repos", async () => {
+    const prevGhe = process.env.GHE_PERSONAL_ACCESS_TOKEN;
+    const prevGh = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    process.env.GHE_PERSONAL_ACCESS_TOKEN = "ghp_fake_ghe_token";
+    delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    try {
+      const engine = new DiscoveryEngine({
+        repository: repo,
+        config: discoveryConfig,
+      });
+
+      const app = repo.createApplication({
+        name: "GHE App",
+        repositoryUrl: "https://git.nyiso.com/GOT/GFER-Cloud",
+        baseUrl: "https://example.com",
+        // no githubPatRef — should use GHE env var
+      });
+
+      const job = await engine.startDiscovery(app);
+      await new Promise((r) => setTimeout(r, 100));
+      const progress = engine.getProgress(job.id);
+      // Should not fail with "No GitHub PAT" — it should use GHE_PERSONAL_ACCESS_TOKEN
+      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+    } finally {
+      if (prevGhe === undefined) {
+        delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GHE_PERSONAL_ACCESS_TOKEN = prevGhe;
+      }
+      if (prevGh === undefined) {
+        delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GITHUB_PERSONAL_ACCESS_TOKEN = prevGh;
+      }
+    }
+  });
+
+  it("falls back to GITHUB_PERSONAL_ACCESS_TOKEN for GHE repos when GHE var not set", async () => {
+    const prevGhe = process.env.GHE_PERSONAL_ACCESS_TOKEN;
+    const prevGh = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
+    process.env.GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_fallback_token";
+    try {
+      const engine = new DiscoveryEngine({
+        repository: repo,
+        config: discoveryConfig,
+      });
+
+      const app = repo.createApplication({
+        name: "GHE Fallback App",
+        repositoryUrl: "https://git.nyiso.com/GOT/GFER-Cloud",
+        baseUrl: "https://example.com",
+      });
+
+      const job = await engine.startDiscovery(app);
+      await new Promise((r) => setTimeout(r, 100));
+      const progress = engine.getProgress(job.id);
+      // Should not fail with PAT error — falls back to GITHUB_PERSONAL_ACCESS_TOKEN
+      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+    } finally {
+      if (prevGhe === undefined) {
+        delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GHE_PERSONAL_ACCESS_TOKEN = prevGhe;
+      }
+      if (prevGh === undefined) {
+        delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GITHUB_PERSONAL_ACCESS_TOKEN = prevGh;
+      }
+    }
+  });
+
+  it("throws descriptive error for GHE repos when no PAT is set", async () => {
+    const prevGhe = process.env.GHE_PERSONAL_ACCESS_TOKEN;
+    const prevGh = process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
+    delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+    try {
+      const engine = new DiscoveryEngine({
+        repository: repo,
+        config: discoveryConfig,
+      });
+
+      const app = repo.createApplication({
+        name: "GHE No PAT App",
+        repositoryUrl: "https://git.nyiso.com/GOT/GFER-Cloud",
+        baseUrl: "https://example.com",
+      });
+
+      const job = await engine.startDiscovery(app);
+      await new Promise((r) => setTimeout(r, 100));
+      const progress = engine.getProgress(job.id);
+      expect(progress!.errorMessage).toContain("GHE_PERSONAL_ACCESS_TOKEN");
+    } finally {
+      if (prevGhe === undefined) {
+        delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GHE_PERSONAL_ACCESS_TOKEN = prevGhe;
+      }
+      if (prevGh === undefined) {
+        delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
+      } else {
+        process.env.GITHUB_PERSONAL_ACCESS_TOKEN = prevGh;
+      }
+    }
+  });
+
   it("filterFiles respects includeExtensions and excludePatterns", () => {
     const engine = new DiscoveryEngine({
       repository: repo,

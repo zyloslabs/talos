@@ -194,7 +194,7 @@ export interface AppIntelligenceReport {
 }
 
 export const getIntelligenceReport = (appId: string) =>
-  fetchApi<AppIntelligenceReport>(`/api/talos/applications/${appId}/intelligence`);
+  fetchApi<AppIntelligenceReport | null>(`/api/talos/applications/${appId}/intelligence`);
 export const refreshIntelligenceReport = (appId: string) =>
   fetchApi<AppIntelligenceReport>(`/api/talos/applications/${appId}/intelligence/refresh`, { method: "POST" });
 
