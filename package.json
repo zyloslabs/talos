@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "^0.2.0",
+    "@huggingface/transformers": "^4.0.0",
     "@lancedb/lancedb": "^0.27.1",
     "@playwright/test": "^1.52.0",
     "better-sqlite3": "^12.6.2",
@@ -39,6 +40,7 @@
     "officeparser": "^6.0.7",
     "pdf-parse": "^1.1.4",
     "socket.io": "^4.8.3",
+    "undici": "^7.24.6",
     "zod": "^4.0.0"
   },
   "devDependencies": {

@@ -1,12 +1,36 @@
 /**
  * Tests for DiscoveryEngine
- * Covers: constructor, startDiscovery, getProgress, URL parsing, file filtering
+ * Covers: constructor, startDiscovery, getProgress, URL parsing, file filtering, onProgress callback
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { TalosRepository } from "../repository.js";
-import { DiscoveryEngine, type ParsedRepoUrl } from "./discovery-engine.js";
+import { DiscoveryEngine, type ParsedRepoUrl, type DiscoveryProgress } from "./discovery-engine.js";
+
+// Mock GitHubApiClient so network calls don't hang
+vi.mock("./github-api-client.js", () => ({
+  GitHubApiClient: class MockGitHubApiClient {
+    static apiBaseFromHost(host: string) {
+      return host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`;
+    }
+    async getTree() {
+      return {
+        sha: "abc123",
+        tree: [
+          { path: "src/index.ts", type: "file", size: 200, sha: "a1" },
+          { path: "src/utils.ts", type: "file", size: 150, sha: "a2" },
+          { path: "README.md", type: "file", size: 100, sha: "a3" },
+          { path: "node_modules/lib.js", type: "file", size: 50, sha: "a4" },
+        ],
+        truncated: false,
+      };
+    }
+    async getFileText() {
+      return "export function hello() { return 'world'; }";
+    }
+  },
+}));
 
 function createRepo() {
   const db = new Database(":memory:");
@@ -51,7 +75,7 @@ describe("DiscoveryEngine", () => {
     expect(engine).toBeDefined();
   });
 
-  it("startDiscovery returns job with pending status", async () => {
+  it("startDiscovery returns job with resolved status and real counts", async () => {
     const storeChunks = vi.fn();
     const engine = new DiscoveryEngine({
       repository: repo,
@@ -70,8 +94,13 @@ describe("DiscoveryEngine", () => {
 
     const job = await engine.startDiscovery(app);
     expect(job.id).toBeTruthy();
-    expect(job.status).toBe("pending");
+    expect(job.status).toBe("completed");
     expect(job.applicationId).toBe(app.id);
+    // Mock tree has 2 .ts files that match includeExtensions
+    expect(job.filesDiscovered).toBe(4); // total files in tree
+    expect(job.filesIndexed).toBe(2);    // only .ts files pass filter
+    expect(job.chunksCreated).toBeGreaterThan(0);
+    expect(storeChunks).toHaveBeenCalledOnce();
   });
 
   it("getProgress returns null for unknown job", () => {
@@ -101,6 +130,7 @@ describe("DiscoveryEngine", () => {
     const progress = engine.getProgress(job.id);
     expect(progress).toBeTruthy();
     expect(progress!.jobId).toBe(job.id);
+    expect(progress!.status).toBe("completed");
   });
 
   it("startDiscovery fails when no PAT configured", async () => {
@@ -117,12 +147,8 @@ describe("DiscoveryEngine", () => {
       // No githubPatRef
     });
 
-    const job = await engine.startDiscovery(app);
-    // Wait for background runDiscovery to fail
-    await new Promise((r) => setTimeout(r, 50));
-    const progress = engine.getProgress(job.id);
-    expect(progress!.status).toBe("failed");
-    expect(progress!.errorMessage).toContain("PAT");
+    // startDiscovery now awaits and throws on failure
+    await expect(engine.startDiscovery(app)).rejects.toThrow("PAT");
   });
 
   it("parseRepoUrl handles HTTPS URLs", () => {
@@ -249,22 +275,17 @@ describe("DiscoveryEngine", () => {
       const engine = new DiscoveryEngine({
         repository: repo,
         config: discoveryConfig,
-        // no resolveSecret needed since we fall back to env var
       });
 
       const app = repo.createApplication({
         name: "EnvPAT App",
         repositoryUrl: "https://github.com/fake/repo",
         baseUrl: "https://example.com",
-        // no githubPatRef — should use env var
       });
 
+      // Should succeed (mock doesn't make real network calls)
       const job = await engine.startDiscovery(app);
-      // Wait for background task to attempt and fail at network level (not PAT check)
-      await new Promise((r) => setTimeout(r, 100));
-      const progress = engine.getProgress(job.id);
-      // Whatever the final status, the error should not be about missing PAT
-      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+      expect(job.status).toBe("completed");
     } finally {
       if (prev === undefined) {
         delete process.env.GITHUB_PERSONAL_ACCESS_TOKEN;
@@ -289,14 +310,10 @@ describe("DiscoveryEngine", () => {
         name: "GHE App",
         repositoryUrl: "https://git.nyiso.com/GOT/GFER-Cloud",
         baseUrl: "https://example.com",
-        // no githubPatRef — should use GHE env var
       });
 
       const job = await engine.startDiscovery(app);
-      await new Promise((r) => setTimeout(r, 100));
-      const progress = engine.getProgress(job.id);
-      // Should not fail with "No GitHub PAT" — it should use GHE_PERSONAL_ACCESS_TOKEN
-      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+      expect(job.status).toBe("completed");
     } finally {
       if (prevGhe === undefined) {
         delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
@@ -329,10 +346,7 @@ describe("DiscoveryEngine", () => {
       });
 
       const job = await engine.startDiscovery(app);
-      await new Promise((r) => setTimeout(r, 100));
-      const progress = engine.getProgress(job.id);
-      // Should not fail with PAT error — falls back to GITHUB_PERSONAL_ACCESS_TOKEN
-      expect(progress!.errorMessage ?? "").not.toContain("No GitHub PAT");
+      expect(job.status).toBe("completed");
     } finally {
       if (prevGhe === undefined) {
         delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
@@ -364,10 +378,7 @@ describe("DiscoveryEngine", () => {
         baseUrl: "https://example.com",
       });
 
-      const job = await engine.startDiscovery(app);
-      await new Promise((r) => setTimeout(r, 100));
-      const progress = engine.getProgress(job.id);
-      expect(progress!.errorMessage).toContain("GHE_PERSONAL_ACCESS_TOKEN");
+      await expect(engine.startDiscovery(app)).rejects.toThrow("GHE_PERSONAL_ACCESS_TOKEN");
     } finally {
       if (prevGhe === undefined) {
         delete process.env.GHE_PERSONAL_ACCESS_TOKEN;
@@ -404,5 +415,61 @@ describe("DiscoveryEngine", () => {
     const result = filter.call(engine, files);
     expect(result).toHaveLength(2);
     expect(result.map((f: { path: string }) => f.path)).toEqual(["src/app.ts", "src/app.tsx"]);
+  });
+
+  it("onProgress callback is invoked during discovery", async () => {
+    const progressUpdates: DiscoveryProgress[] = [];
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => "ghp_test",
+      storeChunks: async () => {},
+    });
+
+    const app = repo.createApplication({
+      name: "ProgressApp",
+      repositoryUrl: "https://github.com/owner/repo",
+      baseUrl: "https://example.com",
+      githubPatRef: "vault:github-pat",
+    });
+
+    const onProgress = vi.fn((progress: DiscoveryProgress) => {
+      progressUpdates.push({ ...progress });
+    });
+
+    const job = await engine.startDiscovery(app, false, onProgress);
+    expect(job.status).toBe("completed");
+    // onProgress should be called: 1 (after tree) + 2 (per indexed .ts file) = 3 times
+    expect(onProgress).toHaveBeenCalledTimes(3);
+    // First call: after tree discovery (filesDiscovered > 0, filesIndexed = 0)
+    expect(progressUpdates[0].filesDiscovered).toBe(4);
+    expect(progressUpdates[0].filesIndexed).toBe(0);
+    // Last call: after last file processed
+    expect(progressUpdates[progressUpdates.length - 1].filesIndexed).toBe(2);
+    expect(progressUpdates[progressUpdates.length - 1].chunksCreated).toBeGreaterThan(0);
+  });
+
+  it("startDiscovery re-throws errors and sets progress to failed", async () => {
+    const engine = new DiscoveryEngine({
+      repository: repo,
+      config: discoveryConfig,
+      resolveSecret: async () => { throw new Error("vault unavailable"); },
+      storeChunks: async () => {},
+    });
+
+    const app = repo.createApplication({
+      name: "ErrorApp",
+      repositoryUrl: "https://github.com/owner/repo",
+      baseUrl: "https://example.com",
+      githubPatRef: "vault:secret",
+    });
+
+    await expect(engine.startDiscovery(app)).rejects.toThrow("vault unavailable");
+
+    // Progress should be tracked as failed
+    const jobs = (engine as unknown as { jobs: Map<string, { status: string; errorMessage?: string }> }).jobs;
+    const progress = [...jobs.values()][0];
+    expect(progress.status).toBe("failed");
+    expect(progress.errorMessage).toBe("vault unavailable");
   });
 });

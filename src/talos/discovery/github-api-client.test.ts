@@ -308,4 +308,64 @@ describe("GitHubApiClient", () => {
       expect.any(Object)
     );
   });
+
+  // ── Git Trees API type normalization ───────────────────────────────────────
+
+  it("normalizes blob→file and tree→dir from Git Trees API", async () => {
+    const tree = {
+      sha: "abc",
+      url: "u",
+      truncated: false,
+      tree: [
+        { path: "src/a.ts", type: "blob", size: 100, sha: "s1", url: "u1" },
+        { path: "src", type: "tree", size: 0, sha: "s2", url: "u2" },
+        { path: "vendor/lib", type: "commit", size: 0, sha: "s3", url: "u3" },
+      ],
+    };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(tree),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
+    });
+
+    const client = createClient();
+    const result = await client.getTree("main");
+    expect(result.tree[0].type).toBe("file");
+    expect(result.tree[1].type).toBe("dir");
+    expect(result.tree[2].type).toBe("submodule");
+  });
+
+  it("listFiles works with blob-typed entries from API", async () => {
+    const tree = {
+      sha: "abc",
+      url: "u",
+      truncated: false,
+      tree: [
+        { path: "src/a.ts", type: "blob", size: 100, sha: "s1", url: "u1" },
+        { path: "src/b.js", type: "blob", size: 50, sha: "s2", url: "u2" },
+        { path: "src", type: "tree", size: 0, sha: "s3", url: "u3" },
+      ],
+    };
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(tree),
+      headers: new Headers({
+        "x-ratelimit-remaining": "4999",
+        "x-ratelimit-reset": "1735689600",
+        "x-ratelimit-limit": "5000",
+      }),
+    });
+
+    const client = createClient();
+    const files = await client.listFiles([".ts"]);
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe("src/a.ts");
+    expect(files[0].type).toBe("file");
+  });
 });
