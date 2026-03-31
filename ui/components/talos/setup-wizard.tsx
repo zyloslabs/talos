@@ -157,32 +157,39 @@ export function SetupWizard() {
     <div className="space-y-6">
       {/* Progress Bar */}
       <div className="flex items-center gap-2">
-        {STEPS.map((step, i) => (
-          <div key={step.label} className="flex items-center gap-2 flex-1">
-            <button
-              onClick={() => (appId || i === 0 ? setCurrentStep(i) : undefined)}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors w-full",
-                i === currentStep && "bg-primary text-primary-foreground",
-                i !== currentStep && completedSteps.has(i) && "bg-primary/10 text-primary cursor-pointer",
-                i !== currentStep &&
-                  !completedSteps.has(i) &&
-                  appId &&
-                  "bg-muted text-muted-foreground cursor-pointer hover:bg-muted/80",
-                i !== currentStep && !completedSteps.has(i) && !appId && "bg-muted text-muted-foreground"
-              )}
-            >
-              {completedSteps.has(i) && i !== currentStep ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-              ) : (
-                <span className="flex h-5 w-5 items-center justify-center rounded-full border text-xs shrink-0">
-                  {i + 1}
-                </span>
-              )}
-              <span className="truncate hidden lg:inline">{step.label}</span>
-            </button>
-          </div>
-        ))}
+        {STEPS.map((step, i) => {
+          // Step 0 is always accessible; other steps require an appId
+          const isDisabled = i !== 0 && !appId;
+          const isActive = i === currentStep;
+          const isComplete = completedSteps.has(i);
+
+          return (
+            <div key={step.label} className="flex items-center gap-2 flex-1">
+              <button
+                onClick={() => !isDisabled && setCurrentStep(i)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled}
+                title={isDisabled ? "Create or select an application first" : step.description}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors w-full",
+                  isActive && "bg-primary text-primary-foreground",
+                  !isActive && isComplete && "bg-primary/10 text-primary cursor-pointer",
+                  !isActive && !isComplete && !isDisabled && "bg-muted text-muted-foreground cursor-pointer hover:bg-muted/80",
+                  isDisabled && "bg-muted text-muted-foreground opacity-50 cursor-not-allowed"
+                )}
+              >
+                {isComplete && !isActive ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border text-xs shrink-0">
+                    {i + 1}
+                  </span>
+                )}
+                <span className="truncate hidden lg:inline">{step.label}</span>
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {/* Step Content */}
@@ -253,7 +260,12 @@ function RegisterAppStep({
 
   const isValidUrl = (url: string) => url.startsWith("http://") || url.startsWith("https://");
 
-  const { data: apps } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
+  const {
+    data: apps,
+    isError: appsError,
+    error: appsErrorDetails,
+    refetch: refetchApps,
+  } = useQuery({ queryKey: ["applications"], queryFn: getApplications });
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<TalosApplication> & { mtlsEnabled?: boolean; mtlsConfig?: Record<string, string> }) =>
@@ -283,6 +295,22 @@ function RegisterAppStep({
 
   return (
     <div className="space-y-4">
+      {/* API connection error banner */}
+      {appsError && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>
+              {appsErrorDetails instanceof Error && appsErrorDetails.message.includes("fetch")
+                ? "Cannot connect to the API server. Please ensure the backend is running."
+                : getErrorMessage(appsErrorDetails)}
+            </span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetchApps()}>
+            Retry
+          </Button>
+        </div>
+      )}
       {apps && apps.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">Select an existing application or create a new one:</p>
