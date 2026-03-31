@@ -13,7 +13,7 @@ import type { RagPipeline } from "../rag/rag-pipeline.js";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type CriteriaGeneratorOptions = {
-  ragPipeline: RagPipeline;
+  ragPipeline?: RagPipeline;
   repository: TalosRepository;
   generateWithLLM: (prompt: string) => Promise<string>;
 };
@@ -102,7 +102,7 @@ EXAMPLE OUTPUT:
 // ── Criteria Generator ────────────────────────────────────────────────────────
 
 export class CriteriaGenerator {
-  private ragPipeline: RagPipeline;
+  private ragPipeline?: RagPipeline;
   private repository: TalosRepository;
   private generateWithLLM: (prompt: string) => Promise<string>;
 
@@ -118,16 +118,19 @@ export class CriteriaGenerator {
   async generateCriteria(appId: string, options: GenerationOptions = {}): Promise<GenerationResult> {
     const maxCriteria = options.maxCriteria ?? 20;
 
-    // Retrieve relevant requirement chunks via RAG
+    // Retrieve relevant requirement chunks via RAG (if available)
     const query = options.requirementFilter ?? "requirements acceptance criteria user stories";
-    const ragContext = await this.ragPipeline.retrieveWithFilters(appId, query, {
-      types: ["requirement", "api_spec", "user_story"],
-      limit: 30,
-    });
-
-    const chunks = ragContext.chunks;
+    let chunks: { type: string; filePath: string; content: string }[] = [];
+    if (this.ragPipeline) {
+      const ragContext = await this.ragPipeline.retrieveWithFilters(appId, query, {
+        types: ["requirement", "api_spec", "user_story"],
+        limit: 30,
+      });
+      chunks = ragContext.chunks;
+    }
     if (chunks.length === 0) {
-      return { criteriaCreated: 0, totalChunksAnalyzed: 0, averageConfidence: 0 };
+      // No RAG context — generate criteria from app intelligence and description only
+      return this.generateWithoutRag(appId, maxCriteria);
     }
 
     // Build prompt with context
@@ -288,5 +291,95 @@ Generate exactly 1 acceptance criterion for the above request. Respond with ONLY
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Generate criteria without RAG context — uses app intelligence and description only.
+   * This path is used when RAG pipeline is unavailable (e.g. EMU environments).
+   */
+  private async generateWithoutRag(appId: string, maxCriteria: number): Promise<GenerationResult> {
+    const app = this.repository.getApplication(appId);
+    if (!app) return { criteriaCreated: 0, totalChunksAnalyzed: 0, averageConfidence: 0 };
+
+    // Build context from application metadata and intelligence
+    const parts: string[] = [];
+    parts.push(`Application: ${app.name}`);
+    if (app.description) parts.push(`Description: ${app.description}`);
+    if (app.repositoryUrl) parts.push(`Repository: ${app.repositoryUrl}`);
+    if (app.baseUrl) parts.push(`Base URL: ${app.baseUrl}`);
+
+    const intelligence = this.repository.getIntelligenceReport(appId);
+    if (intelligence) {
+      if (intelligence.techStack.length > 0) {
+        parts.push(
+          "Tech Stack: " +
+            intelligence.techStack
+              .map((t) => `${t.name}${t.version ? ` v${t.version}` : ""} (${t.category})`)
+              .join(", ")
+        );
+      }
+      if (intelligence.databases.length > 0) {
+        parts.push("Databases: " + intelligence.databases.map((d) => `${d.type} via ${d.source}`).join(", "));
+      }
+      if (intelligence.testUsers.length > 0) {
+        parts.push(
+          "Test Users: " +
+            intelligence.testUsers.map((u) => `${u.variableName}${u.roleHint ? ` [${u.roleHint}]` : ""}`).join(", ")
+        );
+      }
+      if (intelligence.documentation.length > 0) {
+        parts.push(
+          "Documentation: " + intelligence.documentation.map((d) => `${d.filePath} (${d.type})`).join(", ")
+        );
+      }
+    }
+
+    const prompt = `${SYSTEM_PROMPT}
+
+${FEW_SHOT_EXAMPLE}
+
+---
+
+APPLICATION CONTEXT:
+${parts.join("\n")}
+
+Note: No indexed requirement documents are available. Generate acceptance criteria based on the application context above. Focus on common user-facing scenarios for this type of application.
+
+Generate up to ${maxCriteria} acceptance criteria. Respond with ONLY valid JSON.`;
+
+    const llmResponse = await this.generateWithLLM(prompt);
+    const parsed = this.parseResponse(llmResponse);
+    if (!parsed || parsed.criteria.length === 0) {
+      return { criteriaCreated: 0, totalChunksAnalyzed: 0, averageConfidence: 0 };
+    }
+
+    const criteriaToCreate = parsed.criteria.slice(0, maxCriteria);
+    let totalConfidence = 0;
+    let created = 0;
+
+    this.repository.runInTransaction(() => {
+      for (const c of criteriaToCreate) {
+        const confidence = Math.max(0, Math.min(1, c.confidence ?? 0.5));
+        this.repository.createAcceptanceCriteria({
+          applicationId: appId,
+          title: c.title,
+          description: c.description,
+          scenarios: c.scenarios ?? [],
+          preconditions: c.preconditions ?? [],
+          dataRequirements: c.dataRequirements ?? [],
+          nfrTags: c.nfrTags ?? [],
+          confidence,
+          tags: [],
+        });
+        totalConfidence += confidence;
+        created++;
+      }
+    });
+
+    return {
+      criteriaCreated: created,
+      totalChunksAnalyzed: 0,
+      averageConfidence: created > 0 ? totalConfidence / created : 0,
+    };
   }
 }

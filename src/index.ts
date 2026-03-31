@@ -173,8 +173,26 @@ const initRag = async () => {
   });
   console.log("[Discovery] Engine initialized (uses per-app PAT or GITHUB_PERSONAL_ACCESS_TOKEN)");
 
+  // CriteriaGenerator — initialize early so it works even without RAG (EMU / no github token).
+  // When RAG is available, ragPipeline is passed in; otherwise criteria are generated without RAG context.
+  if (copilot) {
+    const capturedCopilotEarly = copilot;
+    criteriaGenerator = new CriteriaGenerator({
+      ragPipeline: undefined,
+      repository: repo,
+      generateWithLLM: async (prompt: string): Promise<string> => {
+        let result = "";
+        for await (const chunk of capturedCopilotEarly.chat(prompt)) {
+          result += chunk;
+        }
+        return result;
+      },
+    });
+    console.log("[criteria] CriteriaGenerator initialized (no RAG — will upgrade if RAG becomes available)");
+  }
+
   if (!githubToken) {
-    console.warn("[RAG] GitHub token not available — RAG pipeline disabled, but discovery is available");
+    console.warn("[RAG] GitHub token not available — RAG pipeline disabled, but discovery and criteria generation are available");
     return;
   }
 
@@ -227,7 +245,7 @@ const initRag = async () => {
     },
   });
 
-  // CriteriaGenerator for AI-powered acceptance criteria generation
+  // Upgrade CriteriaGenerator with RAG pipeline now that it's available
   if (capturedCopilot) {
     criteriaGenerator = new CriteriaGenerator({
       ragPipeline,
@@ -240,7 +258,7 @@ const initRag = async () => {
         return result;
       },
     });
-    console.log("[criteria] CriteriaGenerator initialized");
+    console.log("[criteria] CriteriaGenerator upgraded with RAG pipeline");
   }
 
   console.log("[RAG] Initialized with GitHub Models embeddings provider");

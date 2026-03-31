@@ -140,6 +140,26 @@ export type CopilotWrapperOptions = {
 
 const defaultAuthPath = () => path.join(os.homedir(), ".talos", "auth.json");
 
+/**
+ * Read the Copilot SDK's own auth from ~/.config/github-copilot/apps.json.
+ * This is populated by the GitHub Copilot extension (works with EMU accounts
+ * that cannot use OAuth device auth).
+ */
+const readCopilotSdkToken = async (): Promise<string | null> => {
+  try {
+    const appsPath = path.join(os.homedir(), ".config", "github-copilot", "apps.json");
+    const raw = await fs.readFile(appsPath, "utf-8");
+    const parsed = JSON.parse(raw) as Record<string, { oauth_token?: string }>;
+    // Return the first valid oauth_token found
+    for (const entry of Object.values(parsed)) {
+      if (entry.oauth_token) return entry.oauth_token;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 const readAuthState = async (authPath: string): Promise<AuthState | null> => {
   try {
     const raw = await fs.readFile(authPath, "utf-8");
@@ -499,7 +519,9 @@ export class CopilotWrapperService extends EventEmitter implements CopilotWrappe
   async getGithubToken(): Promise<string | null> {
     if (this.githubToken) return this.githubToken;
     const state = await readAuthState(this.authPath);
-    return state?.token ?? null;
+    if (state?.token) return state.token;
+    // Fall back to Copilot SDK's own auth (e.g. EMU accounts authenticated via VS Code)
+    return readCopilotSdkToken();
   }
 
   async reinit(token?: string): Promise<void> {
