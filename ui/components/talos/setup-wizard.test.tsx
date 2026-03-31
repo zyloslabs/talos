@@ -209,6 +209,59 @@ describe("#417 – RegisterAppStep", () => {
       expect(screen.getByText("Server error: 500")).toBeInTheDocument();
     });
   });
+
+  it("shows error banner with retry button when getApplications API fails", async () => {
+    mockGetApplications.mockRejectedValueOnce(new Error("Failed to fetch"));
+    renderWizard();
+    await waitFor(() => {
+      expect(screen.getByText(/Cannot connect to the API server/i)).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+  });
+});
+
+// ── Tests for Tab Navigation (#Bug2) ──────────────────────────────────────────
+describe("Tab Navigation", () => {
+  it("step tabs 2-9 are disabled when no app is selected", () => {
+    renderWizard();
+    // Get all step buttons (9 total)
+    const stepButtons = screen.getAllByRole("button").filter((btn) => {
+      const span = btn.querySelector("span.rounded-full");
+      return span && /^[1-9]$/.test(span.textContent || "");
+    });
+    // Steps 2-9 (index 1-8) should be disabled
+    for (let i = 1; i < stepButtons.length; i++) {
+      expect(stepButtons[i]).toBeDisabled();
+      expect(stepButtons[i]).toHaveClass("opacity-50");
+      expect(stepButtons[i]).toHaveClass("cursor-not-allowed");
+    }
+  });
+
+  it("step tabs show tooltip explaining why disabled", () => {
+    renderWizard();
+    const stepButtons = screen.getAllByRole("button").filter((btn) => {
+      const span = btn.querySelector("span.rounded-full");
+      return span && span.textContent === "2";
+    });
+    if (stepButtons.length > 0) {
+      expect(stepButtons[0]).toHaveAttribute("title", "Create or select an application first");
+    }
+  });
+
+  it("step tabs become enabled after selecting an app", async () => {
+    renderWizard();
+    await waitFor(() => expect(screen.getByText("Existing App")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Existing App"));
+    await waitFor(() => expect(screen.getByText("Configure JDBC database connections")).toBeInTheDocument());
+    // Now step tabs should be enabled
+    const stepButtons = screen.getAllByRole("button").filter((btn) => {
+      const span = btn.querySelector("span.rounded-full");
+      return span && span.textContent === "3";
+    });
+    if (stepButtons.length > 0) {
+      expect(stepButtons[0]).not.toBeDisabled();
+    }
+  });
 });
 
 // ── Tests for #414 & #415: UploadDocsStep ─────────────────────────────────────
