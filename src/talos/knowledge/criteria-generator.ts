@@ -122,11 +122,15 @@ export class CriteriaGenerator {
     const query = options.requirementFilter ?? "requirements acceptance criteria user stories";
     let chunks: { type: string; filePath: string; content: string }[] = [];
     if (this.ragPipeline) {
-      const ragContext = await this.ragPipeline.retrieveWithFilters(appId, query, {
-        types: ["requirement", "api_spec", "user_story"],
-        limit: 30,
-      });
-      chunks = ragContext.chunks;
+      try {
+        const ragContext = await this.ragPipeline.retrieveWithFilters(appId, query, {
+          types: ["requirement", "api_spec", "user_story"],
+          limit: 30,
+        });
+        chunks = ragContext.chunks;
+      } catch {
+        // RAG retrieval failed (e.g. embeddings API 403) — fall through to no-RAG path
+      }
     }
     if (chunks.length === 0) {
       // No RAG context — generate criteria from app intelligence and description only

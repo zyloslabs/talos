@@ -43,6 +43,7 @@ import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
 import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
+import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
 // Load ~/.talos/.env into process.env before reading any config.
@@ -97,6 +98,33 @@ const talosConfig = parseTalosConfig({
     enabled: m365EnabledRaw === "true" || m365EnabledRaw === "1",
   },
 });
+
+// ── Corporate Proxy (#321) ────────────────────────────────────────────────────
+// Apply proxy env vars from config, and set an undici global dispatcher so
+// Node 22's native fetch() routes through the proxy (it ignores env vars).
+// EnvHttpProxyAgent reads HTTP_PROXY, HTTPS_PROXY, and NO_PROXY automatically.
+{
+  const pc = talosConfig.proxy;
+  if (pc.enabled) {
+    if (pc.httpProxy && !process.env.HTTP_PROXY) process.env.HTTP_PROXY = pc.httpProxy;
+    if (pc.httpsProxy && !process.env.HTTPS_PROXY) process.env.HTTPS_PROXY = pc.httpsProxy;
+    if (pc.noProxy && !process.env.NO_PROXY) process.env.NO_PROXY = pc.noProxy;
+  }
+  // Activate undici dispatcher whenever proxy env vars are present (config OR shell).
+  if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
+    setGlobalDispatcher(new EnvHttpProxyAgent());
+    console.log("[proxy] undici global dispatcher set — fetch() will honour HTTP(S)_PROXY");
+
+    // Ensure the Copilot SDK's child process also uses the proxy.
+    // The SDK spawns a separate Node process whose native fetch() ignores env vars.
+    // We inject a preload script via NODE_OPTIONS that sets the undici dispatcher.
+    const preloadPath = join(import.meta.dirname ?? __dirname, "proxy-preload.mjs");
+    const existing = process.env.NODE_OPTIONS ?? "";
+    if (!existing.includes("proxy-preload")) {
+      process.env.NODE_OPTIONS = `${existing} --import=${preloadPath}`.trim();
+    }
+  }
+}
 
 // ── Database ──────────────────────────────────────────────────────────────────
 
@@ -1984,19 +2012,6 @@ app.get("/api/talos/stats", (_req, res) => {
     passRate: Math.round(passRate * 100) / 100,
   });
 });
-
-// ── Corporate Proxy (#321) ────────────────────────────────────────────────────
-// Apply proxy environment variables from config. These affect globalAgent and
-// any library that respects standard proxy env vars (fetch, node-fetch, etc.).
-
-{
-  const pc = talosConfig.proxy;
-  if (pc.enabled) {
-    if (pc.httpProxy && !process.env.HTTP_PROXY) process.env.HTTP_PROXY = pc.httpProxy;
-    if (pc.httpsProxy && !process.env.HTTPS_PROXY) process.env.HTTPS_PROXY = pc.httpsProxy;
-    if (pc.noProxy && !process.env.NO_PROXY) process.env.NO_PROXY = pc.noProxy;
-  }
-}
 
 // ── GitHub Export (#354) ─────────────────────────────────────────────────────
 
