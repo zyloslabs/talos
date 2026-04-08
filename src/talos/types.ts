@@ -812,3 +812,53 @@ export type StoredAppIntelligence = {
   report_json: string;
   scanned_at: string;
 };
+
+// ── Sync Job Types (#474) ─────────────────────────────────────────────────────
+
+export type SyncSourceType = "atlassian" | "jdbc" | "m365";
+export type SyncScheduleType = "manual" | "daily" | "weekly" | "custom";
+export type SyncJobStatus = "idle" | "running" | "completed" | "failed";
+
+export type TalosSyncJob = {
+  id: string;
+  applicationId: string;
+  sourceType: SyncSourceType;
+  schedule: SyncScheduleType;
+  cronExpression: string | null;
+  lastRunAt: Date | null;
+  nextRunAt: Date | null;
+  status: SyncJobStatus;
+  lastError: string | null;
+  retryCount: number;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CreateSyncJobInput = {
+  applicationId: string;
+  sourceType: SyncSourceType;
+  schedule: SyncScheduleType;
+  cronExpression?: string;
+  enabled?: boolean;
+};
+
+export type UpdateSyncJobInput = Partial<
+  Pick<TalosSyncJob, "schedule" | "cronExpression" | "status" | "lastRunAt" | "nextRunAt" | "lastError" | "retryCount" | "enabled">
+>;
+
+export type StoredSyncJob = {
+  id: string;
+  application_id: string;
+  source_type: string;
+  schedule: string;
+  cron_expression: string | null;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  status: string;
+  last_error: string | null;
+  retry_count: number;
+  enabled: number;
+  created_at: string;
+  updated_at: string;
+};

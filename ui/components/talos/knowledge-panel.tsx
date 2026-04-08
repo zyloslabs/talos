@@ -10,9 +10,10 @@ import {
   reindexKnowledge, deleteKnowledgeDocument,
   type KnowledgeStats, type KnowledgeDocument,
 } from "@/lib/api";
-import { RefreshCw, Search, Trash2, FileText, Database, Hash } from "lucide-react";
+import { RefreshCw, Search, Trash2, FileText, Database, Hash, Cloud } from "lucide-react";
+import { M365Panel } from "./m365-panel";
 
-export function KnowledgePanel() {
+export function KnowledgePanel({ appId }: { appId?: string }) {
   const qc = useQueryClient();
   const { data: stats } = useQuery({ queryKey: ["knowledge-stats"], queryFn: getKnowledgeStats });
   const { data: docs, isLoading } = useQuery({ queryKey: ["knowledge-docs"], queryFn: getKnowledgeDocuments });
@@ -116,6 +117,16 @@ export function KnowledgePanel() {
           ))
         )}
       </div>
+
+      {/* M365 Document Import (#475) */}
+      {appId && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium flex items-center gap-2">
+            <Cloud className="h-4 w-4" /> Microsoft 365 Import
+          </h4>
+          <M365Panel appId={appId} />
+        </div>
+      )}
     </div>
   );
 }

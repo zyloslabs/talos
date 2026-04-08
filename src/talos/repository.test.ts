@@ -1327,4 +1327,77 @@ describe("TalosRepository", () => {
       expect(drafts.every((t) => t.status === "draft")).toBe(true);
     });
   });
+
+  // ── Sync Jobs (#474) ──────────────────────────────────────────────────────
+
+  describe("sync jobs", () => {
+    it("should create a sync job", () => {
+      const app = repo.createApplication({ name: "Sync App" });
+      const job = repo.createSyncJob({
+        applicationId: app.id,
+        sourceType: "atlassian",
+        schedule: "daily",
+      });
+      expect(job.id).toBeDefined();
+      expect(job.applicationId).toBe(app.id);
+      expect(job.sourceType).toBe("atlassian");
+      expect(job.schedule).toBe("daily");
+      expect(job.status).toBe("idle");
+      expect(job.enabled).toBe(true);
+    });
+
+    it("should get sync jobs by app", () => {
+      const app = repo.createApplication({ name: "Sync App2" });
+      repo.createSyncJob({ applicationId: app.id, sourceType: "atlassian", schedule: "daily" });
+      repo.createSyncJob({ applicationId: app.id, sourceType: "jdbc", schedule: "weekly" });
+      const jobs = repo.getSyncJobsByApp(app.id);
+      expect(jobs).toHaveLength(2);
+    });
+
+    it("should get sync job by app and source", () => {
+      const app = repo.createApplication({ name: "Sync App3" });
+      repo.createSyncJob({ applicationId: app.id, sourceType: "m365", schedule: "manual" });
+      const found = repo.getSyncJobByAppAndSource(app.id, "m365");
+      expect(found).not.toBeNull();
+      expect(found!.sourceType).toBe("m365");
+      const notFound = repo.getSyncJobByAppAndSource(app.id, "jdbc");
+      expect(notFound).toBeNull();
+    });
+
+    it("should update a sync job", () => {
+      const app = repo.createApplication({ name: "Sync App4" });
+      const job = repo.createSyncJob({ applicationId: app.id, sourceType: "atlassian", schedule: "manual" });
+      const updated = repo.updateSyncJob(job.id, { schedule: "daily", enabled: true, status: "running" });
+      expect(updated!.schedule).toBe("daily");
+      expect(updated!.enabled).toBe(true);
+      expect(updated!.status).toBe("running");
+    });
+
+    it("should delete a sync job", () => {
+      const app = repo.createApplication({ name: "Sync App5" });
+      const job = repo.createSyncJob({ applicationId: app.id, sourceType: "jdbc", schedule: "weekly" });
+      expect(repo.deleteSyncJob(job.id)).toBe(true);
+      expect(repo.getSyncJob(job.id)).toBeNull();
+    });
+
+    it("should get enabled sync jobs", () => {
+      const app = repo.createApplication({ name: "Sync App6" });
+      repo.createSyncJob({ applicationId: app.id, sourceType: "atlassian", schedule: "daily" });
+      repo.createSyncJob({ applicationId: app.id, sourceType: "jdbc", schedule: "manual", enabled: true });
+      const enabled = repo.getEnabledSyncJobs();
+      // Only daily is non-manual
+      expect(enabled.some((j) => j.sourceType === "atlassian")).toBe(true);
+      expect(enabled.some((j) => j.sourceType === "jdbc" && j.schedule === "manual")).toBe(false);
+    });
+
+    it("should track lastRunAt and lastError", () => {
+      const app = repo.createApplication({ name: "Sync App7" });
+      const job = repo.createSyncJob({ applicationId: app.id, sourceType: "m365", schedule: "weekly" });
+      const now = new Date();
+      const updated = repo.updateSyncJob(job.id, { lastRunAt: now, lastError: "timeout", retryCount: 2 });
+      expect(updated!.lastRunAt).toEqual(now);
+      expect(updated!.lastError).toBe("timeout");
+      expect(updated!.retryCount).toBe(2);
+    });
+  });
 });

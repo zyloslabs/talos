@@ -11,9 +11,10 @@ import {
   saveAtlassianConfig,
   deleteAtlassianConfig,
   testAtlassianConnection,
+  importAtlassianData,
   type TalosAtlassianConfig,
 } from "@/lib/api";
-import { Loader2, Check, X, Trash2 } from "lucide-react";
+import { Loader2, Check, X, Trash2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Atlassian Settings Panel (#339) ───────────────────────────────────────────
@@ -51,6 +52,13 @@ export function AtlassianSettings({ appId }: { appId: string }) {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    imported: Array<{ source: string; title: string; type: string }>;
+    totalChunks: number;
+    errors: string[];
+  } | null>(null);
 
   useEffect(() => {
     if (config) {
@@ -108,6 +116,19 @@ export function AtlassianSettings({ appId }: { appId: string }) {
       setTestResult({ success: false, message: "Connection test failed" });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleReimport = async () => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const result = await importAtlassianData(appId);
+      setImportResult(result);
+    } catch (err) {
+      setImportResult({ success: false, imported: [], totalChunks: 0, errors: [err instanceof Error ? err.message : "Import failed"] });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -232,6 +253,38 @@ export function AtlassianSettings({ appId }: { appId: string }) {
           {testResult.success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
           {testResult.message}
         </div>
+      )}
+
+      {/* Re-import section (#472) */}
+      {config && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Data Re-Import</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {config.updatedAt && (
+              <p className="text-xs text-muted-foreground">
+                Last import: {new Date(config.updatedAt).toLocaleString()}
+              </p>
+            )}
+            <Button size="sm" onClick={handleReimport} disabled={importing}>
+              {importing ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing...</>
+              ) : (
+                <><RefreshCw className="mr-2 h-4 w-4" /> Re-import Data</>
+              )}
+            </Button>
+            {importResult && (
+              <div className={cn("text-sm space-y-1", importResult.success ? "text-green-600" : "text-red-600")}>
+                {importResult.success ? (
+                  <p><Check className="inline h-4 w-4 mr-1" />Imported {importResult.totalChunks} chunks from {importResult.imported.length} source(s)</p>
+                ) : (
+                  <p><X className="inline h-4 w-4 mr-1" />{importResult.errors.join("; ")}</p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex gap-2">
