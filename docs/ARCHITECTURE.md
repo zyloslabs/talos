@@ -834,6 +834,15 @@ Next.js 14 App Router dashboard serving as the TALOS command center.
 | `/talos/artifacts` | Artifact Viewer | `<ArtifactViewer />` — Screenshots, videos, traces, logs browser |
 | `/talos/vault` | Vault Manager | `<VaultManager />` — Credential role management per application |
 
+#### Key Components
+
+| Component | File | Description |
+|-----------|------|-------------|
+| `<M365Panel />` | `ui/components/talos/m365-panel.tsx` | Standalone M365 document search & import panel. Queries SharePoint/OneDrive/Teams, imports into RAG knowledge base. |
+| `<SyncScheduleSettings />` | `ui/components/talos/sync-schedule-settings.tsx` | Per-application sync schedule configuration (source type, schedule, cron, enable/disable) |
+| `<AtlassianSettings />` | `ui/components/talos/atlassian-settings.tsx` | Atlassian config panel with re-import button, progress UI, and last import timestamp |
+| `<SetupWizard />` | `ui/components/talos/setup-wizard.tsx` | Multi-step application setup — includes JDBC Data Sources step (fully enabled) |
+
 #### Navigation
 
 `<NavTabs />` component provides tab-based navigation across the four pages. Rendered in the Talos layout (`ui/app/talos/layout.tsx`).
@@ -851,7 +860,7 @@ Socket.IO integration via custom hooks:
 
 Typed HTTP client wrapping `fetch` calls to the backend. Configurable base URL via `NEXT_PUBLIC_TALOS_API_BASE` environment variable.
 
-Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles, AppIntelligence — each with standard CRUD operations plus specialized triggers (e.g., `triggerTestRun`, `triggerDiscovery`, `refreshIntelligence`).
+Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles, AppIntelligence, DataSources, SyncJobs, M365 — each with standard CRUD operations plus specialized triggers (e.g., `triggerTestRun`, `triggerDiscovery`, `refreshIntelligence`, `triggerSyncJob`, `ingestDataSources`).
 
 #### Design System
 
@@ -867,7 +876,7 @@ Endpoint groups: Applications, Tests, TestRuns, Artifacts, VaultRoles, AppIntell
 
 ### SQLite Schema
 
-TALOS uses a normalized relational schema with 9 core tables:
+TALOS uses a normalized relational schema with 10 core tables:
 
 ```
 ┌──────────────────────┐       ┌──────────────────────┐
@@ -923,7 +932,37 @@ TALOS uses a normalized relational schema with 9 core tables:
    │  (id, application_id,       │
    │   report_json, scanned_at)  │
    └────────────────────────────┘
+
+   ┌────────────────────────────┐
+   │  talos_sync_jobs             │
+   │  (id, application_id,       │
+   │   source_type, schedule,    │
+   │   cron_expression,          │
+   │   last_run_at, next_run_at, │
+   │   status, last_error,       │
+   │   retry_count, enabled)     │
+   └────────────────────────────┘
 ```
+
+#### `talos_sync_jobs` columns
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | TEXT | PRIMARY KEY | Unique sync job ID |
+| `application_id` | TEXT | NOT NULL, FK → `talos_applications(id)` ON DELETE CASCADE | Owning application |
+| `source_type` | TEXT | NOT NULL, CHECK IN (`atlassian`, `jdbc`, `m365`) | Data source type |
+| `schedule` | TEXT | NOT NULL, DEFAULT `manual`, CHECK IN (`manual`, `daily`, `weekly`, `custom`) | Schedule frequency |
+| `cron_expression` | TEXT | nullable | Custom cron (required when schedule = `custom`) |
+| `last_run_at` | TEXT | nullable | ISO 8601 timestamp of last execution |
+| `next_run_at` | TEXT | nullable | ISO 8601 timestamp of next scheduled run |
+| `status` | TEXT | NOT NULL, DEFAULT `idle`, CHECK IN (`idle`, `running`, `completed`, `failed`) | Current job state |
+| `last_error` | TEXT | nullable | Error message from last failure |
+| `retry_count` | INTEGER | NOT NULL, DEFAULT 0 | Number of consecutive retry attempts |
+| `enabled` | INTEGER | NOT NULL, DEFAULT 1 | Boolean flag (0/1) |
+| `created_at` | TEXT | NOT NULL | ISO 8601 creation timestamp |
+| `updated_at` | TEXT | NOT NULL | ISO 8601 last-updated timestamp |
+
+Indexes: `idx_talos_sync_jobs_application` on `application_id`, `idx_talos_sync_jobs_enabled` on `enabled`.
 
 **Index strategy**: Every foreign key is indexed. Additional indexes on `status`, `type`, `name`, and `created_at` for common query patterns.
 
@@ -1396,6 +1435,22 @@ Express Router at `/api/talos/criteria` with endpoints for acceptance criteria m
 | `POST` | `/:appId/generate` | Bulk AI generation of criteria from knowledge base |
 | `POST` | `/:appId/suggest` | AI suggest a single criterion from natural language |
 | `GET` | `/traceability/:appId` | Get traceability coverage report |
+
+### Data Source & Sync Job API (`src/index.ts`)
+
+Endpoints for JDBC data source ingestion and scheduled re-sync jobs:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/talos/applications/:appId/datasources/test` | Test JDBC connection (unsaved params) |
+| `POST` | `/api/talos/applications/:appId/datasources/ingest` | Ingest all active JDBC schemas into RAG (60s rate limit) |
+| `GET` | `/api/talos/applications/:appId/sync-jobs` | List sync jobs for an application |
+| `POST` | `/api/talos/applications/:appId/sync-jobs` | Create/upsert a sync job (one per source type per app) |
+| `PATCH` | `/api/talos/applications/:appId/sync-jobs/:id` | Update sync job schedule/enabled |
+| `DELETE` | `/api/talos/applications/:appId/sync-jobs/:id` | Delete a sync job |
+| `POST` | `/api/talos/applications/:appId/sync-jobs/:id/trigger` | Manually trigger a sync job |
+
+**`executeSyncJob(jobId)`** — Core sync execution function that calls `performAtlassianImport()` or `performJdbcIngestion()` directly (no HTTP self-fetch). Supports exponential backoff retry (up to 3 attempts). M365 sync is skipped with a warning since it requires interactive user OAuth.
 
 ### UI Pages
 

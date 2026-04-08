@@ -26,6 +26,7 @@ export function M365Panel({ appId }: { appId: string }) {
   const [results, setResults] = useState<M365SearchResult[] | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
   const [importedUrls, setImportedUrls] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
 
   const { data: sessionStatus } = useQuery({
     queryKey: ["m365-status"],
@@ -45,11 +46,13 @@ export function M365Panel({ appId }: { appId: string }) {
   const handleSearch = async () => {
     if (!query.trim()) return;
     setSearching(true);
+    setError(null);
     try {
       const res = await m365Search(query);
       setResults(res.results);
-    } catch {
+    } catch (err) {
       setResults([]);
+      setError(`Search failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSearching(false);
     }
@@ -69,8 +72,8 @@ export function M365Panel({ appId }: { appId: string }) {
         });
         setImportedUrls((prev) => new Set(prev).add(result.url));
       }
-    } catch {
-      // Error handled silently — would show toast in production
+    } catch (err) {
+      setError(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setImporting(null);
     }
@@ -112,6 +115,10 @@ export function M365Panel({ appId }: { appId: string }) {
           )}
         </Button>
       </div>
+
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
+      )}
 
       {results && (
         <div className="space-y-2">
