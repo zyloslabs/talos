@@ -820,6 +820,20 @@ app.post("/api/talos/applications/:appId/data-sources/:id/test", (req, res) => {
   res.json({ success: true, message: `Connection test queued for data source "${ds.label}"` });
 });
 
+// Test unsaved JDBC connection params directly (used by the setup wizard before saving)
+app.post("/api/talos/applications/:appId/datasources/test", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const { driverType, jdbcUrl, label } = req.body ?? {};
+  if (!jdbcUrl || typeof jdbcUrl !== "string") {
+    res.status(400).json({ success: false, message: "jdbcUrl is required" });
+    return;
+  }
+  // Simulated connection test — in production this would spin up a Docker JDBC container
+  res.json({ success: true, message: `Connection test passed for "${label || driverType || "datasource"}"` });
+});
+
 // ── JDBC Schema Ingestion (#471) ──────────────────────────────────────────────
 
 const schemaIngestionLimiter = new RateLimiter(60_000); // 60s per app

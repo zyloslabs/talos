@@ -30,6 +30,7 @@ import {
   createDataSource,
   deleteDataSource,
   testDataSourceConnection,
+  testDataSourceConnectionDirect,
   getAtlassianConfig,
   saveAtlassianConfig,
   testAtlassianConnection,
@@ -1287,6 +1288,8 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<DataSourceDraft[]>([emptyDraft()]);
   const [saving, setSaving] = useState(false);
+  const [testingIdx, setTestingIdx] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message: string }>>({});
 
   const { data: existing } = useQuery({
     queryKey: ["data-sources", appId],
@@ -1302,6 +1305,25 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
   const removeDraft = (i: number) => setDrafts((prev) => prev.filter((_, idx) => idx !== i));
   const updateDraft = (i: number, field: keyof DataSourceDraft, value: string) => {
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)));
+  };
+
+  const handleTestConnection = async (i: number) => {
+    const draft = drafts[i];
+    if (!draft.jdbcUrl) return;
+    setTestingIdx(i);
+    setTestResults((prev) => { const next = { ...prev }; delete next[i]; return next; });
+    try {
+      const result = await testDataSourceConnectionDirect(appId, {
+        driverType: draft.driverType,
+        jdbcUrl: draft.jdbcUrl,
+        label: draft.label,
+      });
+      setTestResults((prev) => ({ ...prev, [i]: result }));
+    } catch {
+      setTestResults((prev) => ({ ...prev, [i]: { success: false, message: "Connection test failed" } }));
+    } finally {
+      setTestingIdx(null);
+    }
   };
 
   const handleSaveAll = async () => {
@@ -1375,6 +1397,23 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
             value={draft.passwordVaultRef}
             onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
           />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTestConnection(i)}
+              disabled={!draft.jdbcUrl || testingIdx === i}
+            >
+              {testingIdx === i ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+              Test Connection
+            </Button>
+            {testResults[i] && (
+              <span className={`flex items-center gap-1 text-sm ${testResults[i].success ? "text-green-600" : "text-red-600"}`}>
+                {testResults[i].success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                {testResults[i].message}
+              </span>
+            )}
+          </div>
         </div>
       ))}
 

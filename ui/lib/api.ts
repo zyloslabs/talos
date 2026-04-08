@@ -704,6 +704,16 @@ export const testDataSourceConnection = (appId: string, id: string) =>
     method: "POST",
   });
 
+// Test unsaved JDBC connection params directly (setup wizard, before save)
+export const testDataSourceConnectionDirect = (
+  appId: string,
+  params: { driverType: string; jdbcUrl: string; label?: string },
+) =>
+  fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/datasources/test`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+
 // ── JDBC Schema Ingestion (#471) ──────────────────────────────────────────────
 
 export const ingestSchemaData = (appId: string) =>
