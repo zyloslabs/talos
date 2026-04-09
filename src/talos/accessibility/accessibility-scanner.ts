@@ -174,7 +174,14 @@ export class AccessibilityScanner {
         let match;
         while ((match = buttonPattern.exec(html)) !== null) {
           const attrs = match[1];
-          const content = match[2].replace(/<[^>]+>/g, "").trim();
+          // Iterative stripping: nested/malformed tags survive a single pass
+          let stripped = match[2];
+          let prev = "";
+          while (stripped !== prev) {
+            prev = stripped;
+            stripped = stripped.replace(/<[^>]+>/g, "");
+          }
+          const content = stripped.trim();
           const hasAriaLabel = /\baria-label\s*=/i.test(attrs);
           const hasAriaLabelledBy = /\baria-labelledby\s*=/i.test(attrs);
           const hasTitle = /\btitle\s*=/i.test(attrs);

@@ -2420,8 +2420,29 @@ function validateApiKey(
   next();
 }
 
-// Create API key
-app.post("/api/talos/api-keys", (req, res) => {
+// Create API key — requires auth unless this is the very first key (bootstrap)
+app.post("/api/talos/api-keys", (req, res, next) => {
+  // Bootstrap: allow first key creation without auth so the server can be
+  // initially configured.  Subsequent key creation requires either a valid
+  // existing API key OR the TALOS_ADMIN_SECRET env-var sent as Bearer token.
+  if (ciApiKeys.size === 0) {
+    next();
+    return;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Authentication required to create API keys" });
+    return;
+  }
+  const token = authHeader.slice(7);
+  const adminSecret = process.env.TALOS_ADMIN_SECRET;
+  if (ciApiKeys.has(token) || (adminSecret && token === adminSecret)) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Invalid credentials" });
+}, (req: express.Request, res: express.Response) => {
   const { appId, label } = req.body as { appId?: string; label?: string };
   if (!appId || !label) {
     res.status(400).json({ error: "appId and label are required" });

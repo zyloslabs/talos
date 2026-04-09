@@ -161,6 +161,15 @@ describe("AccessibilityScanner", () => {
       const violation = result.violations.find((v) => v.ruleId === "button-name");
       expect(violation).toBeUndefined();
     });
+
+    it("strips nested/malformed tags iteratively in button content", () => {
+      // Content like `<b<script>>alert</script>></b>` can survive a single regex pass
+      const html = wrapHtml("<button><sp<span>an>visible</sp</span>an></button>");
+      const result = scanner.scan(html, "https://example.com");
+      // After iterative stripping "visible" text remains → no violation
+      const violation = result.violations.find((v) => v.ruleId === "button-name");
+      expect(violation).toBeUndefined();
+    });
   });
 
   // ── tabindex-positive ─────────────────────────────────────────────────────

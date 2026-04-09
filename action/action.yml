@@ -1,5 +1,5 @@
 name: 'Talos CI Test Runner'
-description: 'Run Talos E2E tests in your CI/CD pipeline and report results as GitHub check annotations'
+description: 'Run Talos E2E tests in your CI/CD pipeline. Build first: cd action && npm run build'
 inputs:
   talos-url:
     description: 'Talos server URL (e.g. https://talos.example.com)'
