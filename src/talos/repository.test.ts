@@ -1400,4 +1400,77 @@ describe("TalosRepository", () => {
       expect(updated!.retryCount).toBe(2);
     });
   });
+
+  // ── File Hash CRUD (#484) ──────────────────────────────────────────────────
+
+  describe("File Hash tracking", () => {
+    it("upserts and retrieves a file hash", () => {
+      const app = repo.createApplication({ name: "Hash App" });
+      const entry = repo.upsertFileHash({
+        applicationId: app.id,
+        filePath: "src/main.ts",
+        contentHash: "abc123def456",
+      });
+      expect(entry.applicationId).toBe(app.id);
+      expect(entry.filePath).toBe("src/main.ts");
+      expect(entry.contentHash).toBe("abc123def456");
+      expect(entry.lastIndexedAt).toBeInstanceOf(Date);
+      expect(entry.lastVerifiedAt).toBeInstanceOf(Date);
+    });
+
+    it("returns null for non-existent file hash", () => {
+      const app = repo.createApplication({ name: "Hash App2" });
+      expect(repo.getFileHash(app.id, "nonexistent.ts")).toBeNull();
+    });
+
+    it("upsert overwrites existing hash for same path", () => {
+      const app = repo.createApplication({ name: "Hash App3" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/a.ts", contentHash: "hash1" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/a.ts", contentHash: "hash2" });
+      const entry = repo.getFileHash(app.id, "src/a.ts");
+      expect(entry!.contentHash).toBe("hash2");
+    });
+
+    it("getAllFileHashes returns all hashes for an application", () => {
+      const app = repo.createApplication({ name: "Hash App4" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/a.ts", contentHash: "h1" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/b.ts", contentHash: "h2" });
+      const all = repo.getAllFileHashes(app.id);
+      expect(all).toHaveLength(2);
+      expect(all.map((h) => h.filePath).sort()).toEqual(["src/a.ts", "src/b.ts"]);
+    });
+
+    it("deleteFileHash removes a single hash", () => {
+      const app = repo.createApplication({ name: "Hash App5" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/del.ts", contentHash: "h1" });
+      expect(repo.deleteFileHash(app.id, "src/del.ts")).toBe(true);
+      expect(repo.getFileHash(app.id, "src/del.ts")).toBeNull();
+    });
+
+    it("deleteFileHash returns false for non-existent", () => {
+      const app = repo.createApplication({ name: "Hash App6" });
+      expect(repo.deleteFileHash(app.id, "nope.ts")).toBe(false);
+    });
+
+    it("deleteAllFileHashes removes all hashes for an app", () => {
+      const app = repo.createApplication({ name: "Hash App7" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/a.ts", contentHash: "h1" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/b.ts", contentHash: "h2" });
+      const count = repo.deleteAllFileHashes(app.id);
+      expect(count).toBe(2);
+      expect(repo.getAllFileHashes(app.id)).toHaveLength(0);
+    });
+
+    it("cascade deletes file hashes when application is deleted", () => {
+      const app = repo.createApplication({ name: "Hash Cascade" });
+      repo.upsertFileHash({ applicationId: app.id, filePath: "src/x.ts", contentHash: "hx" });
+      repo.deleteApplication(app.id);
+      expect(repo.getAllFileHashes(app.id)).toHaveLength(0);
+    });
+
+    it("migration creates talos_file_hashes table", () => {
+      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as Array<{ name: string }>;
+      expect(tables.map((t) => t.name)).toContain("talos_file_hashes");
+    });
+  });
 });

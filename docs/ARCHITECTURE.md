@@ -293,7 +293,10 @@ Retrieval-Augmented Generation pipeline — embeds code chunks, stores them in a
 |-------|---------------|
 | `EmbeddingService` | Generates vector embeddings from text using OpenAI (extensible to local models) |
 | `VectorStore` | LanceDB wrapper — stores, searches, and manages vector records |
-| `RagPipeline` | Orchestrates embed → store → query lifecycle |
+| `RagPipeline` | Orchestrates embed → store → query lifecycle with staleness-aware retrieval |
+| `IntelligenceVectorizer` | Chunks and indexes App Intelligence reports (tech stack, databases, test users, docs) into the RAG store (#481) |
+| `StalenessTracker` | TTL-based score penalty for stale chunks — configurable TTL (30d), stalePenalty (0.8×), veryStaleMultiplier (0.5×), hardExpiry (90d) (#483) |
+| `DeltaIndexer` | Incremental re-indexing with content hash comparison — skips unchanged files, re-indexes changed, removes deleted (#484) |
 
 #### EmbeddingService
 
@@ -307,11 +310,11 @@ Retrieval-Augmented Generation pipeline — embeds code chunks, stores them in a
 - **Backend**: LanceDB (embedded, zero-infrastructure).
 - **Storage path**: `~/.talos/vectordb` (configurable, supports remote URIs).
 - **Collection**: `talos_chunks` (configurable).
-- **Schema**: `id`, `applicationId`, `content`, `filePath`, `startLine`, `endLine`, `type`, `contentHash`, `metadata` (JSON), `vector` (Float32 array), `docId` (source document ID), `sourceVersion` (document version), `confidence` (0-1 score), `tags` (JSON string array).
+- **Schema**: `id`, `applicationId`, `content`, `filePath`, `startLine`, `endLine`, `type`, `contentHash`, `metadata` (JSON), `vector` (Float32 array), `docId` (source document ID), `sourceVersion` (document version), `confidence` (0-1 score), `tags` (JSON string array), `indexedAt` (epoch ms), `lastVerifiedAt` (epoch ms).
 - **Deduplication**: `exists(applicationId, contentHash)` before insert.
 - **Search**: ANN query filtered by `applicationId` and optional `type`, with minimum score threshold. Returns results ranked by similarity. Input validation prevents injection via filter expressions (alphanumeric + hyphens only).
 - **Hybrid search**: `hybridSearch()` combines vector similarity with keyword boosting and metadata filtering (types, tags, docType, persona, minConfidence).
-- **Cleanup**: `deleteByApplication(appId)` for re-indexing.
+- **Cleanup**: `deleteByApplication(appId)` for re-indexing. `deleteByFilePath(appId, path)` for incremental re-indexing.
 
 #### RagPipeline
 

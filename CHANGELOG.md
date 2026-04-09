@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **RAG Store Completeness & Quality Improvements** (#470):
+  - **Vectorize App Intelligence into RAG** (#481): `IntelligenceVectorizer` chunks and indexes App Intelligence reports (tech stack, databases, test users, documentation, config files) into the RAG pipeline as `app_intelligence` chunk type, enabling semantic search over intelligence data.
+  - **Improved Confluence HTML-to-markdown** (#482): Replaced naive `/<[^>]+>/g` regex stripping with the full `htmlToMarkdown` converter for Confluence pages, preserving headings, tables, code blocks (`<pre><code>`), ordered/unordered lists, bold/italic, and links.
+  - **Chunk staleness tracking with TTL** (#483): `StalenessTracker` applies configurable TTL-based score penalties to stale RAG chunks (default: 0.8× after 30 days, 0.5× after 60 days) and supports hard expiry purging at 90 days. `VectorRecord` now includes `indexedAt` and `lastVerifiedAt` timestamps.
+  - **Incremental re-indexing with delta detection** (#484): `DeltaIndexer` uses content hash comparison to skip unchanged files, re-index changed files, add new files, and remove deleted files. File-level hashes tracked in SQLite via `talos_file_hashes` table.
+  - New `app_intelligence` chunk type added to `TalosChunkType`.
+  - `htmlToMarkdown` now supports fenced code blocks (with language detection), inline code, and proper numbered ordered lists.
+
 - **Intelligent test generation pipeline with web crawling & AI interview** (#469):
   - **Auth-aware test generation** (#476): `AuthGenerator` produces `beforeAll`/`beforeEach` login blocks per vault role with environment-variable-based credential injection (`TALOS_VAULT_{ROLE}_USER`/`_PASS`).
   - **Web application crawler** (#477): Playwright-based `WebCrawler` navigates live web apps, discovering pages, forms, links, and interactive elements with configurable depth/page limits and same-origin enforcement.

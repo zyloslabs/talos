@@ -272,7 +272,8 @@ export type TalosChunkType =
   | "requirement"
   | "api_spec"
   | "user_story"
-  | "crawled_page";
+  | "crawled_page"
+  | "app_intelligence";
 
 /** Link to a related artifact (test, requirement, etc.) */
 export type ArtifactLink = {
@@ -1106,4 +1107,30 @@ export type DeviceProfile = {
 export type DeviceEmulationConfig = {
   devices: string[];
   generatePerDevice: boolean;
+};
+
+// ── RAG File Hash Types (#484) ────────────────────────────────────────────────
+
+export type FileHashRecord = {
+  id: string;
+  applicationId: string;
+  filePath: string;
+  contentHash: string;
+  lastIndexedAt: Date;
+  lastVerifiedAt: Date;
+};
+
+export type StoredFileHash = {
+  id: string;
+  application_id: string;
+  file_path: string;
+  content_hash: string;
+  last_indexed_at: string;
+  last_verified_at: string;
+};
+
+export type CreateFileHashInput = {
+  applicationId: string;
+  filePath: string;
+  contentHash: string;
 };

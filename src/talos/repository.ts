@@ -69,6 +69,9 @@ import type {
   SyncSourceType,
   SyncScheduleType,
   SyncJobStatus,
+  FileHashRecord,
+  StoredFileHash,
+  CreateFileHashInput,
 } from "./types.js";
 
 // ── Row Converters ────────────────────────────────────────────────────────────
@@ -528,6 +531,22 @@ export class TalosRepository {
         ON talos_sync_jobs(application_id);
       CREATE INDEX IF NOT EXISTS idx_talos_sync_jobs_enabled
         ON talos_sync_jobs(enabled);
+    `);
+
+    // ── File Hash tracking table (#484) ────────────────────────────────────
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS talos_file_hashes (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL REFERENCES talos_applications(id) ON DELETE CASCADE,
+        file_path TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        last_indexed_at TEXT NOT NULL,
+        last_verified_at TEXT NOT NULL,
+        UNIQUE(application_id, file_path)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_talos_file_hashes_application
+        ON talos_file_hashes(application_id);
     `);
   }
 
@@ -1724,6 +1743,68 @@ export class TalosRepository {
   deleteSyncJob(id: string): boolean {
     const result = this.db.prepare(`DELETE FROM talos_sync_jobs WHERE id = ?`).run(id);
     return result.changes > 0;
+  }
+
+  // ── File Hash CRUD (#484) ───────────────────────────────────────────────────
+
+  getFileHash(applicationId: string, filePath: string): FileHashRecord | null {
+    const row = this.db
+      .prepare(`SELECT * FROM talos_file_hashes WHERE application_id = ? AND file_path = ?`)
+      .get(applicationId, filePath) as StoredFileHash | undefined;
+    if (!row) return null;
+    return {
+      id: row.id,
+      applicationId: row.application_id,
+      filePath: row.file_path,
+      contentHash: row.content_hash,
+      lastIndexedAt: new Date(row.last_indexed_at),
+      lastVerifiedAt: new Date(row.last_verified_at),
+    };
+  }
+
+  getAllFileHashes(applicationId: string): FileHashRecord[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM talos_file_hashes WHERE application_id = ?`)
+      .all(applicationId) as StoredFileHash[];
+    return rows.map((row) => ({
+      id: row.id,
+      applicationId: row.application_id,
+      filePath: row.file_path,
+      contentHash: row.content_hash,
+      lastIndexedAt: new Date(row.last_indexed_at),
+      lastVerifiedAt: new Date(row.last_verified_at),
+    }));
+  }
+
+  upsertFileHash(input: CreateFileHashInput & { lastIndexedAt?: Date; lastVerifiedAt?: Date }): FileHashRecord {
+    const now = this.clock();
+    const lastIndexed = (input.lastIndexedAt ?? now).toISOString();
+    const lastVerified = (input.lastVerifiedAt ?? now).toISOString();
+
+    this.db.prepare(`
+      INSERT INTO talos_file_hashes (id, application_id, file_path, content_hash, last_indexed_at, last_verified_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(application_id, file_path) DO UPDATE SET
+        content_hash = excluded.content_hash,
+        last_indexed_at = excluded.last_indexed_at,
+        last_verified_at = excluded.last_verified_at
+    `).run(randomUUID(), input.applicationId, input.filePath, input.contentHash, lastIndexed, lastVerified);
+
+    return this.getFileHash(input.applicationId, input.filePath)!;
+  }
+
+  deleteFileHash(applicationId: string, filePath: string): boolean {
+    const result = this.db
+      .prepare(`DELETE FROM talos_file_hashes WHERE application_id = ? AND file_path = ?`)
+      .run(applicationId, filePath);
+    return result.changes > 0;
+  }
+
+  deleteAllFileHashes(applicationId: string): number {
+    const result = this.db
+      .prepare(`DELETE FROM talos_file_hashes WHERE application_id = ?`)
+      .run(applicationId);
+    return result.changes;
   }
 
   // ── Transaction Support ─────────────────────────────────────────────────────

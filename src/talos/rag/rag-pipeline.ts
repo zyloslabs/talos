@@ -9,6 +9,7 @@ import type { TalosChunkType } from "../types.js";
 import type { VectorDbConfig, EmbeddingConfig } from "../config.js";
 import { VectorStore, type VectorRecord, type VectorSearchResult, type HybridSearchOptions } from "./vector-store.js";
 import { EmbeddingService } from "./embedding-service.js";
+import { StalenessTracker, type StalenessConfig } from "./staleness-tracker.js";
 import type { ChunkResult } from "../discovery/file-chunker.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,6 +19,8 @@ export type RagPipelineOptions = {
   embeddingConfig: EmbeddingConfig;
   /** API key for the embedding provider (e.g. GitHub PAT for GitHub Models) */
   apiKey?: string;
+  /** Staleness tracking configuration */
+  stalenessConfig?: Partial<StalenessConfig>;
 };
 
 export type RagContext = {
@@ -31,6 +34,7 @@ export type RagContext = {
 export class RagPipeline {
   private vectorStore: VectorStore;
   private embeddingService: EmbeddingService;
+  private stalenessTracker: StalenessTracker;
 
   constructor(options: RagPipelineOptions) {
     this.vectorStore = new VectorStore({
@@ -41,6 +45,8 @@ export class RagPipeline {
       config: options.embeddingConfig,
       apiKey: options.apiKey,
     });
+
+    this.stalenessTracker = new StalenessTracker(options.stalenessConfig);
   }
 
   /**
@@ -112,17 +118,23 @@ export class RagPipeline {
       limit?: number;
       minScore?: number;
       type?: TalosChunkType;
+      applyStaleness?: boolean;
     } = {}
   ): Promise<RagContext> {
     // Generate query embedding
     const queryEmbedding = await this.embeddingService.embed(query);
 
     // Search vector store
-    const chunks = await this.vectorStore.search(queryEmbedding.embedding, applicationId, {
+    let chunks = await this.vectorStore.search(queryEmbedding.embedding, applicationId, {
       limit: options.limit ?? 10,
       minScore: options.minScore ?? 0.5,
       type: options.type,
     });
+
+    // Apply staleness penalties if enabled (default: true)
+    if (options.applyStaleness !== false) {
+      chunks = this.stalenessTracker.applyPenalties(chunks);
+    }
 
     return {
       chunks,
@@ -166,11 +178,16 @@ export class RagPipeline {
   async retrieveWithFilters(
     applicationId: string,
     query: string,
-    filters: HybridSearchOptions = {}
+    filters: HybridSearchOptions = {},
+    applyStaleness = true
   ): Promise<RagContext> {
     const queryEmbedding = await this.embeddingService.embed(query);
 
-    const chunks = await this.vectorStore.hybridSearch(applicationId, queryEmbedding.embedding, query, filters);
+    let chunks = await this.vectorStore.hybridSearch(applicationId, queryEmbedding.embedding, query, filters);
+
+    if (applyStaleness) {
+      chunks = this.stalenessTracker.applyPenalties(chunks);
+    }
 
     return {
       chunks,

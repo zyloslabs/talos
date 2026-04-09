@@ -23,6 +23,7 @@ import { CopilotWrapperService } from "./copilot/copilot-wrapper.js";
 import type { CopilotWrapper } from "./copilot/copilot-wrapper.js";
 import { CriteriaGenerator } from "./talos/knowledge/criteria-generator.js";
 import { DocumentIngester, type DocFormat, type DocMetadata } from "./talos/knowledge/document-ingester.js";
+import { htmlToMarkdown } from "./talos/m365/file-parser.js";
 import { BrowserAuth } from "./talos/m365/browser-auth.js";
 import { CopilotScraper } from "./talos/m365/scraper.js";
 import { EphemeralStore } from "./talos/m365/ephemeral.js";
@@ -31,6 +32,7 @@ import { parseTalosConfig, createDataSourceInputSchema, atlassianConfigInputSche
 import { ExportEngine } from "./talos/export/export-engine.js";
 import { GitHubExportService } from "./talos/export/github-export-service.js";
 import { RagPipeline } from "./talos/rag/rag-pipeline.js";
+import { IntelligenceVectorizer } from "./talos/rag/intelligence-vectorizer.js";
 import { DiscoveryEngine } from "./talos/discovery/discovery-engine.js";
 import { resolveGitHubPat } from "./talos/discovery/resolve-pat.js";
 import { ArtifactManager } from "./talos/runner/artifact-manager.js";
@@ -557,6 +559,14 @@ app.post("/api/talos/applications/:id/discover", (req, res) => {
             const scanner = new AppIntelligenceScanner({ applicationId: app_.id });
             const report = await scanner.scan(tree, (path) => client.getFileText(path));
             repo.saveIntelligenceReport(report);
+            if (ragPipeline) {
+              try {
+                const iv = new IntelligenceVectorizer({ ragPipeline });
+                await iv.vectorizeIntelligence(app_.id, report);
+              } catch (vecErr) {
+                console.warn("[discovery] Intelligence vectorization failed:", vecErr instanceof Error ? vecErr.message : String(vecErr));
+              }
+            }
             io.emit("intelligence:scanned", { applicationId: app_.id, report });
           }
         }
@@ -1373,10 +1383,7 @@ async function performAtlassianImport(appId: string): Promise<AtlassianImportRes
         if (data.results.length > 0) {
           const pagesMarkdown = data.results
             .map((page) => {
-              const body = (page.body?.storage?.value ?? "")
-                .replace(/<[^>]+>/g, " ")
-                .replace(/\s+/g, " ")
-                .trim();
+              const body = htmlToMarkdown(page.body?.storage?.value ?? "");
               return `## ${page.title}\n\n${body || "_No content_"}`;
             })
             .join("\n\n---\n\n");
@@ -1529,6 +1536,14 @@ app.post("/api/talos/applications/:appId/intelligence/refresh", async (req, res)
     const report = await scanner.scan(tree, (path) => client.getFileText(path));
 
     repo.saveIntelligenceReport(report);
+    if (ragPipeline) {
+      try {
+        const iv = new IntelligenceVectorizer({ ragPipeline });
+        await iv.vectorizeIntelligence(app_.id, report);
+      } catch (vecErr) {
+        console.warn("[intelligence] Vectorization failed:", vecErr instanceof Error ? vecErr.message : String(vecErr));
+      }
+    }
     io.emit("intelligence:scanned", { applicationId: app_.id, report });
 
     res.json(report);
