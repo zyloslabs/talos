@@ -10,6 +10,11 @@ import type { TalosRepository } from "./repository.js";
 import type { TalosConfig } from "./config.js";
 import type { DocumentIngester } from "./knowledge/document-ingester.js";
 import type { CriteriaGenerator } from "./knowledge/criteria-generator.js";
+import { WebCrawler } from "./crawler/web-crawler.js";
+import { InterviewEngine } from "./interview/interview-engine.js";
+import { PomGenerator } from "./generator/pom-generator.js";
+import { DataSeeder } from "./generator/data-seeder.js";
+import { TotpGenerator, EmailProvider } from "./tools/email-otp.js";
 
 // ── Tool Definition Type ──────────────────────────────────────────────────────
 
@@ -96,6 +101,55 @@ const listTestRunsSchema = z.object({
 const healTestSchema = z.object({
   testRunId: z.string().uuid(),
   autoApply: z.boolean().optional(),
+});
+
+// ── New Tool Schemas (#469) ───────────────────────────────────────────────────
+
+const crawlAppSchema = z.object({
+  applicationId: z.string().uuid(),
+  maxDepth: z.number().min(1).max(10).optional(),
+  maxPages: z.number().min(1).max(200).optional(),
+});
+
+const interviewSchema = z.object({
+  applicationId: z.string().uuid(),
+  request: z.string().min(5),
+});
+
+const interviewAnswerSchema = z.object({
+  sessionId: z.string().uuid(),
+  answers: z.array(
+    z.object({
+      questionId: z.string().uuid(),
+      answer: z.string().min(1),
+    })
+  ),
+});
+
+const generatePomSchema = z.object({
+  applicationId: z.string().uuid(),
+});
+
+const seedTestDataSchema = z.object({
+  strategy: z.enum(["api", "sql", "fixture"]).optional(),
+  setupScript: z.string().optional(),
+  cleanupScript: z.string().optional(),
+  fixtures: z.array(z.record(z.string(), z.unknown())).optional(),
+  parameters: z.record(z.string(), z.string()).optional(),
+});
+
+const createTempEmailSchema = z.object({});
+
+const waitForOtpSchema = z.object({
+  emailId: z.string(),
+  maxWaitMs: z.number().optional(),
+});
+
+const generateTotpSchema = z.object({
+  secret: z.string().min(1),
+  digits: z.number().min(4).max(8).optional(),
+  period: z.number().min(15).max(120).optional(),
+  algorithm: z.enum(["SHA1", "SHA256", "SHA512"]).optional(),
 });
 
 const exportTestsSchema = z.object({
@@ -910,6 +964,334 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           return { text: `Acceptance criteria not found: ${parsed.id}`, isError: true };
         }
         return { text: `Deleted acceptance criteria ${parsed.id}` };
+      },
+    },
+
+    // ── Web Crawler (#477, #486) ──────────────────────────────────────────────
+    {
+      name: "talos_crawl_app",
+      description:
+        "Crawl a web application using Playwright, discovering pages, forms, and interactive elements via the accessibility tree. Stores crawled data in RAG.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application UUID" },
+          maxDepth: { type: "number", description: "Maximum crawl depth (1-10, default 3)" },
+          maxPages: { type: "number", description: "Maximum pages to crawl (1-200, default 50)" },
+        },
+        required: ["applicationId"],
+      },
+      zodSchema: crawlAppSchema,
+      category: "testing",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = crawlAppSchema.parse(args);
+        const app = repository.getApplication(parsed.applicationId);
+        if (!app) {
+          return { text: `Application not found: ${parsed.applicationId}`, isError: true };
+        }
+        if (!app.baseUrl) {
+          return { text: `Application has no baseUrl configured`, isError: true };
+        }
+
+        const crawler = new WebCrawler({
+          maxDepth: parsed.maxDepth,
+          maxPages: parsed.maxPages,
+        });
+
+        const result = await crawler.crawl(parsed.applicationId, app.baseUrl);
+        return {
+          text: JSON.stringify(
+            {
+              status: result.status,
+              totalPagesCrawled: result.totalPagesCrawled,
+              totalPagesDiscovered: result.totalPagesDiscovered,
+              errors: result.errors.length,
+              pages: result.pages.map((p) => ({
+                url: p.url,
+                title: p.title,
+                forms: p.forms.length,
+                interactiveElements: p.interactiveElements.length,
+              })),
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    // ── Interview / Clarifying Questions (#478) ────────────────────────────────
+    {
+      name: "talos_interview",
+      description:
+        "Start an AI interview: analyze the user's test request + RAG context and generate clarifying questions about roles, auth, data, edge cases.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application UUID" },
+          request: { type: "string", description: "The test generation request to analyze" },
+        },
+        required: ["applicationId", "request"],
+      },
+      zodSchema: interviewSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = interviewSchema.parse(args);
+        const app = repository.getApplication(parsed.applicationId);
+        if (!app) {
+          return { text: `Application not found: ${parsed.applicationId}`, isError: true };
+        }
+
+        const engine = new InterviewEngine({ repository });
+        const result = await engine.generateQuestions(parsed.applicationId, parsed.request);
+        return {
+          text: JSON.stringify(
+            {
+              sessionId: result.session.id,
+              questionCount: result.questionCount,
+              questions: result.session.questions.map((q) => ({
+                id: q.id,
+                category: q.category,
+                question: q.question,
+                required: q.required,
+                suggestedAnswers: q.suggestedAnswers,
+              })),
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    {
+      name: "talos_interview_answer",
+      description: "Submit answers to interview questions and receive enriched context for test generation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          sessionId: { type: "string", description: "Interview session UUID" },
+          answers: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                questionId: { type: "string" },
+                answer: { type: "string" },
+              },
+              required: ["questionId", "answer"],
+            },
+            description: "Array of question answers",
+          },
+        },
+        required: ["sessionId", "answers"],
+      },
+      zodSchema: interviewAnswerSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = interviewAnswerSchema.parse(args);
+        const engine = new InterviewEngine({ repository });
+        try {
+          const result = engine.processAnswers(parsed.sessionId, parsed.answers);
+          return {
+            text: JSON.stringify(
+              {
+                allAnswered: result.allAnswered,
+                status: result.session.status,
+                enrichedContext: result.enrichedContext,
+              },
+              null,
+              2
+            ),
+          };
+        } catch (err) {
+          return { text: err instanceof Error ? err.message : String(err), isError: true };
+        }
+      },
+    },
+
+    // ── POM Generation (#479) ─────────────────────────────────────────────────
+    {
+      name: "talos_generate_pom",
+      description: "Auto-generate Page Object Model files from crawled web pages with accessibility-based locators.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          applicationId: { type: "string", description: "Application UUID" },
+        },
+        required: ["applicationId"],
+      },
+      zodSchema: generatePomSchema,
+      category: "testing",
+      riskLevel: "medium",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = generatePomSchema.parse(args);
+        const app = repository.getApplication(parsed.applicationId);
+        if (!app) {
+          return { text: `Application not found: ${parsed.applicationId}`, isError: true };
+        }
+        if (!app.baseUrl) {
+          return { text: `Application has no baseUrl configured. Run talos_crawl_app first.`, isError: true };
+        }
+
+        // Crawl the app first to get page data
+        const crawler = new WebCrawler({ maxDepth: 2, maxPages: 20 });
+        const crawlResult = await crawler.crawl(parsed.applicationId, app.baseUrl);
+
+        if (crawlResult.pages.length === 0) {
+          return { text: `No pages found at ${app.baseUrl}. Check the URL.`, isError: true };
+        }
+
+        const pomGenerator = new PomGenerator();
+        const result = pomGenerator.generate(parsed.applicationId, crawlResult.pages);
+
+        return {
+          text: JSON.stringify(
+            {
+              totalPages: result.totalPages,
+              pageObjects: result.pageObjects.map((po) => ({
+                className: po.className,
+                filePath: po.filePath,
+                url: po.url,
+                locators: po.locators.length,
+                methods: po.methods.length,
+              })),
+            },
+            null,
+            2
+          ),
+        };
+      },
+    },
+
+    // ── Test Data Preparation (#480) ──────────────────────────────────────────
+    {
+      name: "talos_seed_test_data",
+      description: "Generate test data seeding hooks (beforeAll/afterAll) for generated tests with API, SQL, or fixture strategies.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          strategy: {
+            type: "string",
+            enum: ["api", "sql", "fixture"],
+            description: "Seed strategy",
+          },
+          setupScript: { type: "string", description: "Custom setup script" },
+          cleanupScript: { type: "string", description: "Custom cleanup script" },
+          fixtures: {
+            type: "array",
+            items: { type: "object" },
+            description: "Fixture data records",
+          },
+          parameters: {
+            type: "object",
+            description: "Parameterization values",
+          },
+        },
+      },
+      zodSchema: seedTestDataSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = seedTestDataSchema.parse(args);
+        const seeder = new DataSeeder();
+        const config = seeder.buildSeedConfig(
+          parsed.strategy,
+          parsed.setupScript,
+          parsed.cleanupScript,
+          parsed.fixtures,
+          parsed.parameters
+        );
+        const hooks = seeder.generateSeedHooks(config);
+        return {
+          text: JSON.stringify(hooks, null, 2),
+        };
+      },
+    },
+
+    // ── Email/OTP Verification (#487) ─────────────────────────────────────────
+    {
+      name: "talos_create_temp_email",
+      description: "Create a disposable temporary email address for testing email verification flows.",
+      inputSchema: { type: "object", properties: {} },
+      zodSchema: createTempEmailSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async () => {
+        const provider = new EmailProvider();
+        const account = await provider.createTempEmail();
+        return {
+          text: JSON.stringify(account, null, 2),
+        };
+      },
+    },
+
+    {
+      name: "talos_wait_for_otp",
+      description: "Poll a temporary email inbox for a verification/OTP code.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          emailId: { type: "string", description: "Temporary email account ID" },
+          maxWaitMs: { type: "number", description: "Maximum wait time in ms (default 60000)" },
+        },
+        required: ["emailId"],
+      },
+      zodSchema: waitForOtpSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = waitForOtpSchema.parse(args);
+        const provider = new EmailProvider();
+        try {
+          const result = await provider.waitForOtp(parsed.emailId, {
+            maxWaitMs: parsed.maxWaitMs,
+          });
+          return { text: JSON.stringify(result, null, 2) };
+        } catch (err) {
+          return { text: err instanceof Error ? err.message : String(err), isError: true };
+        }
+      },
+    },
+
+    {
+      name: "talos_generate_totp",
+      description: "Generate a TOTP (Time-based One-Time Password) code from a secret for MFA testing.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          secret: { type: "string", description: "Base32-encoded TOTP secret" },
+          digits: { type: "number", description: "Number of digits (default 6)" },
+          period: { type: "number", description: "Time period in seconds (default 30)" },
+          algorithm: {
+            type: "string",
+            enum: ["SHA1", "SHA256", "SHA512"],
+            description: "HMAC algorithm",
+          },
+        },
+        required: ["secret"],
+      },
+      zodSchema: generateTotpSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = generateTotpSchema.parse(args);
+        const generator = new TotpGenerator();
+        const code = generator.generate(parsed);
+        return {
+          text: JSON.stringify({ code, expiresInSeconds: parsed.period ?? 30 }, null, 2),
+        };
       },
     },
   ];

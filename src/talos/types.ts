@@ -25,6 +25,8 @@ export type TalosApplication = {
   mtlsConfig: MtlsApplicationConfig | null;
   /** GitHub repository URL where tests were last exported */
   exportRepoUrl?: string | null;
+  /** Target devices for mobile emulation */
+  devices?: string[];
   /** JSON metadata for custom fields */
   metadata: Record<string, unknown>;
   createdAt: Date;
@@ -269,7 +271,8 @@ export type TalosChunkType =
   | "schema"
   | "requirement"
   | "api_spec"
-  | "user_story";
+  | "user_story"
+  | "crawled_page";
 
 /** Link to a related artifact (test, requirement, etc.) */
 export type ArtifactLink = {
@@ -861,4 +864,246 @@ export type StoredSyncJob = {
   enabled: number;
   created_at: string;
   updated_at: string;
+};
+
+// ── Failure Classification Types (#488) ───────────────────────────────────────
+
+export type FailureClassificationType =
+  | "selector"
+  | "timing"
+  | "rendering"
+  | "data"
+  | "auth"
+  | "network"
+  | "environment";
+
+export type FailureClassification = {
+  type: FailureClassificationType;
+  confidence: number;
+  description: string;
+  suggestedAction: string;
+};
+
+export type FailureStatsByType = {
+  type: FailureClassificationType;
+  count: number;
+  percentage: number;
+  trend: "increasing" | "stable" | "decreasing";
+};
+
+export type ApplicationFailureStats = {
+  applicationId: string;
+  totalFailures: number;
+  byType: FailureStatsByType[];
+  topAffectedTests: Array<{ testId: string; failureCount: number }>;
+  period: { start: Date; end: Date };
+};
+
+// ── Web Crawler Types (#477) ──────────────────────────────────────────────────
+
+export type CrawlStatus = "pending" | "crawling" | "completed" | "failed";
+
+export type CrawledPageElement = {
+  tag: string;
+  role?: string;
+  name?: string;
+  type?: string;
+  placeholder?: string;
+  label?: string;
+  locatorStrategy: string;
+};
+
+export type CrawledFormField = {
+  name: string;
+  type: string;
+  label?: string;
+  placeholder?: string;
+  required: boolean;
+  locatorStrategy: string;
+};
+
+export type CrawledForm = {
+  action?: string;
+  method?: string;
+  fields: CrawledFormField[];
+  submitButton?: CrawledPageElement;
+};
+
+export type CrawledPage = {
+  url: string;
+  title: string;
+  headings: string[];
+  forms: CrawledForm[];
+  interactiveElements: CrawledPageElement[];
+  links: Array<{ href: string; text: string }>;
+  accessibilitySnapshot?: AccessibilityNode;
+  depth: number;
+  crawledAt: Date;
+};
+
+export type CrawlResult = {
+  applicationId: string;
+  baseUrl: string;
+  pages: CrawledPage[];
+  totalPagesDiscovered: number;
+  totalPagesCrawled: number;
+  errors: Array<{ url: string; error: string }>;
+  durationMs: number;
+  status: CrawlStatus;
+};
+
+export type CrawlOptions = {
+  maxDepth?: number;
+  maxPages?: number;
+  includePatterns?: string[];
+  excludePatterns?: string[];
+  timeout?: number;
+  headless?: boolean;
+  waitForNetworkIdle?: boolean;
+};
+
+// ── Accessibility Tree Types (#486) ───────────────────────────────────────────
+
+export type AccessibilityNode = {
+  role: string;
+  name?: string;
+  value?: string;
+  description?: string;
+  children?: AccessibilityNode[];
+  focused?: boolean;
+  disabled?: boolean;
+  checked?: boolean | "mixed";
+  pressed?: boolean | "mixed";
+  level?: number;
+  expanded?: boolean;
+};
+
+export type DistilledLocator = {
+  strategy: "getByRole" | "getByLabel" | "getByText" | "getByPlaceholder" | "getByTestId";
+  args: string[];
+  confidence: number;
+  element: AccessibilityNode;
+};
+
+// ── Interview / Clarifying Questions Types (#478) ─────────────────────────────
+
+export type InterviewQuestionCategory =
+  | "user_roles"
+  | "auth_flow"
+  | "test_data"
+  | "edge_cases"
+  | "expected_behavior"
+  | "scope"
+  | "priority";
+
+export type InterviewQuestion = {
+  id: string;
+  category: InterviewQuestionCategory;
+  question: string;
+  context: string;
+  suggestedAnswers?: string[];
+  required: boolean;
+};
+
+export type InterviewSession = {
+  id: string;
+  applicationId: string;
+  request: string;
+  questions: InterviewQuestion[];
+  answers: Record<string, string>;
+  status: "pending" | "in_progress" | "completed";
+  createdAt: Date;
+};
+
+export type InterviewAnswer = {
+  questionId: string;
+  answer: string;
+};
+
+// ── POM Generation Types (#479) ───────────────────────────────────────────────
+
+export type PageObjectMethod = {
+  name: string;
+  description: string;
+  code: string;
+  returnType: string;
+};
+
+export type PageObjectModel = {
+  className: string;
+  filePath: string;
+  url: string;
+  imports: string[];
+  locators: Array<{
+    name: string;
+    strategy: string;
+    value: string;
+  }>;
+  methods: PageObjectMethod[];
+  code: string;
+};
+
+export type PomGenerationResult = {
+  applicationId: string;
+  pageObjects: PageObjectModel[];
+  totalPages: number;
+  generatedAt: Date;
+};
+
+// ── Test Data Preparation Types (#480) ─────────────────────────────────────────
+
+export type SeedStrategyType = "api" | "sql" | "fixture";
+
+export type TestDataSeedConfig = {
+  strategy: SeedStrategyType;
+  setupScript: string;
+  cleanupScript: string;
+  fixtures?: Record<string, unknown>[];
+  parameters?: Record<string, string>;
+};
+
+export type TestDataSeedResult = {
+  success: boolean;
+  strategy: SeedStrategyType;
+  recordsCreated: number;
+  error?: string;
+  durationMs: number;
+};
+
+// ── Email/OTP Types (#487) ─────────────────────────────────────────────────────
+
+export type TempEmailAccount = {
+  address: string;
+  id: string;
+  createdAt: Date;
+  expiresAt: Date;
+};
+
+export type OtpResult = {
+  code: string;
+  source: "email" | "totp";
+  receivedAt: Date;
+};
+
+export type TotpConfig = {
+  secret: string;
+  digits?: number;
+  period?: number;
+  algorithm?: "SHA1" | "SHA256" | "SHA512";
+};
+
+// ── Mobile Device Emulation Types (#489) ───────────────────────────────────────
+
+export type DeviceProfile = {
+  name: string;
+  viewport: { width: number; height: number };
+  deviceScaleFactor: number;
+  isMobile: boolean;
+  hasTouch: boolean;
+  userAgent: string;
+};
+
+export type DeviceEmulationConfig = {
+  devices: string[];
+  generatePerDevice: boolean;
 };
