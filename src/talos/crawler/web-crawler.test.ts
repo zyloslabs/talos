@@ -129,6 +129,34 @@ describe("WebCrawler", () => {
       expect(result.pages.every((p) => p.url.startsWith("https://app.example.com"))).toBe(true);
     });
 
+    it("rejects origin-prefix attacks (e.g. example.com.evil.com)", async () => {
+      const page = createMockPage({
+        url: "https://app.example.com",
+        title: "Home",
+        snapshot: { role: "WebArea" },
+        links: [
+          { href: "https://app.example.com.evil.com/steal", text: "Evil" },
+          { href: "https://app.example.com/safe", text: "Safe" },
+        ],
+      });
+
+      const safePage = createMockPage({
+        url: "https://app.example.com/safe",
+        title: "Safe",
+        snapshot: { role: "WebArea" },
+        links: [],
+      });
+
+      const browser = createMockBrowser([page, safePage]);
+      const launcher = createMockLauncher(browser);
+      const crawler = new WebCrawler({ maxDepth: 2, maxPages: 10 }, launcher);
+
+      const result = await crawler.crawl("app-1", "https://app.example.com");
+
+      expect(result.pages).toHaveLength(2);
+      expect(result.pages.every((p) => new URL(p.url).origin === "https://app.example.com")).toBe(true);
+    });
+
     it("respects maxPages limit", async () => {
       const pages = Array.from({ length: 5 }, (_, i) =>
         createMockPage({
@@ -247,6 +275,14 @@ describe("WebCrawler", () => {
 
     it("returns null for empty href", () => {
       expect(crawler.resolveUrl("", "https://example.com")).toBeNull();
+    });
+
+    it("returns null for data: URLs", () => {
+      expect(crawler.resolveUrl("data:text/html,<h1>XSS</h1>", "https://example.com")).toBeNull();
+    });
+
+    it("returns null for vbscript: URLs", () => {
+      expect(crawler.resolveUrl("vbscript:MsgBox('XSS')", "https://example.com")).toBeNull();
     });
   });
 });

@@ -123,8 +123,8 @@ export class WebCrawler {
         // Skip excluded patterns
         if (this.isExcluded(normalizedUrl)) continue;
 
-        // Skip non-same-origin
-        if (!normalizedUrl.startsWith(origin)) continue;
+        // Skip non-same-origin (use parsed origin comparison to prevent prefix confusion)
+        if (new URL(normalizedUrl).origin !== origin) continue;
 
         visited.add(normalizedUrl);
 
@@ -139,7 +139,7 @@ export class WebCrawler {
           if (depth < this.options.maxDepth) {
             for (const link of crawledPage.links) {
               const resolved = this.resolveUrl(link.href, normalizedUrl);
-              if (resolved && resolved.startsWith(origin) && !visited.has(resolved)) {
+              if (resolved && new URL(resolved).origin === origin && !visited.has(resolved)) {
                 queue.push({ url: resolved, depth: depth + 1 });
               }
             }
@@ -256,7 +256,7 @@ export class WebCrawler {
   }
 
   resolveUrl(href: string, base: string): string | null {
-    if (!href || href.startsWith("javascript:") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+    if (!href || href.startsWith("javascript:") || href.startsWith("mailto:") || href.startsWith("tel:") || href.startsWith("data:") || href.startsWith("vbscript:")) {
       return null;
     }
     try {
