@@ -198,6 +198,41 @@ export function rowsToMarkdownTable(rows: string[][]): string {
 export function htmlToMarkdown(html: string): string {
   let md = html;
 
+  // Code blocks (pre > code or standalone pre) — must be before heading/inline replacements
+  // Use placeholders to protect code block content from the HTML tag stripping pass
+  const codeBlocks: string[] = [];
+  md = md.replace(/<pre[^>]*>\s*<code[^>]*>([\s\S]*?)<\/code>\s*<\/pre>/gi, (_m, code: string) => {
+    // Extract language from the code tag's class attribute if present
+    const classMatch = _m.match(/<code[^>]*\sclass="[^"]*language-([^"\s]*)"/i);
+    const language = classMatch?.[1] ?? "";
+    // SECURITY: Multi-pass tag stripping after entity decoding prevents
+    // reconstructed HTML tags (e.g. &lt;script&gt; → <script>) from surviving.
+    let cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    let prev = "";
+    while (prev !== cleaned) {
+      prev = cleaned;
+      cleaned = cleaned.replace(/<[^>]+>/g, "");
+    }
+    const idx = codeBlocks.length;
+    codeBlocks.push(`\`\`\`${language}\n${cleaned}\n\`\`\``);
+    return `\n%%CODEBLOCK_${idx}%%\n`;
+  });
+  md = md.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_m, code: string) => {
+    // SECURITY: Multi-pass tag stripping after entity decoding (see above).
+    let cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    let prev = "";
+    while (prev !== cleaned) {
+      prev = cleaned;
+      cleaned = cleaned.replace(/<[^>]+>/g, "");
+    }
+    const idx = codeBlocks.length;
+    codeBlocks.push(`\`\`\`\n${cleaned}\n\`\`\``);
+    return `\n%%CODEBLOCK_${idx}%%\n`;
+  });
+
+  // Inline code
+  md = md.replace(/<code[^>]*>(.*?)<\/code>/gi, "`$1`");
+
   for (let i = 6; i >= 1; i--) {
     const hashes = "#".repeat(i);
     md = md.replace(new RegExp(`<h${i}[^>]*>(.*?)</h${i}>`, "gi"), `\n${hashes} $1\n`);
@@ -210,9 +245,14 @@ export function htmlToMarkdown(html: string): string {
   md = md.replace(/<a[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "[$2]($1)");
   md = md.replace(/<ul[^>]*>/gi, "\n");
   md = md.replace(/<\/ul>/gi, "\n");
+  md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_m, inner: string) => {
+    let counter = 0;
+    return "\n" + inner.replace(/<li[^>]*>(.*?)<\/li>/gi, (_liMatch: string, content: string) => {
+      counter++;
+      return `${counter}. ${content}\n`;
+    }) + "\n";
+  });
   md = md.replace(/<li[^>]*>(.*?)<\/li>/gi, "- $1\n");
-  md = md.replace(/<ol[^>]*>/gi, "\n");
-  md = md.replace(/<\/ol>/gi, "\n");
   md = convertHtmlTables(md);
   md = md.replace(/<p[^>]*>(.*?)<\/p>/gi, "\n$1\n");
   md = md.replace(/<br\s*\/?>/gi, "\n");
@@ -237,6 +277,11 @@ export function htmlToMarkdown(html: string): string {
   md = md.replace(/\\/g, "\\\\");
 
   md = md.replace(/\n{3,}/g, "\n\n");
+
+  // Restore code blocks from placeholders
+  for (let i = 0; i < codeBlocks.length; i++) {
+    md = md.replace(`%%CODEBLOCK_${i}%%`, codeBlocks[i]);
+  }
 
   return md.trim();
 }

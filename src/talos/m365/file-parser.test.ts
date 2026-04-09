@@ -168,10 +168,10 @@ describe("file-parser", () => {
       expect(result).toContain("- Item 2");
     });
 
-    it("converts ordered lists as unordered (implementation uses dash)", () => {
+    it("converts ordered lists with numbered items", () => {
       const result = htmlToMarkdown("<ol><li>First</li><li>Second</li></ol>");
-      expect(result).toContain("- First");
-      expect(result).toContain("- Second");
+      expect(result).toContain("1. First");
+      expect(result).toContain("2. Second");
     });
 
     it("strips remaining HTML tags", () => {
@@ -401,6 +401,51 @@ describe("file-parser", () => {
       const result = htmlToMarkdown("line1<br>line2");
       expect(result).toContain("line1");
       expect(result).toContain("line2");
+    });
+
+    it("converts pre>code blocks to fenced code blocks", () => {
+      const html = '<pre><code class="language-typescript">const x = 1;</code></pre>';
+      const result = htmlToMarkdown(html);
+      expect(result).toContain("```typescript");
+      expect(result).toContain("const x = 1;");
+      expect(result).toContain("```");
+    });
+
+    it("converts standalone pre blocks to fenced code blocks", () => {
+      const html = "<pre>some code here</pre>";
+      const result = htmlToMarkdown(html);
+      expect(result).toContain("```");
+      expect(result).toContain("some code here");
+    });
+
+    it("converts inline code tags to backtick code", () => {
+      const html = "Use <code>npm install</code> to install";
+      const result = htmlToMarkdown(html);
+      expect(result).toContain("`npm install`");
+    });
+
+    it("decodes HTML entities inside code blocks and strips resulting tags", () => {
+      const html = "<pre><code>&lt;div&gt;hello&lt;/div&gt;</code></pre>";
+      const result = htmlToMarkdown(html);
+      // After entity decoding, <div> tags are stripped by multi-pass sanitization
+      expect(result).toContain("hello");
+      expect(result).not.toContain("<div>");
+    });
+
+    it("strips reconstructed HTML tags from code blocks after entity decoding", () => {
+      // Entities decode to active tags — multi-pass stripping must remove them
+      const html = "<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>";
+      const result = htmlToMarkdown(html);
+      expect(result).not.toContain("<script>");
+      expect(result).not.toContain("</script>");
+      expect(result).toContain("alert(1)");
+    });
+
+    it("strips nested reconstructed tags from standalone pre blocks", () => {
+      const html = "<pre>&lt;img src=x onerror=alert(1)&gt;</pre>";
+      const result = htmlToMarkdown(html);
+      expect(result).not.toContain("<img");
+      expect(result).not.toContain("onerror");
     });
   });
 });

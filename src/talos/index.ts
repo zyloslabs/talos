@@ -27,6 +27,9 @@ export { GitHubApiClient } from "./discovery/index.js";
 export { EmbeddingService } from "./rag/index.js";
 export { VectorStore } from "./rag/index.js";
 export { RagPipeline } from "./rag/index.js";
+export { IntelligenceVectorizer } from "./rag/index.js";
+export { StalenessTracker } from "./rag/index.js";
+export { DeltaIndexer } from "./rag/index.js";
 
 export { PlaywrightRunner } from "./runner/index.js";
 export { ArtifactManager } from "./runner/index.js";

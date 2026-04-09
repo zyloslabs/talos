@@ -28,6 +28,10 @@ export type VectorRecord = {
   confidence?: number;
   /** Tags for filtering */
   tags?: string[];
+  /** Timestamp when chunk was first indexed */
+  indexedAt?: number;
+  /** Timestamp when chunk was last verified as current */
+  lastVerifiedAt?: number;
 };
 
 export type VectorSearchResult = {
@@ -43,6 +47,10 @@ export type VectorSearchResult = {
   sourceVersion?: string;
   confidence?: number;
   tags?: string[];
+  /** Timestamp when chunk was first indexed */
+  indexedAt?: number;
+  /** Timestamp when chunk was last verified as current */
+  lastVerifiedAt?: number;
 };
 
 export type VectorStoreOptions = {
@@ -268,6 +276,8 @@ export class VectorStore {
       source_version: r.sourceVersion ?? "",
       confidence: r.confidence ?? -1,
       tags: JSON.stringify(r.tags ?? []),
+      indexed_at: r.indexedAt ?? Date.now(),
+      last_verified_at: r.lastVerifiedAt ?? Date.now(),
     }));
 
     if (!this.table) {
@@ -329,6 +339,8 @@ export class VectorStore {
       source_version?: string;
       confidence?: number;
       tags?: string;
+      indexed_at?: number;
+      last_verified_at?: number;
     }>;
 
     return results
@@ -345,6 +357,8 @@ export class VectorStore {
         sourceVersion: r.source_version && r.source_version !== "" ? r.source_version : undefined,
         confidence: r.confidence !== undefined && r.confidence >= 0 ? r.confidence : undefined,
         tags: r.tags ? (JSON.parse(r.tags) as string[]) : undefined,
+        indexedAt: r.indexed_at,
+        lastVerifiedAt: r.last_verified_at,
       }))
       .filter((r) => !options.minScore || r.score >= options.minScore);
   }
@@ -408,5 +422,61 @@ export class VectorStore {
     if (!this.initialized) {
       await this.initialize();
     }
+  }
+
+  /**
+   * Delete all vectors for a specific file within an application.
+   */
+  async deleteByFilePath(applicationId: string, filePath: string): Promise<number> {
+    await this.ensureInitialized();
+
+    if (this.config.type === "lancedb") {
+      return this.deleteByFilePathLanceDB(applicationId, filePath);
+    }
+
+    return 0;
+  }
+
+  /**
+   * Update the lastVerifiedAt timestamp for all chunks of a file.
+   */
+  async updateVerifiedAt(_applicationId: string, _filePath: string, _timestamp: number): Promise<void> {
+    await this.ensureInitialized();
+    // LanceDB doesn't support in-place updates easily, so we read + delete + re-add
+    // For now, this is tracked via the staleness tracker metadata
+  }
+
+  private async deleteByFilePathLanceDB(applicationId: string, filePath: string): Promise<number> {
+    if (!this.table) return 0;
+
+    validateFilterValue(applicationId, "applicationId");
+    // filePath may contain slashes and dots — use parameterized-style escaping
+    const escapedPath = filePath.replace(/'/g, "''");
+    const countBefore = await this.countByFilePathLanceDB(applicationId, filePath);
+    await (this.table as { delete: (condition: string) => Promise<void> }).delete(
+      `application_id = '${applicationId}' AND file_path = '${escapedPath}'`
+    );
+    return countBefore;
+  }
+
+  private async countByFilePathLanceDB(applicationId: string, filePath: string): Promise<number> {
+    if (!this.table) return 0;
+
+    validateFilterValue(applicationId, "applicationId");
+    const escapedPath = filePath.replace(/'/g, "''");
+    const results = await (
+      this.table as {
+        filter: (condition: string) => {
+          select: (columns: string[]) => {
+            toArray: () => Promise<unknown[]>;
+          };
+        };
+      }
+    )
+      .filter(`application_id = '${applicationId}' AND file_path = '${escapedPath}'`)
+      .select(["id"])
+      .toArray();
+
+    return results.length;
   }
 }
