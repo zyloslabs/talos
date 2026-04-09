@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Intelligent test generation pipeline with web crawling & AI interview** (#469):
+  - **Auth-aware test generation** (#476): `AuthGenerator` produces `beforeAll`/`beforeEach` login blocks per vault role with environment-variable-based credential injection (`TALOS_VAULT_{ROLE}_USER`/`_PASS`).
+  - **Web application crawler** (#477): Playwright-based `WebCrawler` navigates live web apps, discovering pages, forms, links, and interactive elements with configurable depth/page limits and same-origin enforcement.
+  - **AI clarifying questions (interview)** (#478): `InterviewEngine` generates role, auth, data, edge-case, and priority questions before test generation, enriching context with user answers.
+  - **Page Object Model generation** (#479): `PomGenerator` auto-generates POM classes from crawled pages with accessibility-based locators (getByRole, getByLabel), goto/fill/submit/click methods.
+  - **Test data seeding hooks** (#480): `DataSeeder` generates `beforeAll`/`afterAll` data setup/cleanup hooks with API, SQL, and fixture strategies and parameterization support.
+  - **DOM distillation / accessibility tree extraction** (#486): `DomDistiller` extracts a structured accessibility tree from Playwright snapshots, generating robust locators (never raw CSS selectors).
+  - **Email/OTP verification tools** (#487): `TotpGenerator` for HMAC-based TOTP code generation; `EmailProvider` for disposable email accounts with OTP polling.
+  - **Failure root-cause classification** (#488): Enhanced `FailureAnalyzer` with `classify()` method categorizing failures into 7 types (selector, timing, rendering, data, auth, network, environment) with confidence scores and suggested actions.
+  - **Mobile device emulation** (#489): `DeviceEmulationManager` with 10 built-in device profiles (iPhones, iPads, Pixels, Samsung, desktop) and Playwright config project generation.
+  - 8 new MCP tool definitions: `talos_crawl_app`, `talos_interview`, `talos_interview_answer`, `talos_generate_pom`, `talos_seed_test_data`, `talos_create_temp_email`, `talos_wait_for_otp`, `talos_generate_totp`.
+
 - **JDBC schema ingestion API endpoint** (#471): New `POST /api/talos/applications/:appId/datasources/ingest` endpoint wires the existing `ingestSchemaData()` in `DocumentIngester` to the RAG pipeline. Rate limited at 60s per app. Schema chunks typed as `schema` in the vector store.
 - **Data Sources wizard step enabled** (#473): Removed "Coming Soon" badge and disabled overlay from the setup wizard Data Sources step. JDBC connection form fields are now fully interactive with Save & Continue and driver type selection (PostgreSQL, MySQL, SQL Server, Oracle, SQLite).
 - **Atlassian re-import capability** (#472): Added "Re-import Data" button to the Atlassian settings panel for post-setup re-ingestion. Shows last import timestamp and import result summary (chunks ingested, errors).

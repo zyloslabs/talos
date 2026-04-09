@@ -15,6 +15,8 @@
   - [Core Layer](#core-layer)
   - [Discovery Module](#discovery-module)
   - [RAG Module](#rag-module)
+  - [Crawler Module](#crawler-module)
+  - [Interview Module](#interview-module)
   - [Generator Module](#generator-module)
   - [Runner Module](#runner-module)
   - [Healing Module](#healing-module)
@@ -327,6 +329,71 @@ Coordinates the full RAG lifecycle:
 
 ---
 
+### Crawler Module
+
+**Location:** `src/talos/crawler/`
+
+Playwright-based web application crawler for discovering pages, forms, and interactive elements via the accessibility tree.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `WebCrawler` | Navigates a live web app breadth-first, discovering pages within same-origin with configurable depth/page limits. Injectable `BrowserLauncher` for testability. |
+| `DomDistiller` | Extracts structured accessibility trees from Playwright snapshots. Generates robust locators (`getByRole`, `getByLabel`, `getByText`, `getByPlaceholder`) — never raw CSS selectors. |
+
+#### Crawl Flow
+
+```
+WebCrawler.crawl(applicationId, baseUrl)
+  │
+  ├─ 1. Launch browser (injectable launcher)
+  ├─ 2. BFS queue starting at baseUrl
+  ├─ 3. For each page:
+  │     ├─ Navigate + wait for network idle
+  │     ├─ Get accessibility snapshot
+  │     ├─ DomDistiller.distill(snapshot) → forms, elements, locators
+  │     ├─ Extract DOM links (page.evaluate)
+  │     └─ Enqueue same-origin, unvisited links
+  ├─ 4. Respect maxDepth and maxPages limits
+  └─ 5. Return CrawlResult { pages[], errors[], status }
+```
+
+---
+
+### Interview Module
+
+**Location:** `src/talos/interview/`
+
+AI-powered clarifying question engine that interviews the user before test generation to gather missing context about roles, auth, test data, edge cases, and priority.
+
+#### Components
+
+| Class | Responsibility |
+|-------|---------------|
+| `InterviewEngine` | Template-based question generation with session management. Analyzes the user request plus application context to generate targeted questions. Processes answers and produces enriched context for test generation. |
+
+#### Interview Flow
+
+```
+InterviewEngine.generateQuestions(applicationId, request)
+  │
+  ├─ 1. Load application roles from repository
+  ├─ 2. Evaluate question templates against context
+  ├─ 3. Filter to applicable questions
+  ├─ 4. Create InterviewSession (stored in memory)
+  └─ 5. Return { session, questionCount }
+
+InterviewEngine.processAnswers(sessionId, answers)
+  │
+  ├─ 1. Look up session, validate answers
+  ├─ 2. Match answers to questions
+  ├─ 3. Summarize into enrichedContext string
+  └─ 4. Return { session, allAnswered, enrichedContext }
+```
+
+---
+
 ### Generator Module
 
 **Location:** `src/talos/generator/`
@@ -341,6 +408,9 @@ AI-powered Playwright test generation with RAG context, iterative validation, an
 | `PromptBuilder` | Assembles system and user prompts with application context, RAG chunks, and existing tests |
 | `CodeValidator` | Validates generated code for syntax, banned patterns, Playwright API usage, and common issues |
 | `CriteriaGenerator` | AI-powered acceptance criteria generation from RAG knowledge base using Given/When/Then format |
+| `AuthGenerator` | Generates auth-aware `beforeAll`/`beforeEach` login blocks per vault role with env-var credential injection |
+| `PomGenerator` | Auto-generates Page Object Model classes from crawled pages with accessibility-based locators |
+| `DataSeeder` | Generates test data seeding hooks (`beforeAll`/`afterAll`) with API, SQL, and fixture strategies |
 
 #### TestGenerator Flow
 
@@ -492,7 +562,7 @@ Autonomous self-healing loop that analyzes test failures, generates fixes, verif
 
 | Class | Responsibility |
 |-------|---------------|
-| `FailureAnalyzer` | Categorizes failures, extracts affected selectors, suggests fix strategies |
+| `FailureAnalyzer` | Categorizes failures, extracts affected selectors, suggests fix strategies. Includes `classify()` for 7-type root-cause classification (selector/timing/rendering/data/auth/network/environment) and `getClassifiedStats()` for per-application failure analytics. |
 | `FixGenerator` | Uses LLM + RAG context to generate code fixes for failed tests |
 | `HealingEngine` | Orchestrates the full heal loop: analyze → fix → verify → apply/reject |
 
@@ -1046,7 +1116,7 @@ Partial configs are accepted — Zod fills missing fields with defaults. Invalid
 
 ## MCP Tool Interface
 
-All 21 tools follow a uniform interface:
+All 29 tools follow a uniform interface:
 
 ```typescript
 interface ToolDefinition {
@@ -1092,6 +1162,14 @@ interface ToolDefinition {
 | `talos_delete_criteria` | HIGH | `id` | Permanently delete an acceptance criterion |
 | `talos-orchestrate-agents` | MEDIUM | `agents[], mode?, aggregation_prompt?, timeout_seconds?` | Orchestrate multiple AI agents (session or task mode) |
 | `talos-spawn-agent` | MEDIUM | `goal, context?, model?, auto_approve_tools?` | Spawn a single AI agent as a background task or session delegate |
+| `talos_crawl_app` | MEDIUM | `applicationId, maxDepth?, maxPages?` | Crawl a web app to discover pages, forms, and elements via accessibility tree |
+| `talos_interview` | LOW | `applicationId, request` | Start AI interview — generate clarifying questions before test generation |
+| `talos_interview_answer` | LOW | `sessionId, answers[]` | Submit answers to interview questions; returns enriched context |
+| `talos_generate_pom` | MEDIUM | `applicationId` | Auto-generate Page Object Model files from crawled pages |
+| `talos_seed_test_data` | LOW | `strategy?, setupScript?, cleanupScript?, fixtures?, parameters?` | Generate test data seeding hooks (beforeAll/afterAll) |
+| `talos_create_temp_email` | LOW | — | Create a disposable temporary email for verification testing |
+| `talos_wait_for_otp` | LOW | `emailId, maxWaitMs?` | Poll a temp email inbox for verification/OTP codes |
+| `talos_generate_totp` | LOW | `secret, digits?, period?, algorithm?` | Generate a TOTP code from a secret for MFA testing |
 
 ---
 

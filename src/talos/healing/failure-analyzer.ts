@@ -4,7 +4,7 @@
  * Analyzes test failures to identify root causes and patterns.
  */
 
-import type { TalosTestRun, TalosTestArtifact } from "../types.js";
+import type { TalosTestRun, TalosTestArtifact, FailureClassificationType, FailureClassification, ApplicationFailureStats, FailureStatsByType } from "../types.js";
 import type { TalosRepository } from "../repository.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -145,6 +145,77 @@ const ERROR_PATTERNS: Array<{
           { type: "add-retry", description: "Add retry for transient failures", confidence: 0.5 },
         ],
       };
+    },
+  },
+];
+
+// ── Classification Patterns (#488) ────────────────────────────────────────────
+
+const CLASSIFICATION_PATTERNS: Array<{
+  pattern: RegExp;
+  classification: FailureClassification;
+}> = [
+  {
+    pattern: /locator\(['"]([^'"]+)['"]\).*not found|element-not-found|strict mode violation|selector/i,
+    classification: {
+      type: "selector",
+      confidence: 0.9,
+      description: "Element could not be found using the specified selector",
+      suggestedAction: "Update the selector to match the current DOM structure",
+    },
+  },
+  {
+    pattern: /timeout|timed out|exceeded.*timeout|waiting for/i,
+    classification: {
+      type: "timing",
+      confidence: 0.85,
+      description: "Operation timed out waiting for a condition",
+      suggestedAction: "Increase timeout, add explicit waits, or check page load performance",
+    },
+  },
+  {
+    pattern: /screenshot.*mismatch|visual.*diff|layout.*shift|render|paint/i,
+    classification: {
+      type: "rendering",
+      confidence: 0.8,
+      description: "Visual or rendering inconsistency detected",
+      suggestedAction: "Check for CSS changes, layout shifts, or responsive breakpoint issues",
+    },
+  },
+  {
+    pattern: /expect\(.*\)\.(toBe|toEqual|toContain|toMatch|toHaveText)|assertion|expected.*received/i,
+    classification: {
+      type: "data",
+      confidence: 0.8,
+      description: "Data assertion failed — expected value did not match actual",
+      suggestedAction: "Verify test data setup and check if application data has changed",
+    },
+  },
+  {
+    pattern: /401|403|Unauthorized|Forbidden|login.*failed|auth|credential|session.*expired/i,
+    classification: {
+      type: "auth",
+      confidence: 0.9,
+      description: "Authentication or authorization failure",
+      suggestedAction: "Verify credentials, check token expiry, and review auth flow changes",
+    },
+  },
+  {
+    pattern: /net::ERR_|fetch.*failed|NetworkError|ECONNREFUSED|ENOTFOUND|503|502|504/i,
+    classification: {
+      type: "network",
+      confidence: 0.85,
+      description: "Network-level failure (connection, DNS, or server error)",
+      suggestedAction: "Check server availability, network connectivity, and API endpoints",
+    },
+  },
+  {
+    pattern: /ENOENT|EACCES|ENOMEM|SIGTERM|process.*exit|env|config|missing.*variable/i,
+    classification: {
+      type: "environment",
+      confidence: 0.75,
+      description: "Environment or infrastructure issue",
+      suggestedAction: "Check environment variables, file permissions, and system resources",
     },
   },
 ];
@@ -344,5 +415,86 @@ export class FailureAnalyzer {
       .slice(0, 10);
 
     return { totalFailures, byCategory, commonSelectors };
+  }
+
+  // ── Enhanced Classification (#488) ──────────────────────────────────────────
+
+  /**
+   * Classify a failure into one of the 7 root-cause categories.
+   */
+  classify(testRun: TalosTestRun): FailureClassification {
+    const errorMessage = testRun.errorMessage ?? "";
+    const errorStack = testRun.errorStack ?? "";
+    const fullError = `${errorMessage}\n${errorStack}`;
+
+    // Match against classification patterns (ordered by specificity)
+    for (const { pattern, classification } of CLASSIFICATION_PATTERNS) {
+      if (pattern.test(fullError)) {
+        return classification;
+      }
+    }
+
+    return {
+      type: "environment",
+      confidence: 0.3,
+      description: "Could not classify the failure root cause",
+      suggestedAction: "Review the error manually and check environment configuration",
+    };
+  }
+
+  /**
+   * Get enhanced failure statistics by classification type for an application.
+   */
+  getClassifiedStats(applicationId: string, periodDays: number = 30): ApplicationFailureStats {
+    const tests = this.repository.getTestsByApplication(applicationId);
+    const cutoff = new Date(Date.now() - periodDays * 86400000);
+
+    const typeCounts: Record<FailureClassificationType, number> = {
+      selector: 0,
+      timing: 0,
+      rendering: 0,
+      data: 0,
+      auth: 0,
+      network: 0,
+      environment: 0,
+    };
+
+    const testFailureCounts = new Map<string, number>();
+    let totalFailures = 0;
+
+    for (const test of tests) {
+      const runs = this.repository.getTestRunsByTest(test.id, 100);
+      for (const run of runs) {
+        if (run.status !== "failed") continue;
+        if (run.createdAt < cutoff) continue;
+
+        totalFailures++;
+        testFailureCounts.set(test.id, (testFailureCounts.get(test.id) ?? 0) + 1);
+
+        const classification = this.classify(run);
+        typeCounts[classification.type]++;
+      }
+    }
+
+    const byType: FailureStatsByType[] = (Object.entries(typeCounts) as [FailureClassificationType, number][])
+      .map(([type, count]) => ({
+        type,
+        count,
+        percentage: totalFailures > 0 ? (count / totalFailures) * 100 : 0,
+        trend: "stable" as const, // Trend requires historical data; default to stable
+      }));
+
+    const topAffectedTests = Array.from(testFailureCounts.entries())
+      .map(([testId, failureCount]) => ({ testId, failureCount }))
+      .sort((a, b) => b.failureCount - a.failureCount)
+      .slice(0, 10);
+
+    return {
+      applicationId,
+      totalFailures,
+      byType,
+      topAffectedTests,
+      period: { start: cutoff, end: new Date() },
+    };
   }
 }

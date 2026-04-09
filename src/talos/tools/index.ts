@@ -1,7 +1,8 @@
 /**
  * Talos Orchestration Tools — barrel export.
  *
- * Re-exports tool factories for agent orchestration and spawning.
+ * Re-exports tool factories for agent orchestration and spawning,
+ * plus email/OTP and mobile device emulation utilities.
  */
 
 export { createOrchestrateAgentsTool, orchestrateAgentsSchema } from "./orchestrate-agents.js";
@@ -16,3 +17,8 @@ export {
   getActiveOrchestrateContext,
 } from "./orchestrate-context.js";
 export type { OrchestrateContext } from "./orchestrate-context.js";
+
+export { TotpGenerator, EmailProvider } from "./email-otp.js";
+export type { EmailProviderOptions, EmailMessage } from "./email-otp.js";
+
+export { DeviceEmulationManager } from "./mobile-emulation.js";

@@ -247,4 +247,122 @@ describe("FailureAnalyzer", () => {
       expect(stats.totalFailures).toBeGreaterThan(0);
     });
   });
+
+  // ── Classification Tests (#488) ─────────────────────────────────────────────
+
+  describe("classify", () => {
+    it("classifies selector failures", () => {
+      const run = createFailedRun("locator('#submit-btn') not found on page");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("selector");
+      expect(classification.confidence).toBeGreaterThanOrEqual(0.8);
+    });
+
+    it("classifies timing failures", () => {
+      const run = createFailedRun("locator.click: Timeout 30000ms exceeded.");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("timing");
+    });
+
+    it("classifies data assertion failures", () => {
+      const run = createFailedRun("Error: expect(received).toBe(expected) Expected: 'Alice' Received: 'Bob'");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("data");
+    });
+
+    it("classifies auth failures", () => {
+      const run = createFailedRun("401 Unauthorized");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("auth");
+    });
+
+    it("classifies network failures", () => {
+      const run = createFailedRun("net::ERR_CONNECTION_REFUSED");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("network");
+    });
+
+    it("classifies environment failures", () => {
+      const run = createFailedRun("ENOENT: no such file or directory", "config/missing.json");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("environment");
+    });
+
+    it("classifies rendering failures", () => {
+      const run = createFailedRun("screenshot mismatch: visual diff detected");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("rendering");
+    });
+
+    it("defaults to environment for unknown errors", () => {
+      const run = createFailedRun("Some completely unknown error");
+      const classification = analyzer.classify(run);
+      expect(classification.type).toBe("environment");
+      expect(classification.confidence).toBeLessThan(0.5);
+    });
+
+    it("returns suggestedAction for every classification", () => {
+      const errors = [
+        "locator('#btn') not found",
+        "Timeout exceeded",
+        "expect(x).toBe(y)",
+        "401 Unauthorized",
+        "net::ERR_CONNECTION_REFUSED",
+        "ENOENT file not found",
+        "screenshot mismatch",
+      ];
+
+      for (const err of errors) {
+        const run = createFailedRun(err);
+        const classification = analyzer.classify(run);
+        expect(classification.suggestedAction).toBeTruthy();
+        expect(classification.description).toBeTruthy();
+      }
+    });
+  });
+
+  describe("getClassifiedStats", () => {
+    it("returns stats by classification type", () => {
+      // Create various failure types
+      createFailedRun("locator('#btn') not found");
+      createFailedRun("Timeout 30000ms exceeded");
+      createFailedRun("401 Unauthorized");
+
+      const stats = analyzer.getClassifiedStats(appId, 30);
+
+      expect(stats.applicationId).toBe(appId);
+      expect(stats.totalFailures).toBe(3);
+      expect(stats.byType.length).toBe(7); // All 7 classification types
+      expect(stats.byType.reduce((sum, t) => sum + t.count, 0)).toBe(3);
+    });
+
+    it("tracks top affected tests", () => {
+      createFailedRun("selector error");
+      createFailedRun("timeout error");
+
+      const stats = analyzer.getClassifiedStats(appId);
+
+      expect(stats.topAffectedTests.length).toBeGreaterThan(0);
+      expect(stats.topAffectedTests[0].testId).toBe(testId);
+      expect(stats.topAffectedTests[0].failureCount).toBe(2);
+    });
+
+    it("returns zero stats when no failures", () => {
+      const stats = analyzer.getClassifiedStats(appId);
+
+      expect(stats.totalFailures).toBe(0);
+      expect(stats.topAffectedTests).toHaveLength(0);
+    });
+
+    it("calculates correct percentages", () => {
+      createFailedRun("401 Unauthorized");
+      createFailedRun("403 Forbidden");
+
+      const stats = analyzer.getClassifiedStats(appId);
+
+      const authType = stats.byType.find((t) => t.type === "auth");
+      expect(authType).toBeDefined();
+      expect(authType!.percentage).toBe(100);
+    });
+  });
 });

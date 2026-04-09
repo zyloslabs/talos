@@ -47,6 +47,26 @@ export { CredentialSanitizer } from "./export/index.js";
 export { DocumentIngester } from "./knowledge/index.js";
 export { AutoTagger } from "./knowledge/index.js";
 
+// ── Crawler Subsystem (#477, #486) ────────────────────────────────────────────
+
+export { WebCrawler } from "./crawler/index.js";
+export { DomDistiller } from "./crawler/index.js";
+
+// ── Interview Subsystem (#478) ────────────────────────────────────────────────
+
+export { InterviewEngine } from "./interview/index.js";
+
+// ── Generator Additions (#476, #479, #480) ────────────────────────────────────
+
+export { AuthGenerator } from "./generator/index.js";
+export { PomGenerator } from "./generator/index.js";
+export { DataSeeder } from "./generator/index.js";
+
+// ── Utility Tools (#487, #489) ────────────────────────────────────────────────
+
+export { TotpGenerator, EmailProvider } from "./tools/index.js";
+export { DeviceEmulationManager } from "./tools/index.js";
+
 // ── M365 Integration ──────────────────────────────────────────────────────────
 
 export { BrowserAuth } from "./m365/index.js";
