@@ -126,7 +126,7 @@ describe("WebCrawler", () => {
 
       expect(result.pages).toHaveLength(2);
       // Should not have visited external.com
-      expect(result.pages.every((p) => p.url.startsWith("https://app.example.com"))).toBe(true);
+      expect(result.pages.every((p) => new URL(p.url).origin === "https://app.example.com")).toBe(true);
     });
 
     it("rejects origin-prefix attacks (e.g. example.com.evil.com)", async () => {
