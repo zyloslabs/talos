@@ -1,0 +1,37 @@
+name: 'Talos CI Test Runner'
+description: 'Run Talos E2E tests in your CI/CD pipeline and report results as GitHub check annotations'
+inputs:
+  talos-url:
+    description: 'Talos server URL (e.g. https://talos.example.com)'
+    required: true
+  app-id:
+    description: 'Talos application ID (UUID)'
+    required: true
+  suite-id:
+    description: 'Specific test suite ID to run (optional — runs all tests if omitted)'
+    required: false
+  api-key:
+    description: 'Talos API key for authentication'
+    required: true
+  timeout:
+    description: 'Maximum time in seconds to wait for test completion'
+    required: false
+    default: '300'
+  fail-on-regression:
+    description: 'Fail the action if any test regresses'
+    required: false
+    default: 'true'
+outputs:
+  run-id:
+    description: 'The Talos test run ID'
+  status:
+    description: 'Final run status (passed/failed/cancelled)'
+  total-tests:
+    description: 'Total tests executed'
+  passed-tests:
+    description: 'Number of passed tests'
+  failed-tests:
+    description: 'Number of failed tests'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

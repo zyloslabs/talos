@@ -2394,6 +2394,100 @@ if (talosConfig.m365.enabled) {
     });
 }
 
+// ── CI/CD API Endpoints (#491) ────────────────────────────────────────────────
+
+// In-memory API key store — production would use the database
+const ciApiKeys = new Map<string, { appId: string; label: string; createdAt: string }>();
+
+const ciRateLimiter = new RateLimiter(10_000); // 10s between runs per app
+
+/** Validate API key from Authorization: Bearer header */
+function validateApiKey(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+): void {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Missing or invalid Authorization header" });
+    return;
+  }
+  const key = authHeader.slice(7);
+  if (!ciApiKeys.has(key)) {
+    res.status(403).json({ error: "Invalid API key" });
+    return;
+  }
+  next();
+}
+
+// Create API key
+app.post("/api/talos/api-keys", (req, res) => {
+  const { appId, label } = req.body as { appId?: string; label?: string };
+  if (!appId || !label) {
+    res.status(400).json({ error: "appId and label are required" });
+    return;
+  }
+  const existingApp = repo.getApplication(appId);
+  if (!existingApp) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+  const key = `talos_${crypto.randomUUID().replace(/-/g, "")}`;
+  ciApiKeys.set(key, { appId, label, createdAt: new Date().toISOString() });
+  res.status(201).json({ key, appId, label });
+});
+
+// Trigger CI test run
+app.post("/api/talos/applications/:appId/run", validateApiKey, (req, res) => {
+  const appId = String(req.params.appId);
+
+  const rl = ciRateLimiter.check(appId);
+  if (rl.limited) {
+    res.status(429).json({ error: "Rate limited", retryAfterMs: rl.retryAfterMs });
+    return;
+  }
+
+  const existingApp = repo.getApplication(appId);
+  if (!existingApp) {
+    res.status(404).json({ error: "Application not found" });
+    return;
+  }
+
+  const { suiteId, trigger = "ci" } = req.body as { suiteId?: string; trigger?: string };
+
+  // Get all active tests for this app (or filter by suite if provided)
+  const tests = repo.listTestsByApp(appId, "active");
+  if (tests.length === 0) {
+    res.status(404).json({ error: "No active tests found for this application" });
+    return;
+  }
+
+  const filteredTests = suiteId
+    ? tests.filter((t) => t.tags.includes(suiteId))
+    : tests;
+
+  // Create runs for each test
+  const runs = filteredTests.map((t) =>
+    repo.createTestRun({
+      applicationId: appId,
+      testId: t.id,
+      trigger: trigger as "ci",
+      triggeredBy: trigger as "ci",
+    })
+  );
+
+  const batchRunId = runs[0]?.id ?? crypto.randomUUID();
+  io.emit("ci:run:started", { appId, runId: batchRunId, testCount: runs.length });
+
+  res.status(201).json({
+    runId: batchRunId,
+    status: "queued",
+    totalTests: runs.length,
+    passedTests: 0,
+    failedTests: 0,
+  });
+});
+
 // ── M365 API Routes (#316) ───────────────────────────────────────────────────
 
 const m365RouterOptions = {

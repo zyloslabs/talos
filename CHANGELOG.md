@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **CI/CD Integration & Non-Functional Testing** (#490):
+  - **Security Scanner** (#492): `SecurityScanner` analyzes HTTP responses for OWASP Top 10 vulnerabilities — missing security headers (CSP, HSTS, X-Frame-Options), mixed content, exposed secrets (AWS keys, JWT, private keys), and server misconfigurations (version disclosure, CORS wildcard). Produces a 0–100 risk score.
+  - **Accessibility Scanner** (#493): `AccessibilityScanner` checks HTML against WCAG 2.1 rules (img-alt, form-label, html-lang, heading-order, button-name, tabindex, color-contrast meta) with A/AA/AAA level filtering and a 0–100 compliance score.
+  - **Visual Regression Engine** (#494): `VisualRegressionEngine` performs pixel-level PNG comparison with per-channel tolerance, BFS-based diff region detection, baseline management at `~/.talos/baselines/`, and mismatch percentage calculation. Pure TypeScript PNG parsing (no native deps).
+  - **Performance Collector** (#495): `PerformanceCollector` captures Core Web Vitals (LCP, INP, CLS, FID, TTFB, TBT) from raw performance entries, compares against configurable thresholds (Google CWV defaults), detects regressions (>10% degradation), and generates injectable Web Vitals collection scripts.
+  - **GitHub Action & CI API Endpoints** (#491): `action/` directory with composite GitHub Action for triggering test runs from CI pipelines. New REST API endpoints: `POST /api/talos/api-keys` (key management), `POST /api/talos/applications/:appId/run` (CI-triggered test execution with rate limiting and API key authentication).
+  - 4 new MCP tools: `talos_security_scan`, `talos_accessibility_scan`, `talos_visual_compare`, `talos_performance_capture`.
+
 - **RAG Store Completeness & Quality Improvements** (#470):
   - **Vectorize App Intelligence into RAG** (#481): `IntelligenceVectorizer` chunks and indexes App Intelligence reports (tech stack, databases, test users, documentation, config files) into the RAG pipeline as `app_intelligence` chunk type, enabling semantic search over intelligence data.
   - **Improved Confluence HTML-to-markdown** (#482): Replaced naive `/<[^>]+>/g` regex stripping with the full `htmlToMarkdown` converter for Confluence pages, preserving headings, tables, code blocks (`<pre><code>`), ordered/unordered lists, bold/italic, and links.
