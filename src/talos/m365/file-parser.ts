@@ -205,13 +205,26 @@ export function htmlToMarkdown(html: string): string {
     // Extract language from the code tag's class attribute if present
     const classMatch = _m.match(/<code[^>]*\sclass="[^"]*language-([^"\s]*)"/i);
     const language = classMatch?.[1] ?? "";
-    const cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    // SECURITY: Multi-pass tag stripping after entity decoding prevents
+    // reconstructed HTML tags (e.g. &lt;script&gt; → <script>) from surviving.
+    let cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    let prev = "";
+    while (prev !== cleaned) {
+      prev = cleaned;
+      cleaned = cleaned.replace(/<[^>]+>/g, "");
+    }
     const idx = codeBlocks.length;
     codeBlocks.push(`\`\`\`${language}\n${cleaned}\n\`\`\``);
     return `\n%%CODEBLOCK_${idx}%%\n`;
   });
   md = md.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_m, code: string) => {
-    const cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    // SECURITY: Multi-pass tag stripping after entity decoding (see above).
+    let cleaned = code.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    let prev = "";
+    while (prev !== cleaned) {
+      prev = cleaned;
+      cleaned = cleaned.replace(/<[^>]+>/g, "");
+    }
     const idx = codeBlocks.length;
     codeBlocks.push(`\`\`\`\n${cleaned}\n\`\`\``);
     return `\n%%CODEBLOCK_${idx}%%\n`;

@@ -424,10 +424,28 @@ describe("file-parser", () => {
       expect(result).toContain("`npm install`");
     });
 
-    it("decodes HTML entities inside code blocks", () => {
+    it("decodes HTML entities inside code blocks and strips resulting tags", () => {
       const html = "<pre><code>&lt;div&gt;hello&lt;/div&gt;</code></pre>";
       const result = htmlToMarkdown(html);
-      expect(result).toContain("<div>hello</div>");
+      // After entity decoding, <div> tags are stripped by multi-pass sanitization
+      expect(result).toContain("hello");
+      expect(result).not.toContain("<div>");
+    });
+
+    it("strips reconstructed HTML tags from code blocks after entity decoding", () => {
+      // Entities decode to active tags — multi-pass stripping must remove them
+      const html = "<pre><code>&lt;script&gt;alert(1)&lt;/script&gt;</code></pre>";
+      const result = htmlToMarkdown(html);
+      expect(result).not.toContain("<script>");
+      expect(result).not.toContain("</script>");
+      expect(result).toContain("alert(1)");
+    });
+
+    it("strips nested reconstructed tags from standalone pre blocks", () => {
+      const html = "<pre>&lt;img src=x onerror=alert(1)&gt;</pre>";
+      const result = htmlToMarkdown(html);
+      expect(result).not.toContain("<img");
+      expect(result).not.toContain("onerror");
     });
   });
 });
