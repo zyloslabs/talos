@@ -704,6 +704,70 @@ export const testDataSourceConnection = (appId: string, id: string) =>
     method: "POST",
   });
 
+// Test unsaved JDBC connection params directly (setup wizard, before save)
+export const testDataSourceConnectionDirect = (
+  appId: string,
+  params: { driverType: string; jdbcUrl: string; label?: string },
+) =>
+  fetchApi<{ success: boolean; message: string }>(`/api/talos/applications/${appId}/datasources/test`, {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+
+// ── JDBC Schema Ingestion (#471) ──────────────────────────────────────────────
+
+export const ingestSchemaData = (appId: string) =>
+  fetchApi<{
+    success: boolean;
+    totalTables: number;
+    totalChunks: number;
+    errors: string[];
+  }>(`/api/talos/applications/${appId}/datasources/ingest`, { method: "POST" });
+
+// ── Sync Jobs (#474) ─────────────────────────────────────────────────────────
+
+export interface SyncJob {
+  id: string;
+  applicationId: string;
+  sourceType: "atlassian" | "jdbc" | "m365";
+  schedule: "manual" | "daily" | "weekly" | "custom";
+  cronExpression: string | null;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  status: "idle" | "running" | "completed" | "failed";
+  lastError: string | null;
+  retryCount: number;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getSyncJobs = (appId: string) =>
+  fetchApi<SyncJob[]>(`/api/talos/applications/${appId}/sync-jobs`);
+
+export const createOrUpdateSyncJob = (
+  appId: string,
+  data: { sourceType: string; schedule: string; cronExpression?: string; enabled?: boolean }
+) =>
+  fetchApi<SyncJob>(`/api/talos/applications/${appId}/sync-jobs`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const updateSyncJob = (appId: string, id: string, data: { schedule?: string; cronExpression?: string; enabled?: boolean }) =>
+  fetchApi<SyncJob>(`/api/talos/applications/${appId}/sync-jobs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
+export const deleteSyncJob = (appId: string, id: string) =>
+  fetchApi<void>(`/api/talos/applications/${appId}/sync-jobs/${id}`, { method: "DELETE" });
+
+export const triggerSyncJob = (appId: string, id: string) =>
+  fetchApi<{ status: string; jobId: string }>(`/api/talos/applications/${appId}/sync-jobs/${id}/trigger`, {
+    method: "POST",
+  });
+
 // ── Atlassian Config ──────────────────────────────────────────────────────────
 
 export interface TalosAtlassianConfig {

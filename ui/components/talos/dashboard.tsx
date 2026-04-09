@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { BarChart3, CheckCircle2, Clock, FolderGit2, Plus, RefreshCw, TestTube2, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, Clock, FolderGit2, Plus, RefreshCw, Settings, TestTube2, XCircle } from "lucide-react";
 
 function StatCard({
   title,
@@ -82,6 +83,12 @@ function ApplicationCard({ app, onScan }: { app: TalosApplication; onScan: (id: 
           <Button size="sm" variant="outline" onClick={() => onScan(app.id)}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Scan
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/talos/${app.id}`}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </Link>
           </Button>
         </div>
       </CardContent>

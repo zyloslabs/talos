@@ -62,9 +62,32 @@ import type {
   AtlassianDeploymentType,
   AppIntelligenceReport,
   StoredAppIntelligence,
+  TalosSyncJob,
+  CreateSyncJobInput,
+  UpdateSyncJobInput,
+  StoredSyncJob,
+  SyncSourceType,
+  SyncScheduleType,
+  SyncJobStatus,
 } from "./types.js";
 
 // ── Row Converters ────────────────────────────────────────────────────────────
+
+const toSyncJob = (row: StoredSyncJob): TalosSyncJob => ({
+  id: row.id,
+  applicationId: row.application_id,
+  sourceType: row.source_type as SyncSourceType,
+  schedule: row.schedule as SyncScheduleType,
+  cronExpression: row.cron_expression,
+  lastRunAt: row.last_run_at ? new Date(row.last_run_at) : null,
+  nextRunAt: row.next_run_at ? new Date(row.next_run_at) : null,
+  status: row.status as SyncJobStatus,
+  lastError: row.last_error,
+  retryCount: row.retry_count,
+  enabled: row.enabled === 1,
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at),
+});
 
 const toApplication = (row: StoredApplication): TalosApplication => ({
   id: row.id,
@@ -483,6 +506,28 @@ export class TalosRepository {
 
       CREATE INDEX IF NOT EXISTS idx_talos_app_intelligence_application
         ON talos_app_intelligence(application_id);
+
+      -- Sync Jobs table (#474)
+      CREATE TABLE IF NOT EXISTS talos_sync_jobs (
+        id TEXT PRIMARY KEY,
+        application_id TEXT NOT NULL REFERENCES talos_applications(id) ON DELETE CASCADE,
+        source_type TEXT NOT NULL CHECK(source_type IN ('atlassian', 'jdbc', 'm365')),
+        schedule TEXT NOT NULL DEFAULT 'manual' CHECK(schedule IN ('manual', 'daily', 'weekly', 'custom')),
+        cron_expression TEXT,
+        last_run_at TEXT,
+        next_run_at TEXT,
+        status TEXT NOT NULL DEFAULT 'idle' CHECK(status IN ('idle', 'running', 'completed', 'failed')),
+        last_error TEXT,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_talos_sync_jobs_application
+        ON talos_sync_jobs(application_id);
+      CREATE INDEX IF NOT EXISTS idx_talos_sync_jobs_enabled
+        ON talos_sync_jobs(enabled);
     `);
   }
 
@@ -1619,6 +1664,65 @@ export class TalosRepository {
 
   deleteIntelligenceReport(applicationId: string): boolean {
     const result = this.db.prepare(`DELETE FROM talos_app_intelligence WHERE application_id = ?`).run(applicationId);
+    return result.changes > 0;
+  }
+
+  // ── Sync Job CRUD (#474) ────────────────────────────────────────────────────
+
+  createSyncJob(input: CreateSyncJobInput): TalosSyncJob {
+    const now = this.clock().toISOString();
+    const id = randomUUID();
+    this.db.prepare(`
+      INSERT INTO talos_sync_jobs (id, application_id, source_type, schedule, cron_expression, enabled, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, input.applicationId, input.sourceType, input.schedule, input.cronExpression ?? null, input.enabled !== false ? 1 : 0, now, now);
+    return this.getSyncJob(id)!;
+  }
+
+  getSyncJob(id: string): TalosSyncJob | null {
+    const row = this.db.prepare(`SELECT * FROM talos_sync_jobs WHERE id = ?`).get(id) as StoredSyncJob | undefined;
+    return row ? toSyncJob(row) : null;
+  }
+
+  getSyncJobsByApp(applicationId: string): TalosSyncJob[] {
+    const rows = this.db.prepare(`SELECT * FROM talos_sync_jobs WHERE application_id = ? ORDER BY created_at DESC`).all(applicationId) as StoredSyncJob[];
+    return rows.map(toSyncJob);
+  }
+
+  getSyncJobByAppAndSource(applicationId: string, sourceType: SyncSourceType): TalosSyncJob | null {
+    const row = this.db.prepare(`SELECT * FROM talos_sync_jobs WHERE application_id = ? AND source_type = ?`).get(applicationId, sourceType) as StoredSyncJob | undefined;
+    return row ? toSyncJob(row) : null;
+  }
+
+  getEnabledSyncJobs(): TalosSyncJob[] {
+    const rows = this.db.prepare(`SELECT * FROM talos_sync_jobs WHERE enabled = 1 AND schedule != 'manual'`).all() as StoredSyncJob[];
+    return rows.map(toSyncJob);
+  }
+
+  updateSyncJob(id: string, input: UpdateSyncJobInput): TalosSyncJob | null {
+    const existing = this.getSyncJob(id);
+    if (!existing) return null;
+    const now = this.clock().toISOString();
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    if (input.schedule !== undefined) { fields.push("schedule = ?"); values.push(input.schedule); }
+    if (input.cronExpression !== undefined) { fields.push("cron_expression = ?"); values.push(input.cronExpression); }
+    if (input.status !== undefined) { fields.push("status = ?"); values.push(input.status); }
+    if (input.lastRunAt !== undefined) { fields.push("last_run_at = ?"); values.push(input.lastRunAt?.toISOString() ?? null); }
+    if (input.nextRunAt !== undefined) { fields.push("next_run_at = ?"); values.push(input.nextRunAt?.toISOString() ?? null); }
+    if (input.lastError !== undefined) { fields.push("last_error = ?"); values.push(input.lastError); }
+    if (input.retryCount !== undefined) { fields.push("retry_count = ?"); values.push(input.retryCount); }
+    if (input.enabled !== undefined) { fields.push("enabled = ?"); values.push(input.enabled ? 1 : 0); }
+    if (fields.length === 0) return existing;
+    fields.push("updated_at = ?");
+    values.push(now);
+    values.push(id);
+    this.db.prepare(`UPDATE talos_sync_jobs SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+    return this.getSyncJob(id);
+  }
+
+  deleteSyncJob(id: string): boolean {
+    const result = this.db.prepare(`DELETE FROM talos_sync_jobs WHERE id = ?`).run(id);
     return result.changes > 0;
   }
 

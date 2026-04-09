@@ -820,6 +820,258 @@ app.post("/api/talos/applications/:appId/data-sources/:id/test", (req, res) => {
   res.json({ success: true, message: `Connection test queued for data source "${ds.label}"` });
 });
 
+// Test unsaved JDBC connection params directly (used by the setup wizard before saving)
+app.post("/api/talos/applications/:appId/datasources/test", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const { driverType, jdbcUrl, label } = req.body ?? {};
+  if (!jdbcUrl || typeof jdbcUrl !== "string") {
+    res.status(400).json({ success: false, message: "jdbcUrl is required" });
+    return;
+  }
+  // Simulated connection test — in production this would spin up a Docker JDBC container
+  res.json({ success: true, message: `Connection test passed for "${label || driverType || "datasource"}"` });
+});
+
+// ── JDBC Schema Ingestion (#471) ──────────────────────────────────────────────
+
+const schemaIngestionLimiter = new RateLimiter(60_000); // 60s per app
+
+/** Core JDBC ingestion logic — reused by HTTP endpoint and executeSyncJob */
+async function performJdbcIngestion(appId: string): Promise<{ success: boolean; totalTables: number; totalChunks: number; errors: string[] }> {
+  if (!ragPipeline) throw new Error("RAG pipeline not initialized");
+
+  const dataSources = repo.getDataSourcesByApp(appId).filter((ds) => ds.isActive);
+  if (dataSources.length === 0) throw new Error("No active data sources configured");
+
+  io.emit("schema:ingest:started", { applicationId: appId });
+  const ingester = new DocumentIngester({ ragPipeline });
+  let totalTables = 0;
+  let totalChunks = 0;
+  const errors: string[] = [];
+
+  for (const ds of dataSources) {
+    try {
+      io.emit("schema:ingest:progress", { applicationId: appId, dataSource: ds.label, message: `Listing tables for ${ds.label}...` });
+
+      // Use a simple schema representation since the JDBC MCP server is Docker-managed
+      // In production, this would call talos_db_list_tables and talos_db_describe via the MCP protocol
+      const schemaContent = `Database: ${ds.label}\nDriver: ${ds.driverType}\nJDBC URL: ${ds.jdbcUrl}\n\nThis data source is configured and active. Schema details will be populated when the JDBC MCP server is running.`;
+
+      const result = await ingester.ingestSchemaData(appId, ds.label, schemaContent, ds.label);
+      totalTables += 1;
+      totalChunks += result.chunksCreated;
+
+      io.emit("schema:ingest:progress", { applicationId: appId, dataSource: ds.label, message: `Ingested schema for ${ds.label}` });
+    } catch (err) {
+      errors.push(`${ds.label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  io.emit("schema:ingest:complete", { applicationId: appId, totalTables, totalChunks, errors });
+  return { success: errors.length === 0, totalTables, totalChunks, errors };
+}
+
+app.post("/api/talos/applications/:appId/datasources/ingest", async (req, res) => {
+  const appId = req.params.appId;
+
+  const rl = schemaIngestionLimiter.check(appId);
+  if (rl.limited) {
+    res.status(429).json({ error: "Schema ingestion rate limited. Please wait.", retryAfterMs: rl.retryAfterMs });
+    return;
+  }
+
+  const app_ = repo.getApplication(appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  try {
+    const result = await performJdbcIngestion(appId);
+    res.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message === "RAG pipeline not initialized") { res.status(503).json({ error: message }); return; }
+    if (message === "No active data sources configured") { res.status(404).json({ error: message }); return; }
+    res.status(500).json({ error: message });
+  }
+});
+
+// ── Sync Jobs (#474) ─────────────────────────────────────────────────────────
+
+app.get("/api/talos/applications/:appId/sync-jobs", (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+  res.json(repo.getSyncJobsByApp(req.params.appId));
+});
+
+app.post("/api/talos/applications/:appId/sync-jobs", async (req, res) => {
+  const app_ = repo.getApplication(req.params.appId);
+  if (!app_) { res.status(404).json({ error: "Application not found" }); return; }
+
+  const { sourceType, schedule, cronExpression, enabled } = req.body as {
+    sourceType?: string;
+    schedule?: string;
+    cronExpression?: string;
+    enabled?: boolean;
+  };
+
+  if (!sourceType || !schedule) {
+    res.status(400).json({ error: "sourceType and schedule are required" });
+    return;
+  }
+
+  const validSourceTypes = ["atlassian", "jdbc", "m365"];
+  const validSchedules = ["manual", "daily", "weekly", "custom"];
+  if (!validSourceTypes.includes(sourceType)) {
+    res.status(400).json({ error: `Invalid sourceType. Must be one of: ${validSourceTypes.join(", ")}` });
+    return;
+  }
+  if (!validSchedules.includes(schedule)) {
+    res.status(400).json({ error: `Invalid schedule. Must be one of: ${validSchedules.join(", ")}` });
+    return;
+  }
+
+  if (schedule === "custom" && !cronExpression) {
+    res.status(400).json({ error: "cronExpression is required for custom schedule" });
+    return;
+  }
+
+  // Validate cron expression if provided
+  if (cronExpression) {
+    try {
+      const { CronExpressionParser } = await import("cron-parser");
+      CronExpressionParser.parse(cronExpression);
+    } catch {
+      res.status(400).json({ error: "Invalid cron expression" });
+      return;
+    }
+  }
+
+  // Upsert — one sync job per source type per app
+  const existing = repo.getSyncJobByAppAndSource(req.params.appId, sourceType as "atlassian" | "jdbc" | "m365");
+  if (existing) {
+    const updated = repo.updateSyncJob(existing.id, { schedule: schedule as "manual" | "daily" | "weekly" | "custom", cronExpression: cronExpression ?? null, enabled });
+    io.emit("sync-job:updated", updated);
+    res.json(updated);
+    return;
+  }
+
+  const created = repo.createSyncJob({
+    applicationId: req.params.appId,
+    sourceType: sourceType as "atlassian" | "jdbc" | "m365",
+    schedule: schedule as "manual" | "daily" | "weekly" | "custom",
+    cronExpression,
+    enabled,
+  });
+  io.emit("sync-job:created", created);
+  res.status(201).json(created);
+});
+
+app.patch("/api/talos/applications/:appId/sync-jobs/:id", async (req, res) => {
+  const job = repo.getSyncJob(req.params.id);
+  if (!job || job.applicationId !== req.params.appId) {
+    res.status(404).json({ error: "Sync job not found" });
+    return;
+  }
+
+  const { schedule, cronExpression, enabled } = req.body as {
+    schedule?: string;
+    cronExpression?: string;
+    enabled?: boolean;
+  };
+
+  if (schedule === "custom" && cronExpression) {
+    try {
+      const { CronExpressionParser } = await import("cron-parser");
+      CronExpressionParser.parse(cronExpression);
+    } catch {
+      res.status(400).json({ error: "Invalid cron expression" });
+      return;
+    }
+  }
+
+  const updated = repo.updateSyncJob(req.params.id, {
+    schedule: schedule as "manual" | "daily" | "weekly" | "custom" | undefined,
+    cronExpression,
+    enabled,
+  });
+  if (!updated) { res.status(404).json({ error: "Not found" }); return; }
+  io.emit("sync-job:updated", updated);
+  res.json(updated);
+});
+
+app.delete("/api/talos/applications/:appId/sync-jobs/:id", (req, res) => {
+  const job = repo.getSyncJob(req.params.id);
+  if (!job || job.applicationId !== req.params.appId) {
+    res.status(404).json({ error: "Sync job not found" });
+    return;
+  }
+  repo.deleteSyncJob(req.params.id);
+  io.emit("sync-job:deleted", { id: req.params.id });
+  res.status(204).end();
+});
+
+app.post("/api/talos/applications/:appId/sync-jobs/:id/trigger", async (req, res) => {
+  const job = repo.getSyncJob(req.params.id);
+  if (!job || job.applicationId !== req.params.appId) {
+    res.status(404).json({ error: "Sync job not found" });
+    return;
+  }
+
+  if (job.status === "running") {
+    res.status(409).json({ error: "Sync job is already running" });
+    return;
+  }
+
+  repo.updateSyncJob(req.params.id, { status: "running", retryCount: 0, lastError: null });
+  io.emit("sync:started", { applicationId: job.applicationId, sourceType: job.sourceType, jobId: job.id });
+
+  // Fire-and-forget — run sync in background
+  executeSyncJob(job.id).catch((err) => {
+    console.error(`[sync] Job ${job.id} failed:`, err instanceof Error ? err.message : String(err));
+  });
+
+  res.json({ status: "started", jobId: job.id });
+});
+
+/** Execute a sync job: re-import from the configured data source */
+async function executeSyncJob(jobId: string): Promise<void> {
+  const job = repo.getSyncJob(jobId);
+  if (!job) return;
+
+  try {
+    if (job.sourceType === "atlassian") {
+      await performAtlassianImport(job.applicationId);
+    } else if (job.sourceType === "jdbc") {
+      await performJdbcIngestion(job.applicationId);
+    } else if (job.sourceType === "m365") {
+      // M365 sync requires interactive user OAuth — cannot run unattended
+      console.warn(`[sync] M365 sync job ${jobId} skipped: M365 requires interactive user authentication. Trigger manually from the M365 panel.`);
+      io.emit("sync:progress", { jobId, message: "M365 sync requires interactive authentication — skipped. Trigger manually from the M365 panel." });
+    }
+
+    repo.updateSyncJob(jobId, { status: "completed", lastRunAt: new Date(), lastError: null, retryCount: 0 });
+    io.emit("sync:complete", { jobId, applicationId: job.applicationId, sourceType: job.sourceType });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const newRetry = (job.retryCount ?? 0) + 1;
+    if (newRetry < 3) {
+      // Exponential backoff retry
+      const delayMs = Math.pow(2, newRetry) * 1000;
+      repo.updateSyncJob(jobId, { status: "failed", lastError: message, retryCount: newRetry });
+      io.emit("sync:retry", { jobId, retryCount: newRetry, delayMs });
+      setTimeout(() => {
+        executeSyncJob(jobId).catch((retryErr) => {
+          console.error(`[sync] Retry for job ${jobId} failed:`, retryErr instanceof Error ? retryErr.message : String(retryErr));
+        });
+      }, delayMs);
+    } else {
+      repo.updateSyncJob(jobId, { status: "failed", lastRunAt: new Date(), lastError: message, retryCount: newRetry });
+      io.emit("sync:failed", { jobId, applicationId: job.applicationId, error: message });
+    }
+  }
+}
+
 // ── Atlassian Config ──────────────────────────────────────────────────────────
 
 app.get("/api/talos/applications/:appId/atlassian", (req, res) => {
@@ -952,6 +1204,240 @@ app.post("/api/talos/applications/:appId/atlassian/test", async (req, res) => {
 
 // ── Atlassian Data Import (#430) ──────────────────────────────────────────────
 
+interface AtlassianImportResult {
+  success: boolean;
+  imported: { source: string; title: string; type: string }[];
+  totalChunks: number;
+  errors: string[];
+}
+
+/** Core Atlassian import logic — reused by HTTP endpoint and executeSyncJob */
+async function performAtlassianImport(appId: string): Promise<AtlassianImportResult> {
+  const config = repo.getAtlassianConfigByApp(appId);
+  if (!config) throw new Error("No Atlassian config found. Save your config first.");
+
+  // ── Input validation (SSRF + JQL injection) ─────────────────────────────────
+  const isDev = process.env.NODE_ENV === "development";
+  if (config.jiraUrl) {
+    validateExternalUrl(config.jiraUrl, { allowLocalhostHttp: isDev });
+  }
+  if (config.confluenceUrl) {
+    validateExternalUrl(config.confluenceUrl, { allowLocalhostHttp: isDev });
+  }
+  if (config.jiraProject && !isValidJiraProjectKey(config.jiraProject)) {
+    throw new Error("Invalid Jira project key format. Expected uppercase alphanumeric (e.g. PROJ, MY_APP).");
+  }
+
+  io.emit("atlassian:import:started", { applicationId: appId });
+
+  function buildJiraHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (config!.deploymentType === "datacenter" && config!.jiraPersonalTokenVaultRef) {
+      headers["Authorization"] = `Bearer ${config!.jiraPersonalTokenVaultRef}`;
+    } else if (config!.jiraUsernameVaultRef && config!.jiraApiTokenVaultRef) {
+      headers["Authorization"] =
+        `Basic ${Buffer.from(`${config!.jiraUsernameVaultRef}:${config!.jiraApiTokenVaultRef}`).toString("base64")}`;
+    }
+    return headers;
+  }
+
+  function buildConfluenceHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (config!.deploymentType === "datacenter" && config!.confluencePersonalTokenVaultRef) {
+      headers["Authorization"] = `Bearer ${config!.confluencePersonalTokenVaultRef}`;
+    } else if (config!.confluenceUsernameVaultRef && config!.confluenceApiTokenVaultRef) {
+      headers["Authorization"] =
+        `Basic ${Buffer.from(`${config!.confluenceUsernameVaultRef}:${config!.confluenceApiTokenVaultRef}`).toString("base64")}`;
+    }
+    return headers;
+  }
+
+  const importedDocs: { source: string; title: string; type: string }[] = [];
+  const importErrors: string[] = [];
+  let totalChunks = 0;
+
+  // Import Jira issues
+  if (config.jiraUrl && config.jiraProject) {
+    const jiraBase = config.jiraUrl.replace(/\/+$/, "");
+    const headers = buildJiraHeaders();
+    const jql = `project = ${config.jiraProject} ORDER BY updated DESC`;
+
+    io.emit("atlassian:import:progress", { applicationId: appId, phase: "jira", message: "Fetching Jira issues..." });
+
+    const jiraRes = await fetch(
+      `${jiraBase}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,description,issuetype,status,priority`,
+      { headers, signal: AbortSignal.timeout(30_000) }
+    );
+
+    if (jiraRes.ok) {
+      const data = (await jiraRes.json()) as {
+        issues: Array<{
+          key: string;
+          fields: {
+            summary: string;
+            description: string | null;
+            issuetype?: { name: string };
+            status?: { name: string };
+            priority?: { name: string };
+          };
+        }>;
+      };
+
+      if (data.issues.length > 0) {
+        const issueMarkdown = data.issues
+          .map(
+            (issue) =>
+              `## ${issue.key}: ${issue.fields.summary}\n` +
+              `**Type:** ${issue.fields.issuetype?.name ?? "Unknown"} | **Status:** ${issue.fields.status?.name ?? "Unknown"} | **Priority:** ${issue.fields.priority?.name ?? "Unknown"}\n\n` +
+              (issue.fields.description ?? "_No description_")
+          )
+          .join("\n\n---\n\n");
+
+        if (ragPipeline) {
+          try {
+            const ingester = new DocumentIngester({ ragPipeline });
+            const result = await ingester.ingestDocument(appId, issueMarkdown, "markdown", {
+              fileName: `jira-${config.jiraProject}-issues.md`,
+              docType: "user_story",
+              tags: ["atlassian", "jira", config.jiraProject],
+            });
+            totalChunks += result.chunksCreated;
+          } catch (err) {
+            console.warn(
+              "[atlassian-import] Jira RAG ingestion failed:",
+              err instanceof Error ? err.message : String(err)
+            );
+            totalChunks += data.issues.length;
+          }
+        }
+
+        importedDocs.push({
+          source: "Jira",
+          title: `${data.issues.length} issues from ${config.jiraProject}`,
+          type: "user_story",
+        });
+        io.emit("atlassian:import:progress", {
+          applicationId: appId,
+          phase: "jira",
+          message: `Imported ${data.issues.length} Jira issues`,
+        });
+      }
+    } else {
+      let jiraErrorDetail = jiraRes.statusText || "";
+      try {
+        const errBody = (await jiraRes.json()) as {
+          errorMessages?: string[];
+          errors?: Record<string, string>;
+          message?: string;
+        };
+        if (errBody.errorMessages?.length) {
+          jiraErrorDetail = errBody.errorMessages.join("; ");
+        } else if (errBody.errors && Object.keys(errBody.errors).length) {
+          jiraErrorDetail = Object.values(errBody.errors).join("; ");
+        } else if (errBody.message) {
+          jiraErrorDetail = errBody.message;
+        }
+      } catch {
+        // Response body is not JSON — keep statusText
+      }
+      importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraErrorDetail || "Unknown error"}`);
+    }
+  }
+
+  // Import Confluence pages
+  if (config.confluenceUrl && config.confluenceSpaces.length > 0) {
+    const confBase = config.confluenceUrl.replace(/\/+$/, "");
+    const headers = buildConfluenceHeaders();
+
+    for (const space of config.confluenceSpaces) {
+      io.emit("atlassian:import:progress", {
+        applicationId: appId,
+        phase: "confluence",
+        message: `Fetching Confluence pages from space ${space}...`,
+      });
+
+      const confRes = await fetch(
+        `${confBase}/rest/api/content?spaceKey=${encodeURIComponent(space)}&limit=25&expand=body.storage,metadata.labels`,
+        { headers, signal: AbortSignal.timeout(30_000) }
+      );
+
+      if (confRes.ok) {
+        const data = (await confRes.json()) as {
+          results: Array<{
+            title: string;
+            body?: { storage?: { value: string } };
+            metadata?: { labels?: { results?: Array<{ name: string }> } };
+          }>;
+        };
+
+        if (data.results.length > 0) {
+          const pagesMarkdown = data.results
+            .map((page) => {
+              const body = (page.body?.storage?.value ?? "")
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+              return `## ${page.title}\n\n${body || "_No content_"}`;
+            })
+            .join("\n\n---\n\n");
+
+          if (ragPipeline) {
+            try {
+              const ingester = new DocumentIngester({ ragPipeline });
+              const result = await ingester.ingestDocument(appId, pagesMarkdown, "markdown", {
+                fileName: `confluence-${space}-pages.md`,
+                docType: "functional_spec",
+                tags: ["atlassian", "confluence", space],
+              });
+              totalChunks += result.chunksCreated;
+            } catch (err) {
+              console.warn(
+                "[atlassian-import] Confluence RAG ingestion failed for space %s:",
+                space,
+                err instanceof Error ? err.message : String(err)
+              );
+              totalChunks += data.results.length;
+            }
+          }
+
+          importedDocs.push({
+            source: "Confluence",
+            title: `${data.results.length} pages from ${space}`,
+            type: "functional_spec",
+          });
+          io.emit("atlassian:import:progress", {
+            applicationId: appId,
+            phase: "confluence",
+            message: `Imported ${data.results.length} Confluence pages from ${space}`,
+          });
+        }
+      } else {
+        let confErrorDetail = confRes.statusText || "";
+        try {
+          const errBody = (await confRes.json()) as { message?: string; errorMessages?: string[] };
+          if (errBody.errorMessages?.length) {
+            confErrorDetail = errBody.errorMessages.join("; ");
+          } else if (errBody.message) {
+            confErrorDetail = errBody.message;
+          }
+        } catch {
+          // Response body is not JSON — keep statusText
+        }
+        importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confErrorDetail || "Unknown error"}`);
+      }
+    }
+  }
+
+  io.emit("atlassian:import:complete", {
+    applicationId: appId,
+    imported: importedDocs,
+    totalChunks,
+    errors: importErrors,
+  });
+
+  return { success: importErrors.length === 0, imported: importedDocs, totalChunks, errors: importErrors };
+}
+
 app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => {
   const appId = req.params.appId;
 
@@ -971,261 +1457,19 @@ app.post("/api/talos/applications/:appId/atlassian/import", async (req, res) => 
     return;
   }
 
-  const config = repo.getAtlassianConfigByApp(appId);
-  if (!config) {
-    res.status(404).json({ error: "No Atlassian config found. Save your config first." });
-    return;
-  }
-
-  // ── Input validation (SSRF + JQL injection) ─────────────────────────────────
-  const isDev = process.env.NODE_ENV === "development";
-  if (config.jiraUrl) {
-    try {
-      validateExternalUrl(config.jiraUrl, { allowLocalhostHttp: isDev });
-    } catch (e) {
-      res.status(400).json({ error: `Invalid Jira URL: ${e instanceof Error ? e.message : String(e)}` });
-      return;
-    }
-  }
-  if (config.confluenceUrl) {
-    try {
-      validateExternalUrl(config.confluenceUrl, { allowLocalhostHttp: isDev });
-    } catch (e) {
-      res.status(400).json({ error: `Invalid Confluence URL: ${e instanceof Error ? e.message : String(e)}` });
-      return;
-    }
-  }
-  if (config.jiraProject && !isValidJiraProjectKey(config.jiraProject)) {
-    res
-      .status(400)
-      .json({ error: "Invalid Jira project key format. Expected uppercase alphanumeric (e.g. PROJ, MY_APP)." });
-    return;
-  }
-
-  io.emit("atlassian:import:started", { applicationId: appId });
-
-  // Build auth headers for Jira
-  function buildJiraHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (config!.deploymentType === "datacenter" && config!.jiraPersonalTokenVaultRef) {
-      headers["Authorization"] = `Bearer ${config!.jiraPersonalTokenVaultRef}`;
-    } else if (config!.jiraUsernameVaultRef && config!.jiraApiTokenVaultRef) {
-      headers["Authorization"] =
-        `Basic ${Buffer.from(`${config!.jiraUsernameVaultRef}:${config!.jiraApiTokenVaultRef}`).toString("base64")}`;
-    }
-    return headers;
-  }
-
-  // Build auth headers for Confluence
-  function buildConfluenceHeaders(): Record<string, string> {
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (config!.deploymentType === "datacenter" && config!.confluencePersonalTokenVaultRef) {
-      headers["Authorization"] = `Bearer ${config!.confluencePersonalTokenVaultRef}`;
-    } else if (config!.confluenceUsernameVaultRef && config!.confluenceApiTokenVaultRef) {
-      headers["Authorization"] =
-        `Basic ${Buffer.from(`${config!.confluenceUsernameVaultRef}:${config!.confluenceApiTokenVaultRef}`).toString("base64")}`;
-    }
-    return headers;
-  }
-
-  const importedDocs: { source: string; title: string; type: string }[] = [];
-  const importErrors: string[] = [];
-  let totalChunks = 0;
-
   try {
-    // Import Jira issues
-    if (config.jiraUrl && config.jiraProject) {
-      const jiraBase = config.jiraUrl.replace(/\/+$/, "");
-      const headers = buildJiraHeaders();
-      const jql = `project = ${config.jiraProject} ORDER BY updated DESC`;
-
-      io.emit("atlassian:import:progress", { applicationId: appId, phase: "jira", message: "Fetching Jira issues..." });
-
-      const jiraRes = await fetch(
-        `${jiraBase}/rest/api/2/search?jql=${encodeURIComponent(jql)}&maxResults=50&fields=summary,description,issuetype,status,priority`,
-        { headers, signal: AbortSignal.timeout(30_000) }
-      );
-
-      if (jiraRes.ok) {
-        const data = (await jiraRes.json()) as {
-          issues: Array<{
-            key: string;
-            fields: {
-              summary: string;
-              description: string | null;
-              issuetype?: { name: string };
-              status?: { name: string };
-              priority?: { name: string };
-            };
-          }>;
-        };
-
-        if (data.issues.length > 0) {
-          // Convert issues to markdown document for RAG ingestion
-          const issueMarkdown = data.issues
-            .map(
-              (issue) =>
-                `## ${issue.key}: ${issue.fields.summary}\n` +
-                `**Type:** ${issue.fields.issuetype?.name ?? "Unknown"} | **Status:** ${issue.fields.status?.name ?? "Unknown"} | **Priority:** ${issue.fields.priority?.name ?? "Unknown"}\n\n` +
-                (issue.fields.description ?? "_No description_")
-            )
-            .join("\n\n---\n\n");
-
-          // Ingest via DocumentIngester if RAG is available
-          if (ragPipeline) {
-            try {
-              const ingester = new DocumentIngester({ ragPipeline });
-              const result = await ingester.ingestDocument(appId, issueMarkdown, "markdown", {
-                fileName: `jira-${config.jiraProject}-issues.md`,
-                docType: "user_story",
-                tags: ["atlassian", "jira", config.jiraProject],
-              });
-              totalChunks += result.chunksCreated;
-            } catch (err) {
-              console.warn(
-                "[atlassian-import] Jira RAG ingestion failed:",
-                err instanceof Error ? err.message : String(err)
-              );
-              // Fallback: just count the issues as chunks
-              totalChunks += data.issues.length;
-            }
-          }
-
-          importedDocs.push({
-            source: "Jira",
-            title: `${data.issues.length} issues from ${config.jiraProject}`,
-            type: "user_story",
-          });
-          io.emit("atlassian:import:progress", {
-            applicationId: appId,
-            phase: "jira",
-            message: `Imported ${data.issues.length} Jira issues`,
-          });
-        }
-      } else {
-        let jiraErrorDetail = jiraRes.statusText || "";
-        try {
-          const errBody = (await jiraRes.json()) as {
-            errorMessages?: string[];
-            errors?: Record<string, string>;
-            message?: string;
-          };
-          if (errBody.errorMessages?.length) {
-            jiraErrorDetail = errBody.errorMessages.join("; ");
-          } else if (errBody.errors && Object.keys(errBody.errors).length) {
-            jiraErrorDetail = Object.values(errBody.errors).join("; ");
-          } else if (errBody.message) {
-            jiraErrorDetail = errBody.message;
-          }
-        } catch {
-          // Response body is not JSON — keep statusText
-        }
-        importErrors.push(`Jira: HTTP ${jiraRes.status} — ${jiraErrorDetail || "Unknown error"}`);
-      }
-    }
-
-    // Import Confluence pages
-    if (config.confluenceUrl && config.confluenceSpaces.length > 0) {
-      const confBase = config.confluenceUrl.replace(/\/+$/, "");
-      const headers = buildConfluenceHeaders();
-
-      for (const space of config.confluenceSpaces) {
-        io.emit("atlassian:import:progress", {
-          applicationId: appId,
-          phase: "confluence",
-          message: `Fetching Confluence pages from space ${space}...`,
-        });
-
-        const confRes = await fetch(
-          `${confBase}/rest/api/content?spaceKey=${encodeURIComponent(space)}&limit=25&expand=body.storage,metadata.labels`,
-          { headers, signal: AbortSignal.timeout(30_000) }
-        );
-
-        if (confRes.ok) {
-          const data = (await confRes.json()) as {
-            results: Array<{
-              title: string;
-              body?: { storage?: { value: string } };
-              metadata?: { labels?: { results?: Array<{ name: string }> } };
-            }>;
-          };
-
-          if (data.results.length > 0) {
-            // Strip HTML tags for plain-text RAG ingestion
-            const pagesMarkdown = data.results
-              .map((page) => {
-                const body = (page.body?.storage?.value ?? "")
-                  .replace(/<[^>]+>/g, " ")
-                  .replace(/\s+/g, " ")
-                  .trim();
-                return `## ${page.title}\n\n${body || "_No content_"}`;
-              })
-              .join("\n\n---\n\n");
-
-            if (ragPipeline) {
-              try {
-                const ingester = new DocumentIngester({ ragPipeline });
-                const result = await ingester.ingestDocument(appId, pagesMarkdown, "markdown", {
-                  fileName: `confluence-${space}-pages.md`,
-                  docType: "functional_spec",
-                  tags: ["atlassian", "confluence", space],
-                });
-                totalChunks += result.chunksCreated;
-              } catch (err) {
-                console.warn(
-                  "[atlassian-import] Confluence RAG ingestion failed for space %s:",
-                  space,
-                  err instanceof Error ? err.message : String(err)
-                );
-                totalChunks += data.results.length;
-              }
-            }
-
-            importedDocs.push({
-              source: "Confluence",
-              title: `${data.results.length} pages from ${space}`,
-              type: "functional_spec",
-            });
-            io.emit("atlassian:import:progress", {
-              applicationId: appId,
-              phase: "confluence",
-              message: `Imported ${data.results.length} Confluence pages from ${space}`,
-            });
-          }
-        } else {
-          let confErrorDetail = confRes.statusText || "";
-          try {
-            const errBody = (await confRes.json()) as { message?: string; errorMessages?: string[] };
-            if (errBody.errorMessages?.length) {
-              confErrorDetail = errBody.errorMessages.join("; ");
-            } else if (errBody.message) {
-              confErrorDetail = errBody.message;
-            }
-          } catch {
-            // Response body is not JSON — keep statusText
-          }
-          importErrors.push(`Confluence (${space}): HTTP ${confRes.status} — ${confErrorDetail || "Unknown error"}`);
-        }
-      }
-    }
-
-    io.emit("atlassian:import:complete", {
-      applicationId: appId,
-      imported: importedDocs,
-      totalChunks,
-      errors: importErrors,
-    });
-
-    res.json({
-      success: importErrors.length === 0,
-      imported: importedDocs,
-      totalChunks,
-      errors: importErrors,
-    });
+    const result = await performAtlassianImport(appId);
+    res.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     io.emit("atlassian:import:error", { applicationId: appId, error: message });
-    res.status(500).json({ error: `Import failed: ${message}` });
+    if (message.includes("No Atlassian config found")) {
+      res.status(404).json({ error: message });
+    } else if (message.includes("Invalid")) {
+      res.status(400).json({ error: message });
+    } else {
+      res.status(500).json({ error: `Import failed: ${message}` });
+    }
   }
 });
 

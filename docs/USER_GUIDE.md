@@ -87,6 +87,14 @@
   - [Linking Criteria to Tests](#linking-criteria-to-tests)
   - [Coverage Reports](#coverage-reports)
 - [Setup Wizard](#setup-wizard)
+- [Data Sources (JDBC)](#data-sources-jdbc)
+  - [Configuring Data Sources](#configuring-data-sources)
+  - [Ingesting Schema Data](#ingesting-schema-data)
+- [Atlassian Re-Import](#atlassian-re-import)
+- [Microsoft 365 Integration](#microsoft-365-integration)
+- [Sync Scheduling](#sync-scheduling)
+  - [Creating a Sync Schedule](#creating-a-sync-schedule)
+  - [How Sync Jobs Work](#how-sync-jobs-work)
 - [Development](#development)
   - [Project Structure](#project-structure)
   - [Running Tests](#running-tests)
@@ -2031,6 +2039,122 @@ The scanner reads config files from your repository — no AI calls, just regex-
 |--------|----------|-------------|
 | `GET` | `/api/talos/applications/:appId/intelligence` | Get the latest intelligence report |
 | `POST` | `/api/talos/applications/:appId/intelligence/refresh` | Trigger a new scan |
+
+---
+
+## Data Sources (JDBC)
+
+TALOS supports connecting to external databases via JDBC for schema ingestion into the RAG knowledge base. This lets the test generator reason over your application's database schema.
+
+### Configuring Data Sources
+
+1. Navigate to the **Setup Wizard** for your application (or the Data Sources tab)
+2. Add a JDBC data source:
+   - **Label** — Human-readable name (e.g., "Production DB")
+   - **Driver Type** — `postgresql`, `mysql`, `oracle`, `sqlserver`, `db2`, `h2`, `sqlite`
+   - **JDBC URL** — Connection string (e.g., `jdbc:postgresql://host:5432/mydb`)
+   - **Vault References** — Username and password vault refs for secure credential storage
+3. Click **Test Connection** to validate connectivity before saving
+
+### Ingesting Schema Data
+
+Once data sources are configured and active:
+
+```bash
+# Trigger schema ingestion via API
+curl -X POST http://localhost:3000/api/talos/applications/{appId}/datasources/ingest
+```
+
+Schema ingestion is rate-limited to once per 60 seconds per application. The ingested schema data appears as `schema` type chunks in the RAG knowledge base.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/talos/applications/:appId/datasources/test` | Test JDBC connection params (before saving) |
+| `POST` | `/api/talos/applications/:appId/datasources/ingest` | Ingest all active JDBC schemas into RAG |
+
+---
+
+## Atlassian Re-Import
+
+The Atlassian Settings panel allows you to re-import Jira issues and Confluence pages on demand.
+
+### Re-Importing Data
+
+1. Navigate to the **Atlassian Settings** panel for your application
+2. Click **Re-import Data** to fetch the latest issues and pages
+3. A progress indicator shows the import phases (Jira → Confluence)
+4. Imported data is ingested into the RAG knowledge base for test generation context
+
+Re-imports are rate-limited to once per 60 seconds per application. The last import timestamp is displayed in the panel.
+
+---
+
+## Microsoft 365 Integration
+
+The **M365 Panel** allows you to search and import documents from SharePoint, OneDrive, and Teams into your application's RAG knowledge base.
+
+### Prerequisites
+
+- Set `M365_ENABLED=true` in your environment
+- Complete browser authentication via the M365 auth flow
+
+### Searching & Importing Documents
+
+1. Open the **Knowledge** panel for your application
+2. Find the **Microsoft 365 Documents** section
+3. Enter a search query (e.g., "API specification" or "user requirements")
+4. Click **Search** to query across SharePoint, OneDrive, and Teams
+5. Click **Import** on any result to ingest it into the knowledge base
+
+Imported documents are tagged with `m365` and `imported` for easy filtering. The panel shows "Already imported" for documents that already exist in the knowledge base.
+
+> **Note:** M365 integration requires interactive user authentication. Automated sync schedules for M365 will log a warning and skip — use the M365 Panel for manual imports.
+
+---
+
+## Sync Scheduling
+
+TALOS supports scheduled re-sync for data sources, enabling automatic re-import of Atlassian data and JDBC schemas.
+
+### Creating a Sync Schedule
+
+1. Navigate to the **Sync Schedule Settings** for your application
+2. Select the data source type (`atlassian`, `jdbc`, or `m365`)
+3. Choose a schedule:
+   - **Manual** — Only triggered manually via the API or UI
+   - **Daily** — Runs once per day
+   - **Weekly** — Runs once per week
+   - **Custom** — Provide a cron expression (e.g., `0 */6 * * *` for every 6 hours)
+4. Toggle **Enabled** to activate/deactivate the schedule
+
+### How Sync Jobs Work
+
+- Each application has at most **one sync job per source type**
+- When triggered, the job calls the same business logic as the UI endpoints (no HTTP self-fetch)
+- **Retry behavior**: On failure, the job retries up to 3 times with exponential backoff (2s, 4s, 8s)
+- **M365 sync** is skipped with a warning since it requires interactive authentication
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/talos/applications/:appId/sync-jobs` | List sync jobs |
+| `POST` | `/api/talos/applications/:appId/sync-jobs` | Create/upsert sync job |
+| `PATCH` | `/api/talos/applications/:appId/sync-jobs/:id` | Update schedule/enabled |
+| `DELETE` | `/api/talos/applications/:appId/sync-jobs/:id` | Delete sync job |
+| `POST` | `/api/talos/applications/:appId/sync-jobs/:id/trigger` | Manually trigger sync |
+
+### Socket.IO Events
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `sync:started` | `{ applicationId, sourceType, jobId }` | Sync job began |
+| `sync:progress` | `{ jobId, message }` | Progress update |
+| `sync:complete` | `{ jobId, applicationId, sourceType }` | Sync completed |
+| `sync:retry` | `{ jobId, retryCount, delayMs }` | Retrying after failure |
+| `sync:failed` | `{ jobId, applicationId, error }` | All retries exhausted |
 
 ---
 

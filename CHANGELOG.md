@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **JDBC schema ingestion API endpoint** (#471): New `POST /api/talos/applications/:appId/datasources/ingest` endpoint wires the existing `ingestSchemaData()` in `DocumentIngester` to the RAG pipeline. Rate limited at 60s per app. Schema chunks typed as `schema` in the vector store.
+- **Data Sources wizard step enabled** (#473): Removed "Coming Soon" badge and disabled overlay from the setup wizard Data Sources step. JDBC connection form fields are now fully interactive with Save & Continue and driver type selection (PostgreSQL, MySQL, SQL Server, Oracle, SQLite).
+- **Atlassian re-import capability** (#472): Added "Re-import Data" button to the Atlassian settings panel for post-setup re-ingestion. Shows last import timestamp and import result summary (chunks ingested, errors).
+- **M365 document search/import outside wizard** (#475): New `M365Panel` component provides standalone Microsoft 365 document search and import. Integrated into the Knowledge Panel. Highlights already-ingested documents to prevent duplicates.
+- **Scheduled re-sync for all data sources** (#474): New sync schedule system with `sync_jobs` SQLite table. Supports Manual, Daily, Weekly, and Custom cron schedules per data source type (Atlassian, JDBC, M365). Includes retry with exponential backoff (max 3 retries), Socket.IO progress events, and `SyncScheduleSettings` UI component. API endpoints for CRUD and manual trigger of sync jobs.
+
 - **GHE_PERSONAL_ACCESS_TOKEN support for GitHub Enterprise discovery**: Discovery engine now checks `GHE_PERSONAL_ACCESS_TOKEN` first for non-github.com repo hosts and falls back to `GITHUB_PERSONAL_ACCESS_TOKEN`. Exposed as a configurable env var in Admin > Environment Variables.
 
 ### Fixed

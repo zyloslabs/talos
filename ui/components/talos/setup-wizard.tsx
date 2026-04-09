@@ -30,6 +30,7 @@ import {
   createDataSource,
   deleteDataSource,
   testDataSourceConnection,
+  testDataSourceConnectionDirect,
   getAtlassianConfig,
   saveAtlassianConfig,
   testAtlassianConnection,
@@ -1287,6 +1288,8 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<DataSourceDraft[]>([emptyDraft()]);
   const [saving, setSaving] = useState(false);
+  const [testingIdx, setTestingIdx] = useState<number | null>(null);
+  const [testResults, setTestResults] = useState<Record<number, { success: boolean; message: string }>>({});
 
   const { data: existing } = useQuery({
     queryKey: ["data-sources", appId],
@@ -1304,6 +1307,25 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, [field]: value } : d)));
   };
 
+  const handleTestConnection = async (i: number) => {
+    const draft = drafts[i];
+    if (!draft.jdbcUrl) return;
+    setTestingIdx(i);
+    setTestResults((prev) => { const next = { ...prev }; delete next[i]; return next; });
+    try {
+      const result = await testDataSourceConnectionDirect(appId, {
+        driverType: draft.driverType,
+        jdbcUrl: draft.jdbcUrl,
+        label: draft.label,
+      });
+      setTestResults((prev) => ({ ...prev, [i]: result }));
+    } catch {
+      setTestResults((prev) => ({ ...prev, [i]: { success: false, message: "Connection test failed" } }));
+    } finally {
+      setTestingIdx(null);
+    }
+  };
+
   const handleSaveAll = async () => {
     setSaving(true);
     const valid = drafts.filter((d) => d.label && d.jdbcUrl);
@@ -1316,86 +1338,99 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Badge variant="outline" className="border-amber-500 text-amber-600 dark:text-amber-400">
-          Coming Soon
-        </Badge>
-        <p className="text-sm text-muted-foreground">
-          JDBC database data sources are not yet available. This feature is under active development.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Configure JDBC database connections to enable schema-aware test generation.
+      </p>
 
-      <div className="relative">
-        {/* Disabled overlay */}
-        <div className="pointer-events-none opacity-50">
-          {existing && existing.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Existing Data Sources:</p>
-              {existing.map((ds) => (
-                <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
-                  <Database className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{ds.label}</span>
-                  <Badge variant="secondary">{ds.driverType}</Badge>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {drafts.map((draft, i) => (
-            <div key={i} className="rounded-lg border p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Data Source {i + 1}</span>
-                {drafts.length > 1 && (
-                  <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-              <Input
-                placeholder="Label (e.g., Production Oracle)"
-                value={draft.label}
-                onChange={(e) => updateDraft(i, "label", e.target.value)}
-                disabled
-              />
-              <select
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={draft.driverType}
-                onChange={(e) => updateDraft(i, "driverType", e.target.value)}
-                disabled
-              >
-                <option value="postgresql">PostgreSQL</option>
-                <option value="oracle">Oracle</option>
-                <option value="mysql">MySQL</option>
-                <option value="sqlserver">SQL Server</option>
-                <option value="sqlite">SQLite</option>
-                <option value="other">Other</option>
-              </select>
-              <Input
-                placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
-                value={draft.jdbcUrl}
-                onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
-                disabled
-              />
-              <Input
-                placeholder="Username vault ref (vault:db-user)"
-                value={draft.usernameVaultRef}
-                onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
-                disabled
-              />
-              <Input
-                placeholder="Password vault ref (vault:db-pass)"
-                value={draft.passwordVaultRef}
-                onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
-                disabled
-              />
+      {existing && existing.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Existing Data Sources:</p>
+          {existing.map((ds) => (
+            <div key={ds.id} className="flex items-center gap-2 rounded border p-2">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm">{ds.label}</span>
+              <Badge variant="secondary">{ds.driverType}</Badge>
             </div>
           ))}
         </div>
+      )}
+
+      {drafts.map((draft, i) => (
+        <div key={i} className="rounded-lg border p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Data Source {i + 1}</span>
+            {drafts.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => removeDraft(i)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+          <Input
+            placeholder="Label (e.g., Production Oracle)"
+            value={draft.label}
+            onChange={(e) => updateDraft(i, "label", e.target.value)}
+          />
+          <select
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            value={draft.driverType}
+            onChange={(e) => updateDraft(i, "driverType", e.target.value)}
+          >
+            <option value="postgresql">PostgreSQL</option>
+            <option value="oracle">Oracle</option>
+            <option value="mysql">MySQL</option>
+            <option value="sqlserver">SQL Server</option>
+            <option value="sqlite">SQLite</option>
+            <option value="other">Other</option>
+          </select>
+          <Input
+            placeholder="JDBC URL (jdbc:postgresql://host:5432/db)"
+            value={draft.jdbcUrl}
+            onChange={(e) => updateDraft(i, "jdbcUrl", e.target.value)}
+          />
+          <Input
+            placeholder="Username vault ref (vault:db-user)"
+            value={draft.usernameVaultRef}
+            onChange={(e) => updateDraft(i, "usernameVaultRef", e.target.value)}
+          />
+          <Input
+            placeholder="Password vault ref (vault:db-pass)"
+            value={draft.passwordVaultRef}
+            onChange={(e) => updateDraft(i, "passwordVaultRef", e.target.value)}
+          />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleTestConnection(i)}
+              disabled={!draft.jdbcUrl || testingIdx === i}
+            >
+              {testingIdx === i ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+              Test Connection
+            </Button>
+            {testResults[i] && (
+              <span className={`flex items-center gap-1 text-sm ${testResults[i].success ? "text-green-600" : "text-red-600"}`}>
+                {testResults[i].success ? <Check className="h-4 w-4" /> : <X className="h-4 w-4" />}
+                {testResults[i].message}
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={addDraft}>
+          + Add Data Source
+        </Button>
       </div>
 
-      <Button variant="outline" onClick={onComplete}>
-        Skip — Continue to Next Step <ChevronRight className="ml-2 h-4 w-4" />
-      </Button>
+      <div className="flex gap-2">
+        <Button onClick={handleSaveAll} disabled={saving || drafts.every((d) => !d.label || !d.jdbcUrl)}>
+          {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
+        </Button>
+        <Button variant="outline" onClick={onComplete}>
+          Skip — Continue to Next Step <ChevronRight className="ml-2 h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }
