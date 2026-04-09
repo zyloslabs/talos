@@ -15,6 +15,11 @@ import { InterviewEngine } from "./interview/interview-engine.js";
 import { PomGenerator } from "./generator/pom-generator.js";
 import { DataSeeder } from "./generator/data-seeder.js";
 import { TotpGenerator, EmailProvider } from "./tools/email-otp.js";
+import { SecurityScanner } from "./security/index.js";
+import { AccessibilityScanner } from "./accessibility/index.js";
+import type { WcagLevel } from "./accessibility/index.js";
+import { VisualRegressionEngine } from "./visual/index.js";
+import { PerformanceCollector } from "./performance/index.js";
 
 // ── Tool Definition Type ──────────────────────────────────────────────────────
 
@@ -224,6 +229,35 @@ const listCriteriaSchema = z.object({
 
 const deleteCriteriaSchema = z.object({
   id: z.string(),
+});
+
+// ── Non-Functional Testing Schemas (#490) ─────────────────────────────────────
+
+const securityScanSchema = z.object({
+  url: z.string().url(),
+  headers: z.record(z.string(), z.string()).optional(),
+  body: z.string().optional(),
+  statusCode: z.number().optional(),
+});
+
+const accessibilityScanSchema = z.object({
+  url: z.string().url(),
+  htmlContent: z.string().min(1),
+  targetLevel: z.enum(["A", "AA", "AAA"]).optional(),
+});
+
+const visualCompareSchema = z.object({
+  appId: z.string(),
+  pageId: z.string(),
+  screenshotBase64: z.string().min(1),
+  mode: z.enum(["baseline", "compare"]).optional(),
+  threshold: z.number().min(0).max(100).optional(),
+});
+
+const performanceCaptureSchema = z.object({
+  rawEntries: z.array(z.record(z.string(), z.unknown())),
+  baselineUrl: z.string().url().optional(),
+  baselineMetrics: z.record(z.string(), z.unknown()).optional(),
 });
 
 // ── Tool Factory ──────────────────────────────────────────────────────────────
@@ -1292,6 +1326,179 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
         return {
           text: JSON.stringify({ code, expiresInSeconds: parsed.period ?? 30 }, null, 2),
         };
+      },
+    },
+
+    // ── Security Scanning (#492) ──────────────────────────────────────────────
+    {
+      name: "talos_security_scan",
+      description:
+        "Run passive security checks on a page response — checks headers, mixed content, exposed secrets, and misconfigurations. Maps findings to OWASP Top 10.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Page URL" },
+          headers: { type: "object", description: "HTTP response headers" },
+          body: { type: "string", description: "HTML body content" },
+          statusCode: { type: "number", description: "HTTP status code" },
+        },
+        required: ["url"],
+      },
+      zodSchema: securityScanSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = securityScanSchema.parse(args);
+        const scanner = new SecurityScanner();
+        const result = scanner.scan({
+          url: parsed.url,
+          headers: parsed.headers ?? {},
+          body: parsed.body ?? "",
+          statusCode: parsed.statusCode ?? 200,
+        });
+        return { text: JSON.stringify(result, null, 2) };
+      },
+    },
+
+    // ── Accessibility Scanning (#493) ─────────────────────────────────────────
+    {
+      name: "talos_accessibility_scan",
+      description:
+        "Run WCAG accessibility checks on HTML content — checks images, forms, headings, keyboard, contrast, and ARIA. Returns violations with WCAG criteria and score.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Page URL" },
+          htmlContent: { type: "string", description: "Full HTML content of the page" },
+          targetLevel: {
+            type: "string",
+            enum: ["A", "AA", "AAA"],
+            description: "WCAG conformance level (default AA)",
+          },
+        },
+        required: ["url", "htmlContent"],
+      },
+      zodSchema: accessibilityScanSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = accessibilityScanSchema.parse(args);
+        const scanner = new AccessibilityScanner();
+        const result = scanner.scan(
+          parsed.htmlContent,
+          parsed.url,
+          (parsed.targetLevel as WcagLevel) ?? "AA"
+        );
+        return { text: JSON.stringify(result, null, 2) };
+      },
+    },
+
+    // ── Visual Regression (#494) ──────────────────────────────────────────────
+    {
+      name: "talos_visual_compare",
+      description:
+        "Capture a visual baseline or compare a screenshot against an existing baseline. Uses pixel-level comparison with configurable threshold.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          appId: { type: "string", description: "Application identifier" },
+          pageId: { type: "string", description: "Page identifier" },
+          screenshotBase64: { type: "string", description: "Base64-encoded PNG screenshot" },
+          mode: {
+            type: "string",
+            enum: ["baseline", "compare"],
+            description: "Mode: 'baseline' to store, 'compare' to diff (default: compare)",
+          },
+          threshold: {
+            type: "number",
+            description: "Diff threshold percentage (0-100, default 0.1)",
+          },
+        },
+        required: ["appId", "pageId", "screenshotBase64"],
+      },
+      zodSchema: visualCompareSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = visualCompareSchema.parse(args);
+        const engine = new VisualRegressionEngine({ threshold: parsed.threshold });
+        const buffer = Buffer.from(parsed.screenshotBase64, "base64");
+
+        if (parsed.mode === "baseline") {
+          const baseline = engine.captureBaseline(parsed.appId, parsed.pageId, buffer);
+          return { text: JSON.stringify(baseline, null, 2) };
+        }
+
+        try {
+          const result = engine.compare(parsed.appId, parsed.pageId, buffer, {
+            threshold: parsed.threshold,
+          });
+          return { text: JSON.stringify(result, null, 2) };
+        } catch (err) {
+          return {
+            text: err instanceof Error ? err.message : String(err),
+            isError: true,
+          };
+        }
+      },
+    },
+
+    // ── Performance Capture (#495) ────────────────────────────────────────────
+    {
+      name: "talos_performance_capture",
+      description:
+        "Process raw Performance API entries into structured Web Vitals metrics (LCP, INP, CLS, TTFB, TBT). Optionally compare against a baseline.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          rawEntries: {
+            type: "array",
+            items: { type: "object" },
+            description: "Raw Performance API entries from the browser",
+          },
+          baselineUrl: {
+            type: "string",
+            description: "URL of the baseline page (for comparison)",
+          },
+          baselineMetrics: {
+            type: "object",
+            description: "Previous baseline metrics to compare against",
+          },
+        },
+        required: ["rawEntries"],
+      },
+      zodSchema: performanceCaptureSchema,
+      category: "testing",
+      riskLevel: "low",
+      source: "talos",
+      handler: async (args) => {
+        const parsed = performanceCaptureSchema.parse(args);
+        const collector = new PerformanceCollector();
+        const entries = parsed.rawEntries as Array<{
+          name: string;
+          entryType: string;
+          startTime: number;
+          duration: number;
+          [key: string]: unknown;
+        }>;
+        const metrics = collector.captureMetrics(entries);
+
+        if (parsed.baselineMetrics && parsed.baselineUrl) {
+          const baseline = {
+            url: parsed.baselineUrl,
+            metrics: parsed.baselineMetrics as unknown as import("./performance/types.js").PerformanceMetrics,
+            capturedAt: new Date().toISOString(),
+          };
+          const comparison = collector.compareWithBaseline(metrics, baseline);
+          return {
+            text: JSON.stringify({ metrics, comparison }, null, 2),
+          };
+        }
+
+        return { text: JSON.stringify({ metrics }, null, 2) };
       },
     },
   ];

@@ -1173,6 +1173,10 @@ interface ToolDefinition {
 | `talos_create_temp_email` | LOW | — | Create a disposable temporary email for verification testing |
 | `talos_wait_for_otp` | LOW | `emailId, maxWaitMs?` | Poll a temp email inbox for verification/OTP codes |
 | `talos_generate_totp` | LOW | `secret, digits?, period?, algorithm?` | Generate a TOTP code from a secret for MFA testing |
+| `talos_security_scan` | MEDIUM | `url, headers?, body?` | Scan HTTP response for OWASP Top 10 security vulnerabilities (headers, mixed content, exposed secrets, misconfigurations) |
+| `talos_accessibility_scan` | MEDIUM | `html, url?, level?` | Check HTML against WCAG 2.1 rules (A/AA/AAA) — img-alt, form-label, heading-order, button-name, etc. |
+| `talos_visual_compare` | MEDIUM | `applicationId, pageId, screenshotBase64, tolerance?` | Pixel-level visual regression comparison against stored baseline PNG |
+| `talos_performance_capture` | MEDIUM | `entries, url?, thresholds?` | Capture Core Web Vitals (LCP, INP, CLS, FID, TTFB, TBT) from raw performance entries |
 
 ---
 
@@ -1559,7 +1563,20 @@ Endpoints for JDBC data source ingestion and scheduled re-sync jobs:
 
 ### Quality Gates
 
-- **692 tests** (backend) across 32 test files
+- **1508 tests** (backend) across 73 test files
 - **Lint**: ESLint with @typescript-eslint
 - **Type checking**: `tsc --noEmit` with strict mode
 - **Build verification**: Next.js build for UI
+
+### Non-Functional Testing Modules
+
+| Module | Path | Purpose |
+|--------|------|---------|
+| `SecurityScanner` | `src/talos/security/` | OWASP Top 10 analysis — missing security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy), mixed content, exposed secrets (AWS keys, JWT, private keys, API keys), server misconfigurations. Risk score 0–100. |
+| `AccessibilityScanner` | `src/talos/accessibility/` | WCAG 2.1 compliance — 7 rules (img-alt, form-label, html-lang, heading-order, button-name, tabindex, color-contrast-meta). A/AA/AAA level filtering. Compliance score 0–100. |
+| `VisualRegressionEngine` | `src/talos/visual/` | Pixel-level PNG comparison with per-channel tolerance, BFS diff region detection, baseline storage at `~/.talos/baselines/{appId}/{pageId}.png`. Pure TypeScript PNG parsing (no native dependencies). |
+| `PerformanceCollector` | `src/talos/performance/` | Core Web Vitals capture (LCP, INP, CLS, FID, TTFB, TBT, domContentLoaded, pageLoad) from raw performance entries. Baseline comparison with 10% regression threshold. Google CWV default thresholds. |
+
+### GitHub Action (`action/`)
+
+Composite GitHub Action for CI pipeline integration. Triggers test runs via `POST /api/talos/applications/:appId/run`, polls run status, and annotates failures. Inputs: `talos-url`, `app-id`, `suite-id`, `api-key`, `timeout`, `fail-on-regression`.

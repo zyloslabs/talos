@@ -70,6 +70,22 @@ export { DataSeeder } from "./generator/index.js";
 export { TotpGenerator, EmailProvider } from "./tools/index.js";
 export { DeviceEmulationManager } from "./tools/index.js";
 
+// ── Security Testing (#492) ───────────────────────────────────────────────────
+
+export { SecurityScanner } from "./security/index.js";
+
+// ── Accessibility Testing (#493) ──────────────────────────────────────────────
+
+export { AccessibilityScanner } from "./accessibility/index.js";
+
+// ── Visual Regression Testing (#494) ──────────────────────────────────────────
+
+export { VisualRegressionEngine } from "./visual/index.js";
+
+// ── Performance Testing (#495) ────────────────────────────────────────────────
+
+export { PerformanceCollector, DEFAULT_THRESHOLDS } from "./performance/index.js";
+
 // ── M365 Integration ──────────────────────────────────────────────────────────
 
 export { BrowserAuth } from "./m365/index.js";
