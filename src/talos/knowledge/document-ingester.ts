@@ -202,7 +202,7 @@ export class DocumentIngester {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      const headingMatch = line.match(/^(#{1,6})\s+([^\r\n]+)$/);
 
       if (headingMatch && currentLines.length > 0) {
         // Flush the previous section

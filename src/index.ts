@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { createServer } from "node:http";
 import { mkdirSync, appendFileSync, readdirSync, readFileSync, statSync, existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import express from "express";
 import { Server as SocketIOServer } from "socket.io";
 import Database from "better-sqlite3";
@@ -1857,6 +1857,8 @@ app.get("/api/talos/sessions", (_req, res) => {
       if (!file.endsWith(".jsonl")) continue;
       const id = file.replace(".jsonl", "");
       const filePath = join(SESSIONS_DIR, file);
+      // Prevent path traversal: verify resolved path stays within SESSIONS_DIR
+      if (!resolve(filePath).startsWith(resolve(SESSIONS_DIR) + sep)) continue;
       const stat = statSync(filePath);
       const content = readFileSync(filePath, "utf-8");
       const lines = content.trim().split("\n").filter(Boolean);
