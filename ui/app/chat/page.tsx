@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSocket } from "@/lib/socket";
 import { getChatSession } from "@/lib/api";
@@ -31,7 +31,12 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // Stable hydration-safe ID to seed the initial conversation (#510)
+  const reactId = useId();
   const { subscribe, emit, isConnected } = useSocket();
+
+  // Resolve conversation ID: use explicit state if set, otherwise derive from React's useId
+  const resolvedConversationId = conversationId || `chat-${reactId.replace(/:/g, "")}`;
 
   // Look up active session title from session list (#515)
   const { data: sessions } = useQuery({
@@ -39,13 +44,8 @@ export default function ChatPage() {
     queryFn: getChatSessions,
     refetchInterval: 10_000,
   });
-  const activeSession = sessions?.find((s) => s.id === conversationId);
+  const activeSession = sessions?.find((s) => s.id === resolvedConversationId);
   const sessionTitle = activeSession?.preview || (messages.length > 0 ? messages[0].content.substring(0, 50) : undefined);
-
-  // Generate initial conversation ID on client only to avoid SSR/CSR hydration mismatch (#510)
-  useEffect(() => {
-    setConversationId((prev) => prev || `chat-${Date.now()}`);
-  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -103,7 +103,7 @@ export default function ChatPage() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, msg]);
-    emit("chat:message", { message: input.trim(), conversationId, model: selectedModel });
+    emit("chat:message", { message: input.trim(), conversationId: resolvedConversationId, model: selectedModel });
     setInput("");
   };
 
@@ -138,14 +138,14 @@ export default function ChatPage() {
       <div className="flex-1 flex">
         {sidebarOpen && (
           <SessionSidebar
-            activeSessionId={conversationId}
+            activeSessionId={resolvedConversationId}
             onSelectSession={handleSelectSession}
             onNewChat={handleNewChat}
           />
         )}
         <div className="flex-1 flex flex-col">
           <ChatHeader
-            conversationId={conversationId}
+            conversationId={resolvedConversationId}
             sessionTitle={sessionTitle}
             onClearChat={handleNewChat}
             selectedModel={selectedModel}
