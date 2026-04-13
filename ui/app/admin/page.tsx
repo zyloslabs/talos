@@ -276,6 +276,12 @@ function AuthPanel() {
 function PersonalityPanel() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["personality"], queryFn: getPersonalities });
+  // Deduplicate personalities by ID to prevent duplicate entries (#513)
+  const personalities = data?.personalities
+    ? (data.personalities as Personality[]).filter(
+        (p: Personality, i: number, arr: Personality[]) => arr.findIndex((x: Personality) => x.id === p.id) === i
+      )
+    : [];
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -303,7 +309,7 @@ function PersonalityPanel() {
 
   return (
     <div className="space-y-4">
-      {data?.personalities.map((p: Personality) => (
+      {personalities.map((p: Personality) => (
         <div key={p.id} className="border rounded p-3 space-y-2">
           <div className="flex items-center justify-between">
             <span className="font-medium">{p.name}</span>

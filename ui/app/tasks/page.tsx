@@ -88,7 +88,7 @@ function StatsBar({ stats }: { stats: TaskStats }) {
       ].map((s) => (
         <Card key={s.label}>
           <CardContent className="pt-4 pb-3 text-center">
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+            <p className={`text-2xl font-bold ${s.value > 0 ? s.color : "text-muted-foreground"}`}>{s.value}</p>
             <p className="text-xs text-muted-foreground">{s.label}</p>
           </CardContent>
         </Card>

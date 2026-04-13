@@ -174,7 +174,7 @@ function AddVaultRoleDialog({
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Application</label>
+            <label className="text-sm font-medium">Application <span className="text-destructive">*</span></label>
             <Select value={applicationId} onValueChange={setApplicationId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select application" />
@@ -189,7 +189,7 @@ function AddVaultRoleDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Role Name</label>
+            <label className="text-sm font-medium">Role Name <span className="text-destructive">*</span></label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -212,7 +212,7 @@ function AddVaultRoleDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Description</label>
+            <label className="text-sm font-medium">Description <span className="text-xs text-muted-foreground">(optional)</span></label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -220,7 +220,7 @@ function AddVaultRoleDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Username Reference</label>
+            <label className="text-sm font-medium">Username Reference <span className="text-destructive">*</span></label>
             <Input
               value={usernameRef}
               onChange={(e) => setUsernameRef(e.target.value)}
@@ -228,7 +228,7 @@ function AddVaultRoleDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Password Reference</label>
+            <label className="text-sm font-medium">Password Reference <span className="text-destructive">*</span></label>
             <Input
               value={passwordRef}
               onChange={(e) => setPasswordRef(e.target.value)}

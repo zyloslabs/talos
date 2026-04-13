@@ -79,7 +79,8 @@
     color-scheme: light;
   }
 
-  .dark {
+  .dark,
+  :root.dark {
     --background: 240 25% 6%;       /* ink */
     --foreground: 36 29% 94%;       /* stone */
     --card: 240 15% 10%;

@@ -183,6 +183,7 @@ export function AtlassianSettings({ appId }: { appId: string }) {
                 onChange={(e) => setJiraUsername(e.target.value)}
               />
               <Input
+                type="password"
                 placeholder="API token vault ref"
                 value={jiraApiToken}
                 onChange={(e) => setJiraApiToken(e.target.value)}
@@ -190,6 +191,7 @@ export function AtlassianSettings({ appId }: { appId: string }) {
             </>
           ) : (
             <Input
+              type="password"
               placeholder="Personal access token vault ref"
               value={jiraPersonalToken}
               onChange={(e) => setJiraPersonalToken(e.target.value)}
@@ -225,6 +227,7 @@ export function AtlassianSettings({ appId }: { appId: string }) {
                 onChange={(e) => setConfluenceUsername(e.target.value)}
               />
               <Input
+                type="password"
                 placeholder="API token vault ref"
                 value={confluenceApiToken}
                 onChange={(e) => setConfluenceApiToken(e.target.value)}
@@ -232,6 +235,7 @@ export function AtlassianSettings({ appId }: { appId: string }) {
             </>
           ) : (
             <Input
+              type="password"
               placeholder="Personal access token vault ref"
               value={confluencePersonalToken}
               onChange={(e) => setConfluencePersonalToken(e.target.value)}

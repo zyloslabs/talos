@@ -10,6 +10,7 @@ import { Sparkles, RotateCcw } from "lucide-react";
 
 interface ChatHeaderProps {
   conversationId: string;
+  sessionTitle?: string;
   onClearChat: () => void;
   applicationId?: string;
   selectedModel?: string;
@@ -18,6 +19,7 @@ interface ChatHeaderProps {
 
 export function ChatHeader({
   conversationId,
+  sessionTitle,
   onClearChat,
   applicationId,
   selectedModel,
@@ -36,7 +38,9 @@ export function ChatHeader({
   return (
     <div className="border-b px-4 py-2 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center gap-3">
-        <h2 className="text-sm font-medium truncate max-w-[200px]">{conversationId.replace(/^chat-/, "Session ")}</h2>
+        <h2 className="text-sm font-medium truncate max-w-[200px]">
+          {sessionTitle || (conversationId ? "New Conversation" : "Chat")}
+        </h2>
         <span
           title={isConnected ? "Copilot connected" : "Copilot disconnected"}
           className={`inline-block h-2 w-2 rounded-full flex-shrink-0 ${isConnected ? "bg-green-500" : "bg-red-500"}`}

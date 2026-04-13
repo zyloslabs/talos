@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import SkillsPage from "./page";
 
@@ -14,7 +14,12 @@ vi.mock("next-themes", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  getSkills: vi.fn().mockResolvedValue([]),
+  getSkills: vi.fn().mockResolvedValue([
+    { id: "s-1", name: "Criteria Generator", description: "Generate criteria", tags: ["testing"], enabled: true, requiredTools: ["tool1"], content: "" },
+    { id: "s-1", name: "Criteria Generator", description: "Generate criteria", tags: ["testing"], enabled: true, requiredTools: ["tool1"], content: "" },
+    { id: "s-2", name: "Test Planner", description: "Plan tests", tags: ["testing"], enabled: true, requiredTools: [], content: "" },
+    { id: "s-2", name: "Test Planner", description: "Plan tests", tags: ["testing"], enabled: true, requiredTools: [], content: "" },
+  ]),
   createSkill: vi.fn(),
   updateSkill: vi.fn(),
   deleteSkill: vi.fn(),
@@ -37,8 +42,16 @@ describe("SkillsPage", () => {
     expect(screen.getByText("New Skill")).toBeInTheDocument();
   });
 
-  it("shows empty state when no skills", () => {
+  // #512: Deduplicates skills by ID — API returns 4 items (2 dupes), should render 2
+  it("deduplicates skills so each appears only once", async () => {
     renderWithProviders(<SkillsPage />);
-    expect(screen.getByText("No skills configured. Create one or use a template to get started.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Criteria Generator")).toBeInTheDocument();
+    });
+    // Should show exactly 2 unique skill names, not 4 duplicates
+    const criteriaCards = screen.getAllByText("Criteria Generator");
+    expect(criteriaCards).toHaveLength(1);
+    const plannerCards = screen.getAllByText("Test Planner");
+    expect(plannerCards).toHaveLength(1);
   });
 });

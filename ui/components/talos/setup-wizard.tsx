@@ -156,8 +156,9 @@ export function SetupWizard() {
 
   return (
     <div className="space-y-6">
-      {/* Progress Bar */}
-      <div className="flex items-center gap-2">
+      {/* Progress Bar — scrollable with fade indicators (#518) */}
+      <div className="relative">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin" style={{ maskImage: "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%)", WebkitMaskImage: "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%)" }}>
         {STEPS.map((step, i) => {
           // Step 0 is always accessible; other steps require an appId
           const isDisabled = i !== 0 && !appId;
@@ -165,7 +166,7 @@ export function SetupWizard() {
           const isComplete = completedSteps.has(i);
 
           return (
-            <div key={step.label} className="flex items-center gap-2 flex-1">
+            <div key={step.label} className="flex items-center gap-2 flex-1 min-w-[120px] shrink-0">
               <button
                 onClick={() => !isDisabled && setCurrentStep(i)}
                 disabled={isDisabled}
@@ -191,6 +192,7 @@ export function SetupWizard() {
             </div>
           );
         })}
+        </div>
       </div>
 
       {/* Step Content */}
@@ -1427,9 +1429,6 @@ function DataSourcesStep({ appId, onComplete }: { appId: string; onComplete: () 
         <Button onClick={handleSaveAll} disabled={saving || drafts.every((d) => !d.label || !d.jdbcUrl)}>
           {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...</> : "Save & Continue"}
         </Button>
-        <Button variant="outline" onClick={onComplete}>
-          Skip — Continue to Next Step <ChevronRight className="ml-2 h-4 w-4" />
-        </Button>
       </div>
     </div>
   );
@@ -1784,9 +1783,6 @@ function AtlassianStep({ appId, onComplete }: { appId: string; onComplete: () =>
           ) : (
             "Save & Continue"
           )}
-        </Button>
-        <Button variant="outline" onClick={onComplete}>
-          Skip
         </Button>
       </div>
     </div>

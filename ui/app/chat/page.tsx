@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSocket } from "@/lib/socket";
+import { getChatSession } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { SessionSidebar } from "@/components/talos/session-sidebar";
 import { ChatHeader } from "@/components/talos/chat-header";
 import { RagContextIndicator } from "@/components/talos/rag-context-indicator";
+import { getChatSessions } from "@/lib/api";
 import { Send, Bot, User, Loader2 } from "lucide-react";
 
 type ContextSource = { filePath: string; score: number; snippet?: string };
@@ -24,11 +27,25 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [conversationId, setConversationId] = useState(() => `chat-${Date.now()}`);
+  const [conversationId, setConversationId] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { subscribe, emit, isConnected } = useSocket();
+
+  // Look up active session title from session list (#515)
+  const { data: sessions } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: getChatSessions,
+    refetchInterval: 10_000,
+  });
+  const activeSession = sessions?.find((s) => s.id === conversationId);
+  const sessionTitle = activeSession?.preview || (messages.length > 0 ? messages[0].content.substring(0, 50) : undefined);
+
+  // Generate initial conversation ID on client only to avoid SSR/CSR hydration mismatch (#510)
+  useEffect(() => {
+    setConversationId((prev) => prev || `chat-${Date.now()}`);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -95,9 +112,25 @@ export default function ChatPage() {
     setConversationId(`chat-${Date.now()}`);
   };
 
-  const handleSelectSession = (id: string) => {
+  const handleSelectSession = async (id: string) => {
     setConversationId(id);
     setMessages([]);
+    // Load existing messages for the selected session (#511)
+    try {
+      const session = await getChatSession(id);
+      if (session?.messages?.length) {
+        setMessages(
+          session.messages.map((m, i) => ({
+            id: `${m.role}-${i}`,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.timestamp),
+          }))
+        );
+      }
+    } catch {
+      // Session may not have persisted messages — stay on empty state
+    }
   };
 
   return (
@@ -113,6 +146,7 @@ export default function ChatPage() {
         <div className="flex-1 flex flex-col">
           <ChatHeader
             conversationId={conversationId}
+            sessionTitle={sessionTitle}
             onClearChat={handleNewChat}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}

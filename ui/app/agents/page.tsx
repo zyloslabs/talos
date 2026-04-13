@@ -129,6 +129,7 @@ function AgentCard({
   onToggle: () => void;
 }) {
   const subAgentCount = allAgents.filter((a) => a.parentAgentId === agent.id).length;
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <Card className="group">
@@ -136,7 +137,21 @@ function AgentCard({
         <div className="flex items-start justify-between">
           <div className="min-w-0">
             <CardTitle className="text-base truncate">{agent.name}</CardTitle>
-            <CardDescription className="text-xs mt-1 line-clamp-2">{agent.description || "No description"}</CardDescription>
+            <CardDescription
+              className={`text-xs mt-1 ${expanded ? "" : "line-clamp-2"} cursor-pointer`}
+              onClick={() => setExpanded(!expanded)}
+              title={expanded ? "Click to collapse" : "Click to expand"}
+            >
+              {agent.description || "No description"}
+            </CardDescription>
+            {!expanded && agent.description && agent.description.length > 80 && (
+              <button
+                className="text-xs text-primary hover:underline mt-0.5"
+                onClick={() => setExpanded(true)}
+              >
+                Show more
+              </button>
+            )}
           </div>
           <Switch checked={agent.enabled} onCheckedChange={onToggle} />
         </div>
