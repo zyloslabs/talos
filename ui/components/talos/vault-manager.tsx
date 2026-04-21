@@ -35,6 +35,7 @@ import {
 import { formatRelativeTime } from "@/lib/utils";
 import { useState } from "react";
 import { KeyRound, Plus, Trash2, Edit, Shield, User, UserCog } from "lucide-react";
+import { toast } from "sonner";
 
 const roleTypeIcons: Record<string, React.ElementType> = {
   admin: Shield,
@@ -439,18 +440,42 @@ export function VaultManager() {
 
   const createMutation = useMutation({
     mutationFn: createVaultRole,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role created");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to create vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TalosVaultRole> }) =>
       updateVaultRole(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role updated");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to update vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteVaultRole,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role deleted");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to delete vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const getAppName = (applicationId: string) => {

@@ -11,6 +11,13 @@ vi.mock("@/lib/api", () => ({
   deleteVaultRole: vi.fn(),
 }));
 
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
 vi.mock("@/lib/utils", async () => {
   const actual = (await vi.importActual<typeof import("@/lib/utils")>("@/lib/utils"));
   return {
@@ -143,5 +150,83 @@ describe("VaultManager — EditVaultRoleDialog (#531)", () => {
     fireEvent.change(nameInput, { target: { value: "   " } });
     const saveBtn = screen.getByRole("button", { name: /save changes/i });
     expect(saveBtn).toBeDisabled();
+  });
+});
+
+describe("VaultManager — mutation toasts (#534 review)", () => {
+  beforeEach(async () => {
+    const api = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.clearAllMocks();
+    vi.mocked(toast.success).mockClear();
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(api.getApplications).mockResolvedValue([SAMPLE_APP]);
+    vi.mocked(api.getVaultRoles).mockResolvedValue([SAMPLE_ROLE]);
+  });
+
+  it("emits success toast when updateVaultRole succeeds", async () => {
+    const api = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api.updateVaultRole).mockResolvedValue(SAMPLE_ROLE);
+
+    wrap(<VaultManager />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit/i }));
+    await screen.findByText("Edit Vault Role");
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Vault role updated"));
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+  });
+
+  it("emits error toast when updateVaultRole fails", async () => {
+    const api = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api.updateVaultRole).mockRejectedValue(new Error("boom"));
+
+    wrap(<VaultManager />);
+    fireEvent.click(await screen.findByRole("button", { name: /edit/i }));
+    await screen.findByText("Edit Vault Role");
+    fireEvent.click(screen.getByRole("button", { name: /save changes/i }));
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Failed to update vault role",
+        expect.objectContaining({ description: "boom" }),
+      ),
+    );
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
+  });
+
+  it("emits success toast when deleteVaultRole succeeds", async () => {
+    const api = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api.deleteVaultRole).mockResolvedValue(null);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    wrap(<VaultManager />);
+    const deleteBtn = await screen.findByRole("button", { name: /delete/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Vault role deleted"));
+    confirmSpy.mockRestore();
+  });
+
+  it("emits error toast when deleteVaultRole fails", async () => {
+    const api = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api.deleteVaultRole).mockRejectedValue(new Error("nope"));
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    wrap(<VaultManager />);
+    const deleteBtn = await screen.findByRole("button", { name: /delete/i });
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        "Failed to delete vault role",
+        expect.objectContaining({ description: "nope" }),
+      ),
+    );
+    confirmSpy.mockRestore();
   });
 });
