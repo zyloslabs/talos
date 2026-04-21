@@ -331,6 +331,16 @@ export class ExportEngine {
    * Returns the final compressed file size in bytes.
    */
   private writeZipArchive(outputPath: string, package_: PackageContents): Promise<number> {
+    // Reject empty input up-front — an archive with no entries is almost
+    // always a bug (caller passed an empty test list or the package builder
+    // produced nothing). Surfacing this here prevents downstream consumers
+    // from receiving a zero-entry ZIP that unzips to nothing.
+    if (!package_.files || package_.files.length === 0) {
+      return Promise.reject(
+        new Error("writeZipArchive: refusing to create empty archive (no package files)")
+      );
+    }
+
     return new Promise<number>((resolve, reject) => {
       const output = createWriteStream(outputPath);
       const archive = archiver("zip", { zlib: { level: 9 } });
