@@ -42,7 +42,13 @@ export function GenerationPathBadge({ path, chunkCount, className }: GenerationP
   const meta = META[path as GenerationPath];
   if (!meta) {
     return (
-      <Badge variant="outline" className={className} data-testid="generation-path-badge" data-path={path}>
+      <Badge
+        variant="outline"
+        className={className}
+        data-testid="generation-path-badge"
+        data-path={path}
+        aria-label={`Generation path: ${String(path)}`}
+      >
         <Sparkles className="mr-1 h-3 w-3" />
         {String(path)}
       </Badge>

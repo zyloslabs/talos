@@ -29,6 +29,12 @@ export async function mockApi(page: Page, specs: ApiRouteSpec[]): Promise<void> 
   for (const spec of specs) {
     await page.route(spec.url, async (route) => {
       const method = spec.method ?? "GET";
+      // When the request method does not match the spec, fall back so a later
+      // route handler can match. NOTE: if no other handler matches, the
+      // request is forwarded to the live network — when running against a
+      // real server this can leak GET/PUT/PATCH calls. Tests that pin a
+      // single method should also register a catch-all (e.g. `method: "*"`)
+      // for the same URL pattern, or rely on the in-memory test transport.
       if (method !== "*" && route.request().method() !== method) {
         return route.fallback();
       }

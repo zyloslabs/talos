@@ -59,7 +59,7 @@ export class VaultPage {
   /** Locate the card for a role by its visible name. */
   roleCard(name: string): Locator {
     return this.page
-      .locator('[class*="card"], div')
+      .getByTestId("vault-role-card")
       .filter({ has: this.page.getByRole("heading", { name, exact: true }) })
       .first();
   }

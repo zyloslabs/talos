@@ -61,7 +61,7 @@ function VaultRoleCard({
   const Icon = roleTypeIcons[role.roleType] || User;
 
   return (
-    <Card className="animate-slide-in">
+    <Card className="animate-slide-in" data-testid="vault-role-card" data-role-name={role.name}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

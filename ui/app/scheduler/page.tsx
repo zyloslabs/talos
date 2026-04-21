@@ -49,7 +49,7 @@ export default function SchedulerPage() {
 
         <div className="space-y-4">
           {(jobs as ScheduledJob[] | undefined)?.map((j) => (
-            <Card key={j.id}>
+            <Card key={j.id} data-testid="scheduler-job-card" data-job-name={j.name}>
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div>

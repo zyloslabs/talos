@@ -31,7 +31,6 @@ test.beforeEach(async ({ page }) => {
   resetFactoryCounter();
   await mockApi(page, [
     { url: "**/api/admin/scheduler/jobs", method: "GET", body: jobs },
-    { url: "**/api/admin/scheduler/jobs", method: "GET", body: jobs },
   ]);
 });
 

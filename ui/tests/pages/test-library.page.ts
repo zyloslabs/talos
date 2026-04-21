@@ -3,6 +3,11 @@ import type { Page, Locator } from "@playwright/test";
 /**
  * Page Object for the Test Library at `/talos/tests` (epic #537 / #539).
  * Backed by `ui/components/talos/test-matrix.tsx`.
+ *
+ * Locator strategy: each TestCard renders with `data-testid="test-card"` and
+ * `data-test-name="<test name>"`. We avoid CSS-class / animation selectors and
+ * fragile xpath ancestor walks — instead scope by the test-id and filter by
+ * the visible heading text.
  */
 export class TestLibraryPage {
   readonly page: Page;
@@ -22,7 +27,7 @@ export class TestLibraryPage {
     this.heading = page.getByRole("heading", { name: "Test Library" });
     this.appFilter = page.getByRole("combobox").first();
     this.typeTabs = page.getByRole("tab");
-    this.testCards = page.locator('[class*="animate-slide-in"]');
+    this.testCards = page.getByTestId("test-card");
     this.exportButton = page.getByRole("button", { name: /Export to GitHub/i });
 
     this.codeDialog = page.getByRole("dialog");
@@ -34,13 +39,17 @@ export class TestLibraryPage {
     await this.page.goto("/talos/tests");
   }
 
+  /** Locate a test card by the visible test name. */
   card(name: string): Locator {
-    return this.page.getByRole("heading", { level: 3, name }).locator("xpath=ancestor::*[contains(@class,'animate-slide-in')]").first();
+    return this.page
+      .getByTestId("test-card")
+      .filter({ has: this.page.getByRole("heading", { name }) })
+      .first();
   }
 
+  /** Backwards-compatible alias for callers using the previous API. */
   cardByText(name: string): Locator {
-    // Each TestCard is wrapped in a Card with the test name as CardTitle.
-    return this.page.locator(`text="${name}"`).first().locator("xpath=ancestor::*[contains(@class,'animate-slide-in')]").first();
+    return this.card(name);
   }
 
   runButtonForCard(card: Locator): Locator {
@@ -52,6 +61,6 @@ export class TestLibraryPage {
   }
 
   generationBadge(name: string): Locator {
-    return this.cardByText(name).locator('[data-testid="generation-path-badge"]');
+    return this.card(name).getByTestId("generation-path-badge");
   }
 }

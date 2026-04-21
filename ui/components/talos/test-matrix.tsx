@@ -79,7 +79,7 @@ function TestCard({
   const passRate = runs.length > 0 ? Math.round((passCount / runs.length) * 100) : 0;
 
   return (
-    <Card className="animate-slide-in">
+    <Card className="animate-slide-in" data-testid="test-card" data-test-name={test.name}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

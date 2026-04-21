@@ -51,3 +51,4 @@ docs/research/
 
 # Agent hook runtime logs (auto-generated, not versioned)
 .github/hooks/logs/*.log
+audit_results.json
