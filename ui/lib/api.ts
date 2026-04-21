@@ -107,7 +107,20 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     }
     throw new Error(message);
   }
-  return res.json();
+  // Handle empty responses (204 No Content or any empty body) defensively.
+  // Without this guard, res.json() throws on empty bodies and React Query mutations
+  // incorrectly route to onError, skipping cache invalidation. See issue #536.
+  if (res.status === 204) {
+    return null as T;
+  }
+  if (res.headers.get("content-length") === "0") {
+    return null as T;
+  }
+  const text = await res.text();
+  if (!text) {
+    return null as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 // Applications

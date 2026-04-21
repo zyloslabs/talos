@@ -89,6 +89,34 @@ PORT=3000
 
 > **No OpenAI key needed.** Embeddings use the GitHub Models REST API with the same PAT.
 
+### Rate Limiting & Proxy Trust
+
+The backend exposes a global IP rate limiter that is applied **before** every route except `/health` and `/health/*`. When a client exceeds the budget, the server responds with HTTP **429** and this body:
+
+```json
+{ "error": "rate_limited", "retryAfterSeconds": 60 }
+```
+
+and a `Retry-After` header set to the same number of seconds (alongside the draft-7 `RateLimit-*` headers).
+
+Tunable env vars (all optional — defaults shown):
+
+| Var | Default | Meaning |
+|---|---|---|
+| `TALOS_RATE_LIMIT_WINDOW_MS` | `60000` | Sliding window length in milliseconds. |
+| `TALOS_RATE_LIMIT_MAX` | `100` | Max requests per window per client IP. |
+| `TALOS_TRUST_PROXY` | `loopback` | How to interpret `X-Forwarded-For`. See below. |
+
+`TALOS_TRUST_PROXY` accepts any Express [`trust proxy`](https://expressjs.com/en/guide/behind-proxies.html) value:
+
+- `loopback` *(default)* — trust `127.0.0.1`/`::1` only. Safe for local dev and the common nginx-on-localhost deployment.
+- `false` / `0` — disable proxy trust entirely (rate-limit keys on the socket IP, typically the proxy).
+- `true` — trust **any** proxy. ⚠ Only set this if the app is never reachable directly from the public internet; otherwise attackers can forge `X-Forwarded-For` to bypass the limiter.
+- A positive integer, e.g. `1` — trust exactly `N` hops of `X-Forwarded-For`.
+- A CIDR list, e.g. `10.0.0.0/8,172.16.0.0/12` — trust those subnets.
+
+> Both `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX` (unprefixed) were removed in the #533/#534 iteration. Only the `TALOS_`-prefixed names are read.
+
 ---
 
 ## Step 3 — Start the Servers

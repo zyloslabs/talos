@@ -1428,6 +1428,34 @@ ExportEngine.export(appId, { format, outputPath })
 
 ## Security Architecture
 
+### Global IP Rate Limiter
+
+**Location:** `src/rate-limit.ts` — wired into `src/index.ts` as the **first** `app.use()` after `express.json()` and `app.set('trust proxy', ...)`.
+
+The backend applies a single global rate limiter before every route:
+
+- **Library:** [`express-rate-limit`](https://www.npmjs.com/package/express-rate-limit) with `standardHeaders: "draft-7"` and `legacyHeaders: false`.
+- **Keying:** By `req.ip`. Because `app.set('trust proxy', …)` is configured from `TALOS_TRUST_PROXY` (default `loopback`), the limiter hashes on the real client IP when the app is deployed behind a trusted reverse proxy.
+- **Exemptions:** `GET /health` and anything under `/health/*` so liveness/readiness probes are never throttled.
+- **429 contract:** When the limit is exceeded the server responds:
+
+  ```
+  HTTP/1.1 429 Too Many Requests
+  Retry-After: <seconds>
+  RateLimit-Remaining: 0
+  RateLimit-Reset: <seconds>
+  Content-Type: application/json
+
+  { "error": "rate_limited", "retryAfterSeconds": <seconds> }
+  ```
+
+- **Config env vars:**
+  - `TALOS_RATE_LIMIT_WINDOW_MS` (default `60000`)
+  - `TALOS_RATE_LIMIT_MAX` (default `100`)
+  - `TALOS_TRUST_PROXY` (default `loopback`; accepts any Express `trust proxy` value — boolean, integer hop count, or CIDR list)
+
+The factory (`createTalosRateLimiter`) is pure and directly unit-tested in `src/rate-limit.test.ts`. `src/index.ts` is excluded from coverage, so the factory split preserves the ≥80 % coverage gate.
+
 ### Credential Protection
 
 - **Vault references**: Credentials are never stored in the database. `usernameRef` and `passwordRef` are opaque references (e.g., `vault:github-pat-myapp`) resolved at runtime via an async callback.

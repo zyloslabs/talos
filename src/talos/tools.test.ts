@@ -503,4 +503,306 @@ describe("createTalosTools", () => {
       expect(t.riskLevel).toBe("high");
     });
   });
+
+  // ── Engine wiring (#526–#529) ────────────────────────────────────────────
+
+  describe("engine wiring", () => {
+    it("run-test invokes PlaywrightRunner.executeTest when wired (#526)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "RunApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+
+      const executeTest = (await import("vitest")).vi.fn().mockResolvedValue({
+        status: "passed",
+        durationMs: 1234,
+        artifacts: { screenshots: ["a.png"], videos: [], traces: [], logs: [] },
+      });
+      const tools = createTalosTools({
+        ...env,
+        playwrightRunner: { executeTest } as unknown as import("./runner/playwright-runner.js").PlaywrightRunner,
+      });
+      const t = findTool(tools, "talos-run-test");
+      const result = await t.handler({ testId: test.id });
+      expect(executeTest).toHaveBeenCalledTimes(1);
+      const data = JSON.parse(result.text);
+      expect(data.status).toBe("passed");
+      expect(data.durationMs).toBe(1234);
+      expect(data.artifactCounts.screenshots).toBe(1);
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("run-test surfaces failed status as isError (#526)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "RunApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const executeTest = (await import("vitest")).vi.fn().mockResolvedValue({
+        status: "failed",
+        durationMs: 50,
+        errorMessage: "boom",
+        artifacts: { screenshots: [], videos: [], traces: [], logs: [] },
+      });
+      const tools = createTalosTools({
+        ...env,
+        playwrightRunner: { executeTest } as unknown as import("./runner/playwright-runner.js").PlaywrightRunner,
+      });
+      const t = findTool(tools, "talos-run-test");
+      const result = await t.handler({ testId: test.id });
+      expect(result.isError).toBe(true);
+    });
+
+    it("run-test catches runner exceptions (#526)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "RunApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const executeTest = (await import("vitest")).vi.fn().mockRejectedValue(new Error("network down"));
+      const tools = createTalosTools({
+        ...env,
+        playwrightRunner: { executeTest } as unknown as import("./runner/playwright-runner.js").PlaywrightRunner,
+      });
+      const t = findTool(tools, "talos-run-test");
+      const result = await t.handler({ testId: test.id });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("network down");
+    });
+
+    it("generate-test invokes TestGenerator.generate when wired (#527)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "GenApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const generate = (await import("vitest")).vi.fn().mockResolvedValue({
+        success: true,
+        attempts: 1,
+        test: {
+          id: "gen-1",
+          name: "Generated",
+          code: "test('g', async () => {});",
+          generationConfidence: 0.9,
+        },
+      });
+      const tools = createTalosTools({
+        ...env,
+        testGenerator: { generate } as unknown as import("./generator/test-generator.js").TestGenerator,
+      });
+      const t = findTool(tools, "talos-generate-test");
+      const result = await t.handler({ applicationId: app.id, prompt: "verify login flow" });
+      expect(generate).toHaveBeenCalledWith(
+        expect.objectContaining({ applicationId: app.id, request: "verify login flow" })
+      );
+      const data = JSON.parse(result.text);
+      expect(data.testId).toBe("gen-1");
+      expect(data.confidence).toBe(0.9);
+    });
+
+    it("generate-test reports generator failure (#527)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "GenApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const generate = (await import("vitest")).vi
+        .fn()
+        .mockResolvedValue({ success: false, attempts: 3, error: "validation failed" });
+      const tools = createTalosTools({
+        ...env,
+        testGenerator: { generate } as unknown as import("./generator/test-generator.js").TestGenerator,
+      });
+      const t = findTool(tools, "talos-generate-test");
+      const result = await t.handler({ applicationId: app.id, prompt: "verify login flow" });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("validation failed");
+    });
+
+    it("generate-test catches generator exceptions (#527)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "GenApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const generate = (await import("vitest")).vi.fn().mockRejectedValue(new Error("LLM unavailable"));
+      const tools = createTalosTools({
+        ...env,
+        testGenerator: { generate } as unknown as import("./generator/test-generator.js").TestGenerator,
+      });
+      const t = findTool(tools, "talos-generate-test");
+      const result = await t.handler({ applicationId: app.id, prompt: "verify login flow" });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("LLM unavailable");
+    });
+
+    it("discover-repository invokes DiscoveryEngine.startDiscovery when wired (#528)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "DiscApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const startDiscovery = (await import("vitest")).vi.fn().mockResolvedValue({
+        id: "job-1",
+        applicationId: app.id,
+        status: "completed",
+        filesDiscovered: 10,
+        filesIndexed: 10,
+        chunksCreated: 50,
+        errorMessage: null,
+      });
+      const tools = createTalosTools({
+        ...env,
+        discoveryEngine: {
+          startDiscovery,
+        } as unknown as import("./discovery/discovery-engine.js").DiscoveryEngine,
+      });
+      const t = findTool(tools, "talos-discover-repository");
+      const result = await t.handler({ applicationId: app.id, force: true });
+      expect(startDiscovery).toHaveBeenCalledWith(expect.objectContaining({ id: app.id }), true);
+      const data = JSON.parse(result.text);
+      expect(data.status).toBe("completed");
+      expect(data.chunksCreated).toBe(50);
+      expect(result.isError).toBeFalsy();
+    });
+
+    it("discover-repository surfaces failed job as isError (#528)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "DiscApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const startDiscovery = (await import("vitest")).vi.fn().mockResolvedValue({
+        id: "job-1",
+        applicationId: app.id,
+        status: "failed",
+        filesDiscovered: 0,
+        filesIndexed: 0,
+        chunksCreated: 0,
+        errorMessage: "auth failed",
+      });
+      const tools = createTalosTools({
+        ...env,
+        discoveryEngine: {
+          startDiscovery,
+        } as unknown as import("./discovery/discovery-engine.js").DiscoveryEngine,
+      });
+      const t = findTool(tools, "talos-discover-repository");
+      const result = await t.handler({ applicationId: app.id });
+      expect(result.isError).toBe(true);
+    });
+
+    it("discover-repository catches engine exceptions (#528)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "DiscApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const startDiscovery = (await import("vitest")).vi.fn().mockRejectedValue(new Error("rate limited"));
+      const tools = createTalosTools({
+        ...env,
+        discoveryEngine: {
+          startDiscovery,
+        } as unknown as import("./discovery/discovery-engine.js").DiscoveryEngine,
+      });
+      const t = findTool(tools, "talos-discover-repository");
+      const result = await t.handler({ applicationId: app.id });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("rate limited");
+    });
+
+    it("heal-test invokes HealingEngine.heal when wired (#529)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "HealApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = env.repo.createTestRun({ applicationId: app.id, testId: test.id, trigger: "manual" });
+      env.repo.updateTestRun(run.id, { status: "failed", errorMessage: "selector timeout" });
+
+      const heal = (await import("vitest")).vi.fn().mockResolvedValue({
+        success: true,
+        attempt: { id: "att-1", status: "applied" },
+        analysis: { rootCause: "selector changed", category: "selector-changed", confidence: 0.92 },
+        fixResult: { selectedFix: { changeDescription: "Use getByRole" } },
+        verificationRun: { status: "passed" },
+      });
+      const tools = createTalosTools({
+        ...env,
+        healingEngine: { heal } as unknown as import("./healing/healing-engine.js").HealingEngine,
+      });
+      const t = findTool(tools, "talos-heal-test");
+      const result = await t.handler({ testRunId: run.id });
+      expect(heal).toHaveBeenCalledTimes(1);
+      const data = JSON.parse(result.text);
+      expect(data.success).toBe(true);
+      expect(data.analysis.category).toBe("selector-changed");
+      expect(data.fixApplied).toBe("Use getByRole");
+      expect(data.verificationStatus).toBe("passed");
+    });
+
+    it("heal-test reports failure result (#529)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "HealApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = env.repo.createTestRun({ applicationId: app.id, testId: test.id, trigger: "manual" });
+      env.repo.updateTestRun(run.id, { status: "failed", errorMessage: "x" });
+
+      const heal = (await import("vitest")).vi.fn().mockResolvedValue({
+        success: false,
+        attempt: { id: "att-1", status: "failed" },
+        error: "no candidate fix",
+      });
+      const tools = createTalosTools({
+        ...env,
+        healingEngine: { heal } as unknown as import("./healing/healing-engine.js").HealingEngine,
+      });
+      const t = findTool(tools, "talos-heal-test");
+      const result = await t.handler({ testRunId: run.id });
+      expect(result.isError).toBe(true);
+      const data = JSON.parse(result.text);
+      expect(data.error).toBe("no candidate fix");
+    });
+
+    it("heal-test catches engine exceptions (#529)", async () => {
+      const env = makeTools();
+      const app = env.repo.createApplication({
+        name: "HealApp",
+        repositoryUrl: "https://github.com/a/b",
+        baseUrl: "https://a.com",
+      });
+      const test = env.repo.createTest({ applicationId: app.id, name: "T", code: "test()", type: "e2e" });
+      const run = env.repo.createTestRun({ applicationId: app.id, testId: test.id, trigger: "manual" });
+      env.repo.updateTestRun(run.id, { status: "failed", errorMessage: "x" });
+
+      const heal = (await import("vitest")).vi.fn().mockRejectedValue(new Error("LLM down"));
+      const tools = createTalosTools({
+        ...env,
+        healingEngine: { heal } as unknown as import("./healing/healing-engine.js").HealingEngine,
+      });
+      const t = findTool(tools, "talos-heal-test");
+      const result = await t.handler({ testRunId: run.id });
+      expect(result.isError).toBe(true);
+      expect(result.text).toContain("LLM down");
+    });
+  });
 });

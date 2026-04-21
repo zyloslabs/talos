@@ -10,6 +10,10 @@ import type { TalosRepository } from "./repository.js";
 import type { TalosConfig } from "./config.js";
 import type { DocumentIngester } from "./knowledge/document-ingester.js";
 import type { CriteriaGenerator } from "./knowledge/criteria-generator.js";
+import type { PlaywrightRunner } from "./runner/playwright-runner.js";
+import type { TestGenerator } from "./generator/test-generator.js";
+import type { DiscoveryEngine } from "./discovery/discovery-engine.js";
+import type { HealingEngine } from "./healing/healing-engine.js";
 import { WebCrawler } from "./crawler/web-crawler.js";
 import { InterviewEngine } from "./interview/interview-engine.js";
 import { PomGenerator } from "./generator/pom-generator.js";
@@ -267,10 +271,22 @@ export type TalosToolsOptions = {
   config: TalosConfig;
   documentIngester?: DocumentIngester;
   criteriaGenerator?: CriteriaGenerator;
+  playwrightRunner?: PlaywrightRunner;
+  testGenerator?: TestGenerator;
+  discoveryEngine?: DiscoveryEngine;
+  healingEngine?: HealingEngine;
 };
 
 export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
-  const { repository, documentIngester, criteriaGenerator } = options;
+  const {
+    repository,
+    documentIngester,
+    criteriaGenerator,
+    playwrightRunner,
+    testGenerator,
+    discoveryEngine,
+    healingEngine,
+  } = options;
 
   return [
     // ── Application Management ────────────────────────────────────────────────
@@ -443,10 +459,46 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           browser: parsed.browser,
         });
 
-        // TODO: Integrate with PlaywrightRunner for actual execution
-        return {
-          text: `Created test run ${run.id} for test "${test.name}". Status: ${run.status}`,
-        };
+        // If no PlaywrightRunner is wired, surface the queued status (#526)
+        if (!playwrightRunner) {
+          return {
+            text: `Created test run ${run.id} for test "${test.name}". Status: ${run.status} (runner not configured)`,
+          };
+        }
+
+        // Execute via PlaywrightRunner (#526)
+        try {
+          const application = repository.getApplication(test.applicationId) ?? undefined;
+          const result = await playwrightRunner.executeTest(test, run, {
+            browser: parsed.browser,
+            application,
+          });
+          return {
+            text: JSON.stringify(
+              {
+                runId: run.id,
+                testId: test.id,
+                status: result.status,
+                durationMs: result.durationMs,
+                errorMessage: result.errorMessage,
+                artifactCounts: {
+                  screenshots: result.artifacts.screenshots.length,
+                  videos: result.artifacts.videos.length,
+                  traces: result.artifacts.traces.length,
+                  logs: result.artifacts.logs.length,
+                },
+              },
+              null,
+              2
+            ),
+            isError: result.status === "failed",
+          };
+        } catch (error) {
+          return {
+            text: `Test execution failed: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
+        }
       },
     },
 
@@ -478,10 +530,45 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           return { text: `Application not found: ${parsed.applicationId}`, isError: true };
         }
 
-        // TODO: Integrate with TestGenerator for AI-powered generation
-        return {
-          text: `Test generation queued for application "${app.name}". Prompt: "${parsed.prompt}"`,
-        };
+        // If no TestGenerator is wired, surface queued status (#527)
+        if (!testGenerator) {
+          return {
+            text: `Test generation queued for application "${app.name}". Prompt: "${parsed.prompt}" (generator not configured)`,
+          };
+        }
+
+        // Invoke TestGenerator (#527)
+        try {
+          const result = await testGenerator.generate({
+            applicationId: parsed.applicationId,
+            request: parsed.prompt,
+            tags: ["mcp-generated"],
+          });
+          if (!result.success || !result.test) {
+            return {
+              text: `Generation failed after ${result.attempts} attempt(s): ${result.error ?? "unknown error"}`,
+              isError: true,
+            };
+          }
+          return {
+            text: JSON.stringify(
+              {
+                testId: result.test.id,
+                name: result.test.name,
+                code: result.test.code,
+                attempts: result.attempts,
+                confidence: result.test.generationConfidence,
+              },
+              null,
+              2
+            ),
+          };
+        } catch (error) {
+          return {
+            text: `Test generation failed: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
+        }
       },
     },
 
@@ -508,10 +595,38 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           return { text: `Application not found: ${parsed.applicationId}`, isError: true };
         }
 
-        // TODO: Integrate with DiscoveryEngine for GitHub MCP discovery
-        return {
-          text: `Discovery job queued for "${app.name}" (${app.repositoryUrl})`,
-        };
+        // If no DiscoveryEngine is wired, surface queued status (#528)
+        if (!discoveryEngine) {
+          return {
+            text: `Discovery job queued for "${app.name}" (${app.repositoryUrl}) — engine not configured`,
+          };
+        }
+
+        // Invoke DiscoveryEngine (#528)
+        try {
+          const job = await discoveryEngine.startDiscovery(app, parsed.force ?? false);
+          return {
+            text: JSON.stringify(
+              {
+                jobId: job.id,
+                applicationId: job.applicationId,
+                status: job.status,
+                filesDiscovered: job.filesDiscovered,
+                filesIndexed: job.filesIndexed,
+                chunksCreated: job.chunksCreated,
+                errorMessage: job.errorMessage,
+              },
+              null,
+              2
+            ),
+            isError: job.status === "failed",
+          };
+        } catch (error) {
+          return {
+            text: `Discovery failed: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
+        }
       },
     },
 
@@ -612,10 +727,44 @@ export function createTalosTools(options: TalosToolsOptions): ToolDefinition[] {
           return { text: `Test run is not failed (status: ${run.status})`, isError: true };
         }
 
-        // TODO: Integrate with HealingEngine for AI-powered fix generation
-        return {
-          text: `Healing analysis queued for test run ${run.id}`,
-        };
+        // If no HealingEngine is wired, surface queued status (#529)
+        if (!healingEngine) {
+          return {
+            text: `Healing analysis queued for test run ${run.id} (engine not configured)`,
+          };
+        }
+
+        // Invoke HealingEngine (#529)
+        try {
+          const result = await healingEngine.heal(run);
+          return {
+            text: JSON.stringify(
+              {
+                runId: run.id,
+                success: result.success,
+                attemptStatus: result.attempt.status,
+                analysis: result.analysis
+                  ? {
+                      rootCause: result.analysis.rootCause,
+                      category: result.analysis.category,
+                      confidence: result.analysis.confidence,
+                    }
+                  : null,
+                fixApplied: result.fixResult?.selectedFix?.changeDescription ?? null,
+                verificationStatus: result.verificationRun?.status ?? null,
+                error: result.error,
+              },
+              null,
+              2
+            ),
+            isError: !result.success,
+          };
+        } catch (error) {
+          return {
+            text: `Healing failed: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          };
+        }
       },
     },
 

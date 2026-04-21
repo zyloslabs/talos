@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Added
+
+- **Talos v1.0 functional completeness pass** (#524):
+  - **Real ZIP exports** (#525): `ExportEngine` now produces genuine PKZIP archives via `archiver`, replacing the placeholder manifest-concatenation format. Exports are streamed to disk, cross-platform unzip-able, and use level-9 deflate compression.
+  - **MCP tool ↔ engine wiring** (#526 #527 #528 #529): The `talos-run-test`, `talos-generate-test`, `talos-discover-repository`, and `talos-heal-test` MCP tools now invoke `PlaywrightRunner`, `TestGenerator`, `DiscoveryEngine`, and `HealingEngine` respectively when those engines are wired into `createTalosTools({ ... })`. Responses return real execution status, artifact counts, generated test code, discovery job progress, and healing analysis / fix metadata. When engines are not wired, the tools gracefully report a "not configured" status instead of silently echoing queued strings.
+  - **Vault role edit dialog** (#531): The Vault Roles page now supports editing existing roles — name, role type, description, username/password refs, and additional refs (as a JSON-validated object of string values). Audit fields (`createdAt`, `updatedAt`) are preserved server-side.
+  - **TOTP MFA wiring** (#532): `CredentialInjector.generateTOTP` now uses the shared `TotpGenerator` (PR #487) to produce real RFC 6238 codes instead of an empty placeholder. Invalid or empty secrets fall back safely to an empty code rather than throwing.
+  - **Global IP rate limiting** (#533): The Express app now applies `express-rate-limit` to all requests at 100 req/min/IP (configurable via `RATE_LIMIT_WINDOW_MS` and `RATE_LIMIT_MAX`). Health endpoints (`/health`, `/health/*`) are explicitly skipped so liveness probes are never throttled. Responses include `draft-7` RateLimit headers.
+
+### Changed
+
+- **Rate limiter hardening** (PR #534 review): The global rate limiter has been lifted out of `src/index.ts` into a pure, unit-tested factory at `src/rate-limit.ts`.
+  - **Env vars renamed** to the `TALOS_`-prefixed spec names: `TALOS_RATE_LIMIT_WINDOW_MS` and `TALOS_RATE_LIMIT_MAX`. The previous unprefixed names (`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`) are **no longer read**.
+  - **429 response body now matches the spec:** `{ "error": "rate_limited", "retryAfterSeconds": <n> }` with a matching `Retry-After` header, alongside the existing draft-7 `RateLimit-*` headers.
+  - **`trust proxy` is now configured** via a new `TALOS_TRUST_PROXY` env var (default `loopback`) so that `req.ip` — and therefore the rate-limit key — reflects the real client when Talos runs behind a reverse proxy. Accepts any Express trust-proxy value (`loopback`, `true`, `false`, a hop count like `1`, or a CIDR list).
+  - Sonner toasts added to the UI so Vault Role create / edit / delete mutations now surface success and error feedback to the operator.
+
+### Changed
+
+- **Test generation: fail fast when no generator is available** (#530): The `POST /api/talos/tests/generate` endpoint no longer writes a stub test containing `// TODO: Implement test logic` when both `TestGenerator` and the Copilot LLM are unavailable. Instead it returns an explicit 5xx with a descriptive error message so the caller can surface a real failure and prompt the operator to configure auth or wait for RAG initialization.
+
 ### Fixed
 
 - **[Security] Setup Wizard token fields now masked** (#509): All API token and personal access token inputs in the Atlassian Settings panel use `type="password"` to prevent shoulder-surfing and DOM exposure.
@@ -15,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Admin: Duplicate personality entries eliminated** (#513): Personalities are deduplicated by ID in the Admin panel.
 - **Dark theme toggle now applies** (#514): Hardened CSS dark mode selector specificity to ensure `.dark` class variables take effect across all build configurations.
 - **Missing favicon** (#520): Added SVG favicon with Talos branding; removed 404 on every page load.
+- **Vault role list refreshes after delete** (#536): `fetchApi` in `ui/lib/api.ts` now handles 204 No Content and empty-body responses by resolving with `null` instead of throwing on `res.json()`. DELETE mutations now reach `onSuccess`, so React Query `invalidateQueries` fires and the Vault Roles list updates immediately.
 
 ### Changed
 

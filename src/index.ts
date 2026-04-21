@@ -45,6 +45,7 @@ import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
 import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
+import { createTalosRateLimiter, resolveRateLimitConfig } from "./rate-limit.js";
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
@@ -363,7 +364,6 @@ function validateBaseUrl(urlStr: string): { valid: boolean; reason?: string } {
 function appendSessionMessage(conversationId: string, message: { role: string; content: string; timestamp: string }) {
   const safeName = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
-  // TODO: add rate limiting per client IP before production deployment
   appendFileSync(filePath, JSON.stringify(message) + "\n", "utf-8");
 }
 
@@ -371,6 +371,41 @@ function appendSessionMessage(conversationId: string, message: { role: string; c
 
 const app = express();
 app.use(express.json());
+
+// ── Trust Proxy (#534 review) ─────────────────────────────────────────────────
+// Controls how Express derives `req.ip` from X-Forwarded-For. Must be set
+// correctly BEFORE the rate limiter so keys hash on the real client IP.
+//
+// TALOS_TRUST_PROXY values:
+//   - "loopback" (default) — trust 127.0.0.1/::1 only. Safe for local dev and
+//     the common nginx-on-localhost deployment.
+//   - "false" or "0"       — disable proxy trust entirely.
+//   - "true"               — trust any proxy (⚠ only if the app is never
+//     directly reachable from the public internet; enables IP spoofing
+//     otherwise).
+//   - <integer>            — trust N hops (e.g. "1" for a single front proxy).
+//   - CIDR list            — comma-separated CIDRs, e.g. "10.0.0.0/8,172.16.0.0/12".
+const rawTrustProxy = process.env.TALOS_TRUST_PROXY ?? "loopback";
+const trustProxyValue: boolean | number | string | string[] = (() => {
+  const v = rawTrustProxy.trim();
+  if (v === "" || v.toLowerCase() === "false" || v === "0") return false;
+  if (v.toLowerCase() === "true") return true;
+  if (/^\d+$/.test(v)) return parseInt(v, 10);
+  if (v.includes(",")) return v.split(",").map((s) => s.trim()).filter(Boolean);
+  return v;
+})();
+app.set("trust proxy", trustProxyValue);
+console.log(`[trust-proxy] Set to: ${JSON.stringify(trustProxyValue)}`);
+
+// ── Global IP Rate Limiter (#533) ─────────────────────────────────────────────
+// Defaults: 100 req/min/IP. Override via TALOS_RATE_LIMIT_WINDOW_MS and
+// TALOS_RATE_LIMIT_MAX. Health endpoints are skipped so liveness/readiness
+// probes are never throttled. 429 body: { error, retryAfterSeconds }.
+app.use(createTalosRateLimiter());
+{
+  const cfg = resolveRateLimitConfig();
+  console.log(`[rate-limit] Global IP limit active: ${cfg.max} req per ${cfg.windowMs}ms`);
+}
 
 // ── Rate Limiters ─────────────────────────────────────────────────────────────
 
@@ -1675,33 +1710,22 @@ app.post("/api/talos/tests/generate", async (req, res) => {
 
     // ── Path 2: Raw Copilot (direct LLM, no RAG) ───────────────────────────
     if (!copilot) {
-      // ── Path 3: Skeleton template (no AI available) ─────────────────────
-      console.log(`[generation] Path 3: Skeleton template fallback for app ${applicationId} (no AI available)`);
-      io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 30 });
-      const testName = `Generated: ${prompt.substring(0, 50)}`;
-      const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
-
-      io.emit("generation:progress", { generationId, stage: "creating-test", progress: 80 });
-
-      const created = repo.createTest({
-        applicationId,
-        name: testName,
-        description: prompt,
-        type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
-        code,
-        tags: ["ai-generated"],
-        generationConfidence: 0.5,
+      // ── Path 3: No generator available — explicit 5xx (#530) ─────────────
+      // We refuse to emit a skeleton stub with a "TODO: Implement test logic"
+      // body because that is not a usable test and silently masks the real
+      // problem (no RAG generator AND no Copilot LLM). Surface a 503 so the
+      // caller knows the generation pipeline is genuinely unavailable.
+      console.warn(
+        `[generation] No generator available for app ${applicationId} — neither TestGenerator nor Copilot is configured`
+      );
+      io.emit("generation:failed", {
+        generationId,
+        error: "Test generation pipeline unavailable",
       });
-
-      io.emit("generation:complete", { generationId, testId: created.id, confidence: 0.5 });
-      res.status(201).json({
-        id: created.id,
-        code: created.code,
-        name: created.name,
-        confidence: 0.5,
-        generationPath: "skeleton-template",
-      });
-      return;
+      throw new Error(
+        "Test generation pipeline unavailable: no RAG-backed TestGenerator and no Copilot LLM is configured. " +
+          "Configure GitHub Copilot authentication in Admin > Auth, or wait for the RAG pipeline to finish initializing."
+      );
     }
 
     // Real LLM generation

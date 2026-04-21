@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ import {
 import { formatRelativeTime } from "@/lib/utils";
 import { useState } from "react";
 import { KeyRound, Plus, Trash2, Edit, Shield, User, UserCog } from "lucide-react";
+import { toast } from "sonner";
 
 const roleTypeIcons: Record<string, React.ElementType> = {
   admin: Shield,
@@ -252,9 +254,181 @@ function AddVaultRoleDialog({
   );
 }
 
+// Edit dialog (#531) — modeled after AddVaultRoleDialog. Operates as a controlled
+// component so the parent can open it for the currently-selected role.
+function EditVaultRoleDialog({
+  role,
+  open,
+  onOpenChange,
+  onSave,
+}: {
+  role: TalosVaultRole | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (id: string, data: Partial<TalosVaultRole>) => void;
+}) {
+  const [name, setName] = useState("");
+  const [roleType, setRoleType] = useState<string>("standard");
+  const [description, setDescription] = useState("");
+  const [usernameRef, setUsernameRef] = useState("");
+  const [passwordRef, setPasswordRef] = useState("");
+  const [additionalRefsJson, setAdditionalRefsJson] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Hydrate form when the dialog opens for a new role
+  React.useEffect(() => {
+    if (role && open) {
+      setName(role.name ?? "");
+      setRoleType(role.roleType ?? "standard");
+      setDescription(role.description ?? "");
+      setUsernameRef(role.usernameRef ?? "");
+      setPasswordRef(role.passwordRef ?? "");
+      setAdditionalRefsJson(
+        role.additionalRefs && Object.keys(role.additionalRefs).length > 0
+          ? JSON.stringify(role.additionalRefs, null, 2)
+          : ""
+      );
+      setJsonError(null);
+    }
+  }, [role, open]);
+
+  const handleSubmit = () => {
+    if (!role) return;
+
+    let additionalRefs: Record<string, string> = {};
+    if (additionalRefsJson.trim()) {
+      try {
+        const parsed = JSON.parse(additionalRefsJson) as unknown;
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setJsonError("Additional refs must be a JSON object");
+          return;
+        }
+        // Reject non-string values to keep contract aligned with TalosVaultRole.additionalRefs
+        const next: Record<string, string> = {};
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (typeof v !== "string") {
+            setJsonError(`Value for "${k}" must be a string`);
+            return;
+          }
+          next[k] = v;
+        }
+        additionalRefs = next;
+      } catch (err) {
+        setJsonError(err instanceof Error ? err.message : "Invalid JSON");
+        return;
+      }
+    }
+    setJsonError(null);
+
+    if (!name.trim() || !usernameRef.trim() || !passwordRef.trim()) {
+      return;
+    }
+
+    // Note: we deliberately do NOT send createdAt/updatedAt — the server
+    // preserves createdAt and updates updatedAt automatically.
+    onSave(role.id, {
+      name: name.trim(),
+      roleType: roleType as TalosVaultRole["roleType"],
+      description: description.trim(),
+      usernameRef: usernameRef.trim(),
+      passwordRef: passwordRef.trim(),
+      additionalRefs,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Vault Role</DialogTitle>
+          <DialogDescription>
+            Update credential references. The application binding cannot be changed; delete and
+            re-create the role to move it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Role Name <span className="text-destructive">*</span></label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Admin User" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Role Type</label>
+            <Select value={roleType} onValueChange={setRoleType}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="standard">Standard</SelectItem>
+                <SelectItem value="guest">Guest</SelectItem>
+                <SelectItem value="service">Service</SelectItem>
+                <SelectItem value="user">User</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Description <span className="text-xs text-muted-foreground">(optional)</span></label>
+            <Input
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Username Reference <span className="text-destructive">*</span></label>
+            <Input
+              value={usernameRef}
+              onChange={(e) => setUsernameRef(e.target.value)}
+              placeholder="vault:app/admin/username"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Password Reference <span className="text-destructive">*</span></label>
+            <Input
+              value={passwordRef}
+              onChange={(e) => setPasswordRef(e.target.value)}
+              placeholder="vault:app/admin/password"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Additional Refs <span className="text-xs text-muted-foreground">(optional JSON object of string values)</span>
+            </label>
+            <textarea
+              className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+              value={additionalRefsJson}
+              onChange={(e) => setAdditionalRefsJson(e.target.value)}
+              placeholder={'{ "totp": "vault:app/admin/totp" }'}
+            />
+            {jsonError && (
+              <p className="text-xs text-destructive" data-testid="vault-role-refs-error">
+                {jsonError}
+              </p>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!name.trim() || !usernameRef.trim() || !passwordRef.trim()}
+          >
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function VaultManager() {
   const queryClient = useQueryClient();
   const [selectedApp, setSelectedApp] = useState<string>("all");
+  const [editingRole, setEditingRole] = useState<TalosVaultRole | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const { data: apps = [] } = useQuery({
     queryKey: ["applications"],
@@ -268,18 +442,42 @@ export function VaultManager() {
 
   const createMutation = useMutation({
     mutationFn: createVaultRole,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role created");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to create vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TalosVaultRole> }) =>
       updateVaultRole(id, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role updated");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to update vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteVaultRole,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["vaultRoles"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vaultRoles"] });
+      toast.success("Vault role deleted");
+    },
+    onError: (err: unknown) => {
+      toast.error("Failed to delete vault role", {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    },
   });
 
   const getAppName = (applicationId: string) => {
@@ -292,8 +490,12 @@ export function VaultManager() {
   };
 
   const handleEdit = (role: TalosVaultRole) => {
-    // TODO: Implement edit dialog
-    void role; // Acknowledge unused param - edit dialog to be implemented
+    setEditingRole(role);
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = (id: string, data: Partial<TalosVaultRole>) => {
+    updateMutation.mutate({ id, data });
   };
 
   const handleDelete = (id: string) => {
@@ -356,6 +558,16 @@ export function VaultManager() {
           </p>
         </Card>
       )}
+
+      <EditVaultRoleDialog
+        role={editingRole}
+        open={editDialogOpen}
+        onOpenChange={(open) => {
+          setEditDialogOpen(open);
+          if (!open) setEditingRole(null);
+        }}
+        onSave={handleSaveEdit}
+      />
     </div>
   );
 }

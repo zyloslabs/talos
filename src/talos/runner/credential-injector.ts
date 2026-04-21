@@ -6,6 +6,7 @@
 
 import type { TalosVaultRole, TalosVaultRoleType } from "../types.js";
 import type { TalosRepository } from "../repository.js";
+import { TotpGenerator } from "../tools/email-otp.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -168,13 +169,20 @@ export class CredentialInjector {
   }
 
   /**
-   * Generate TOTP code from secret.
-   * Basic implementation - in production use a proper TOTP library.
+   * Generate TOTP code from a base32-encoded secret using the shared TotpGenerator (#532, PR #487).
+   * Returns an empty string if the secret is missing or cannot be decoded so the caller can
+   * gracefully fall back to manual MFA entry rather than crashing the test.
    */
-  private generateTOTP(_secret: string): string {
-    // This is a placeholder - real implementation would use otplib or similar
-    // For now, return empty string (MFA would need manual handling)
-    return "";
+  private generateTOTP(secret: string): string {
+    if (!secret || typeof secret !== "string" || secret.trim().length === 0) {
+      return "";
+    }
+    try {
+      const generator = new TotpGenerator();
+      return generator.generate({ secret: secret.trim() });
+    } catch {
+      return "";
+    }
   }
 }
 

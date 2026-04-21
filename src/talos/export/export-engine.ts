@@ -5,7 +5,9 @@
  */
 
 import fs from "node:fs/promises";
+import { createWriteStream } from "node:fs";
 import path from "node:path";
+import archiver from "archiver";
 import type { TalosApplication, TestExport } from "../types.js";
 import type { TalosRepository } from "../repository.js";
 import type { ExportConfig } from "../config.js";
@@ -104,9 +106,8 @@ export class ExportEngine {
     // Ensure directory exists
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
 
-    // Create ZIP (using a simple implementation without external deps)
-    const zipContent = await this.createZipContent(package_);
-    await fs.writeFile(outputPath, zipContent);
+    // Create real ZIP archive using archiver (#525)
+    const size = await this.writeZipArchive(outputPath, package_);
 
     const exportRecord = this.createExportRecord(app.id, "zip", package_, outputPath);
 
@@ -115,7 +116,7 @@ export class ExportEngine {
       export: exportRecord,
       outputPath,
       files: package_.files.map((f) => f.path),
-      size: zipContent.length,
+      size,
     };
   }
 
@@ -326,29 +327,51 @@ export class ExportEngine {
   }
 
   /**
-   * Create a simple ZIP-like content (placeholder - real implementation would use archiver).
+   * Write a ZIP archive to disk using archiver streams.
+   * Returns the final compressed file size in bytes.
    */
-  private async createZipContent(package_: PackageContents): Promise<Buffer> {
-    // This is a placeholder - in production, use archiver or similar
-    // For now, create a simple concatenated format
-    const manifest = {
-      files: package_.files.map((f) => ({ path: f.path, size: f.content.length })),
-      created: new Date().toISOString(),
-    };
-
-    const parts: Buffer[] = [];
-
-    // Add manifest
-    const manifestJson = JSON.stringify(manifest);
-    parts.push(Buffer.from(`MANIFEST:${manifestJson.length}\n${manifestJson}`));
-
-    // Add each file
-    for (const file of package_.files) {
-      parts.push(Buffer.from(`\nFILE:${file.path}:${file.content.length}\n`));
-      parts.push(Buffer.from(file.content));
+  private writeZipArchive(outputPath: string, package_: PackageContents): Promise<number> {
+    // Reject empty input up-front — an archive with no entries is almost
+    // always a bug (caller passed an empty test list or the package builder
+    // produced nothing). Surfacing this here prevents downstream consumers
+    // from receiving a zero-entry ZIP that unzips to nothing.
+    if (!package_.files || package_.files.length === 0) {
+      return Promise.reject(
+        new Error("writeZipArchive: refusing to create empty archive (no package files)")
+      );
     }
 
-    return Buffer.concat(parts);
+    return new Promise<number>((resolve, reject) => {
+      const output = createWriteStream(outputPath);
+      const archive = archiver("zip", { zlib: { level: 9 } });
+
+      let settled = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
+
+      output.on("close", () => settle(() => resolve(archive.pointer())));
+      output.on("error", (err) => settle(() => reject(err)));
+      archive.on("warning", (err) => {
+        // ENOENT is non-fatal per archiver docs; surface anything else.
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          settle(() => reject(err));
+        }
+      });
+      archive.on("error", (err) => settle(() => reject(err)));
+
+      archive.pipe(output);
+
+      for (const file of package_.files) {
+        // Normalize POSIX-style paths inside the archive for cross-platform unzip
+        const entryName = file.path.split(path.sep).join("/");
+        archive.append(file.content, { name: entryName });
+      }
+
+      void archive.finalize();
+    });
   }
 
   /**
