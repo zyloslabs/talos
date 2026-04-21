@@ -45,7 +45,7 @@ import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
 import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
-import rateLimit from "express-rate-limit";
+import { createTalosRateLimiter, resolveRateLimitConfig } from "./rate-limit.js";
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
@@ -372,22 +372,40 @@ function appendSessionMessage(conversationId: string, message: { role: string; c
 const app = express();
 app.use(express.json());
 
+// ── Trust Proxy (#534 review) ─────────────────────────────────────────────────
+// Controls how Express derives `req.ip` from X-Forwarded-For. Must be set
+// correctly BEFORE the rate limiter so keys hash on the real client IP.
+//
+// TALOS_TRUST_PROXY values:
+//   - "loopback" (default) — trust 127.0.0.1/::1 only. Safe for local dev and
+//     the common nginx-on-localhost deployment.
+//   - "false" or "0"       — disable proxy trust entirely.
+//   - "true"               — trust any proxy (⚠ only if the app is never
+//     directly reachable from the public internet; enables IP spoofing
+//     otherwise).
+//   - <integer>            — trust N hops (e.g. "1" for a single front proxy).
+//   - CIDR list            — comma-separated CIDRs, e.g. "10.0.0.0/8,172.16.0.0/12".
+const rawTrustProxy = process.env.TALOS_TRUST_PROXY ?? "loopback";
+const trustProxyValue: boolean | number | string | string[] = (() => {
+  const v = rawTrustProxy.trim();
+  if (v === "" || v.toLowerCase() === "false" || v === "0") return false;
+  if (v.toLowerCase() === "true") return true;
+  if (/^\d+$/.test(v)) return parseInt(v, 10);
+  if (v.includes(",")) return v.split(",").map((s) => s.trim()).filter(Boolean);
+  return v;
+})();
+app.set("trust proxy", trustProxyValue);
+console.log(`[trust-proxy] Set to: ${JSON.stringify(trustProxyValue)}`);
+
 // ── Global IP Rate Limiter (#533) ─────────────────────────────────────────────
-// Defaults: 100 req/min/IP. Override via RATE_LIMIT_WINDOW_MS and RATE_LIMIT_MAX.
-// Health endpoints are skipped so liveness/readiness probes are never throttled.
-const RATE_LIMIT_WINDOW_MS = Math.max(1, parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "60000", 10));
-const RATE_LIMIT_MAX = Math.max(1, parseInt(process.env.RATE_LIMIT_MAX ?? "100", 10));
-app.use(
-  rateLimit({
-    windowMs: RATE_LIMIT_WINDOW_MS,
-    limit: RATE_LIMIT_MAX,
-    standardHeaders: "draft-7",
-    legacyHeaders: false,
-    skip: (req) => req.path === "/health" || req.path.startsWith("/health/"),
-    message: { error: "Too many requests, please slow down." },
-  })
-);
-console.log(`[rate-limit] Global IP limit active: ${RATE_LIMIT_MAX} req per ${RATE_LIMIT_WINDOW_MS}ms`);
+// Defaults: 100 req/min/IP. Override via TALOS_RATE_LIMIT_WINDOW_MS and
+// TALOS_RATE_LIMIT_MAX. Health endpoints are skipped so liveness/readiness
+// probes are never throttled. 429 body: { error, retryAfterSeconds }.
+app.use(createTalosRateLimiter());
+{
+  const cfg = resolveRateLimitConfig();
+  console.log(`[rate-limit] Global IP limit active: ${cfg.max} req per ${cfg.windowMs}ms`);
+}
 
 // ── Rate Limiters ─────────────────────────────────────────────────────────────
 
