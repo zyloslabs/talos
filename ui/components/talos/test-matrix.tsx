@@ -38,6 +38,7 @@ import {
 import { GitHubExportDialog } from "@/components/talos/github-export-dialog";
 import { TestCodeViewer } from "@/components/talos/test-code-viewer";
 import { TestExplainPanel } from "@/components/talos/test-explain-panel";
+import { GenerationPathBadge, type GenerationPath } from "@/components/talos/generation-path-badge";
 
 const statusIcons: Record<string, React.ElementType> = {
   passed: CheckCircle2,
@@ -78,7 +79,7 @@ function TestCard({
   const passRate = runs.length > 0 ? Math.round((passCount / runs.length) * 100) : 0;
 
   return (
-    <Card className="animate-slide-in">
+    <Card className="animate-slide-in" data-testid="test-card" data-test-name={test.name}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -108,6 +109,13 @@ function TestCard({
               <span>{failCount}</span>
             </div>
             <div className="text-muted-foreground">{passRate}% pass rate</div>
+            {(test.metadata as { generationPath?: GenerationPath } | null)?.generationPath ? (
+              <GenerationPathBadge
+                path={(test.metadata as { generationPath?: GenerationPath }).generationPath}
+                chunkCount={(test.metadata as { chunkCount?: number }).chunkCount}
+                className="ml-auto"
+              />
+            ) : null}
           </div>
 
           {test.tags.length > 0 && (
