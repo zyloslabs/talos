@@ -12,8 +12,8 @@ importers:
         specifier: ^0.2.0
         version: 0.2.0
       '@huggingface/transformers':
-        specifier: ^4.0.0
-        version: 4.0.0
+        specifier: ^4.1.0
+        version: 4.1.0
       '@lancedb/lancedb':
         specifier: ^0.27.1
         version: 0.27.1(apache-arrow@18.1.0)
@@ -642,15 +642,15 @@ packages:
     resolution: {integrity: sha512-RpHYMXYpyAgQLYQ3MB8ubV8zMn/zDatwaNmdxcC8ws7jqM+Ojy7Dz4KFKzyT0rCrWoUCAEBXsXoPbP0LY0FgLw==}
     hasBin: true
 
-  '@huggingface/jinja@0.5.6':
-    resolution: {integrity: sha512-MyMWyLnjqo+KRJYSH7oWNbsOn5onuIvfXYPcc0WOGxU0eHUV7oAYUoQTl2BMdu7ml+ea/bu11UM+EshbeHwtIA==}
+  '@huggingface/jinja@0.5.7':
+    resolution: {integrity: sha512-OosMEbF/R6zkKNNzqhI7kvKYCpo1F0UeIv46/h4D4UjVEKKd6k3TiV8sgu6fkreX4lbBiRI+lZG8UnXnqVQmEQ==}
     engines: {node: '>=18'}
 
   '@huggingface/tokenizers@0.1.3':
     resolution: {integrity: sha512-8rF/RRT10u+kn7YuUbUg0OF30K8rjTc78aHpxT+qJ1uWSqxT1MHi8+9ltwYfkFYJzT/oS+qw3JVfHtNMGAdqyA==}
 
-  '@huggingface/transformers@4.0.0':
-    resolution: {integrity: sha512-7shdBRvtjIDP7UUhdi0b4CMRCD+QXvQIsEsxECWS9VEDEsxSQF9Ci+51mwy2OWI8vbsoic8e4dbR4eI8aZWxaw==}
+  '@huggingface/transformers@4.1.0':
+    resolution: {integrity: sha512-WiMf9eyvF6V2pj4gs12A7GQV3svyFIBtB/W+Hn5lT5E5DyqWUno1ZrWoAfJv69X1RNv/0GoOo6DFmL6NOYd+rg==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -1580,8 +1580,8 @@ packages:
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
 
-  '@swc/helpers@0.5.19':
-    resolution: {integrity: sha512-QamiFeIK3txNjgUTNppE6MiG3p7TdninpZu0E0PbqVh1a9FNLT2FRhisaa4NcaX52XVhA5l7Pk58Ft7Sqi/2sA==}
+  '@swc/helpers@0.5.21':
+    resolution: {integrity: sha512-jI/VAmtdjB/RnI8GTnokyX7Ug8c+g+ffD6QRLa6XQewtnGyukKkKSk3wLTM3b5cjt1jNh9x0jfVlagdN2gDKQg==}
 
   '@tailwindcss/node@4.2.2':
     resolution: {integrity: sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==}
@@ -1775,8 +1775,8 @@ packages:
   '@types/node@14.18.63':
     resolution: {integrity: sha512-fAtCfv4jJg+ExtXhvCkCqUKZ+4ok/JQk01qDKhL5BDDoS3AxKXhV5/MAVUZyQnSEd2GT92fkgZl0pz0Q0AzcIQ==}
 
-  '@types/node@20.19.37':
-    resolution: {integrity: sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw==}
+  '@types/node@20.19.39':
+    resolution: {integrity: sha512-orrrD74MBUyK8jOAD/r0+lfa1I2MO6I+vAkmAWzMYbCcgrN4lCrmK52gRFQq/JRxfYPfonkr4b0jcY7Olqdqbw==}
 
   '@types/node@25.5.0':
     resolution: {integrity: sha512-jp2P3tQMSxWugkCUKLRPVUpGaL5MVFwF8RDuSRztfwgN1wmqJeMSbKlnEtQqU8UrhTmzEmZdu2I6v2dpp7XIxw==}
@@ -2155,8 +2155,8 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  adm-zip@0.5.16:
-    resolution: {integrity: sha512-TGw5yVi4saajsSEgz25grObGHEUaDrniwvA2qwSC060KfqGPdglhvPMA2lPIoxs3PQIItj2iag35fONcQqgUaQ==}
+  adm-zip@0.5.17:
+    resolution: {integrity: sha512-+Ut8d9LLqwEvHHJl1+PIHqoyDxFgVN847JTVM3Izi3xHDWPE4UtzzXysMZQs64DMcrJfBeS/uoEP4AD3HQHnQQ==}
     engines: {node: '>=12.0'}
 
   ajv@6.14.0:
@@ -3921,8 +3921,8 @@ packages:
     resolution: {integrity: sha512-JH7+czbc8ALA819vlTgcV+Q214/+VjGeBHDjX81+ZCD0PCVCIFGFNtT0V4sXG/1JXypKPgScQcB3ij/hk3YnTg==}
     os: [win32, darwin, linux]
 
-  onnxruntime-web@1.25.0-dev.20260327-722743c0e2:
-    resolution: {integrity: sha512-8PXdZy4Ekhg10CLg+cFFt39b4tFDGMRJB6lGjnQL6eA+2boUQYDymZ0gtxiS+H6oIWoCjQp/ziyirvFbaFKfiw==}
+  onnxruntime-web@1.26.0-dev.20260410-5e55544225:
+    resolution: {integrity: sha512-hHd9n8DzIfGSAjM4Dvslesc8i6h9HEEcl8qt7X3LfhUxMgls6FBJ32j2xrDtJjKJFEehFeJmyB/pvad1I8KS8w==}
 
   opencollective-postinstall@2.0.3:
     resolution: {integrity: sha512-8AV/sCtuzUeTo8gQK5qDZzARrulB3egtLzFgteqB2tcT4Mw7B8Kt7JcDHmltjz6FOAHsvTevk70gZEbhM4ZS9Q==}
@@ -4079,8 +4079,8 @@ packages:
   property-information@7.1.0:
     resolution: {integrity: sha512-TwEZ+X+yCJmYfL7TPUOcvBZ4QfoT5YenQiJuX//0th53DE6w0xxLEtfK3iyryQFddXuvkIk51EEgrJQ0WJkOmQ==}
 
-  protobufjs@7.5.4:
-    resolution: {integrity: sha512-CvexbZtbov6jW2eXAvLukXjXUW1TzFaivC46BpWc/3BpcCysb5Vffu+B3XHMm8lVEuy2Mm4XGex8hBSg1yapPg==}
+  protobufjs@7.5.5:
+    resolution: {integrity: sha512-3wY1AxV+VBNW8Yypfd1yQY9pXnqTAN+KwQxL8iYm3/BjKYMNg4i0owhEe26PWDOMaIrzeeF98Lqd5NGz4omiIg==}
     engines: {node: '>=12.0.0'}
 
   proxy-addr@2.0.7:
@@ -5361,16 +5361,16 @@ snapshots:
       '@github/copilot-win32-arm64': 1.0.10
       '@github/copilot-win32-x64': 1.0.10
 
-  '@huggingface/jinja@0.5.6': {}
+  '@huggingface/jinja@0.5.7': {}
 
   '@huggingface/tokenizers@0.1.3': {}
 
-  '@huggingface/transformers@4.0.0':
+  '@huggingface/transformers@4.1.0':
     dependencies:
-      '@huggingface/jinja': 0.5.6
+      '@huggingface/jinja': 0.5.7
       '@huggingface/tokenizers': 0.1.3
       onnxruntime-node: 1.24.3
-      onnxruntime-web: 1.25.0-dev.20260327-722743c0e2
+      onnxruntime-web: 1.26.0-dev.20260410-5e55544225
       sharp: 0.34.5
 
   '@humanfs/core@0.19.1': {}
@@ -6118,7 +6118,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@swc/helpers@0.5.19':
+  '@swc/helpers@0.5.21':
     dependencies:
       tslib: 2.8.1
 
@@ -6308,7 +6308,7 @@ snapshots:
 
   '@types/node@14.18.63': {}
 
-  '@types/node@20.19.37':
+  '@types/node@20.19.39':
     dependencies:
       undici-types: 6.21.0
 
@@ -6730,7 +6730,7 @@ snapshots:
 
   acorn@8.16.0: {}
 
-  adm-zip@0.5.16: {}
+  adm-zip@0.5.17: {}
 
   ajv@6.14.0:
     dependencies:
@@ -6753,10 +6753,10 @@ snapshots:
 
   apache-arrow@18.1.0:
     dependencies:
-      '@swc/helpers': 0.5.19
+      '@swc/helpers': 0.5.21
       '@types/command-line-args': 5.2.3
       '@types/command-line-usage': 5.0.4
-      '@types/node': 20.19.37
+      '@types/node': 20.19.39
       command-line-args: 5.2.1
       command-line-usage: 7.0.4
       flatbuffers: 24.12.23
@@ -8717,18 +8717,18 @@ snapshots:
 
   onnxruntime-node@1.24.3:
     dependencies:
-      adm-zip: 0.5.16
+      adm-zip: 0.5.17
       global-agent: 3.0.0
       onnxruntime-common: 1.24.3
 
-  onnxruntime-web@1.25.0-dev.20260327-722743c0e2:
+  onnxruntime-web@1.26.0-dev.20260410-5e55544225:
     dependencies:
       flatbuffers: 25.9.23
       guid-typescript: 1.0.9
       long: 5.3.2
       onnxruntime-common: 1.24.0-dev.20251116-b39e144322
       platform: 1.3.6
-      protobufjs: 7.5.4
+      protobufjs: 7.5.5
 
   opencollective-postinstall@2.0.3: {}
 
@@ -8883,7 +8883,7 @@ snapshots:
 
   property-information@7.1.0: {}
 
-  protobufjs@7.5.4:
+  protobufjs@7.5.5:
     dependencies:
       '@protobufjs/aspromise': 1.1.2
       '@protobufjs/base64': 1.1.2
