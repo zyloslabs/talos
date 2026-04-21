@@ -304,13 +304,15 @@ function EditVaultRoleDialog({
           return;
         }
         // Reject non-string values to keep contract aligned with TalosVaultRole.additionalRefs
+        const next: Record<string, string> = {};
         for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
           if (typeof v !== "string") {
             setJsonError(`Value for "${k}" must be a string`);
             return;
           }
-          additionalRefs[k] = v;
+          next[k] = v;
         }
+        additionalRefs = next;
       } catch (err) {
         setJsonError(err instanceof Error ? err.message : "Invalid JSON");
         return;
