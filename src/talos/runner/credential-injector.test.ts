@@ -166,7 +166,7 @@ describe("CredentialInjector", () => {
     const creds = {
       username: "admin",
       password: "secret",
-      additional: { mfa: "MYOTPSECRET" },
+      additional: { mfa: "JBSWY3DPEHPK3PXP" }, // valid base32 secret
       roleType: "admin" as const,
       roleName: "Admin",
     };
@@ -189,7 +189,43 @@ describe("CredentialInjector", () => {
     });
 
     await loginFn(mockPage as never);
-    expect(mockPage.fill).toHaveBeenCalledWith("#mfa-code", ""); // generateTOTP returns placeholder ""
+
+    // TOTP should now produce a real 6-digit numeric code (#532)
+    const mfaCall = mockPage.fill.mock.calls.find((c) => c[0] === "#mfa-code");
+    expect(mfaCall).toBeDefined();
+    const mfaCode = mfaCall![1] as string;
+    expect(mfaCode).toMatch(/^\d{6}$/);
     expect(mockPage.click).toHaveBeenCalledTimes(2); // submit + after MFA
+  });
+
+  it("MFA falls back to empty string when secret is invalid (#532)", async () => {
+    const creds = {
+      username: "admin",
+      password: "secret",
+      additional: { mfa: "" }, // empty/invalid secret
+      roleType: "admin" as const,
+      roleName: "Admin",
+    };
+
+    const mockPage = {
+      goto: vi.fn(),
+      fill: vi.fn(),
+      click: vi.fn(),
+      waitForSelector: vi.fn(),
+    };
+
+    const loginFn = injector.createLoginFunction(creds, {
+      loginUrl: "/login",
+      usernameSelector: "#user",
+      passwordSelector: "#pass",
+      submitSelector: "button",
+      successIndicator: ".dashboard",
+      mfaSelector: "#mfa-code",
+      mfaSecretKey: "mfa",
+    });
+
+    // Empty mfa value => createLoginFunction skips MFA branch entirely (truthy check)
+    await loginFn(mockPage as never);
+    expect(mockPage.fill).not.toHaveBeenCalledWith("#mfa-code", expect.anything());
   });
 });

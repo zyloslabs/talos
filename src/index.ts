@@ -45,6 +45,7 @@ import { createOrchestrateAgentsTool } from "./talos/tools/orchestrate-agents.js
 import { createSpawnAgentTool } from "./talos/tools/spawn-agent.js";
 import type { ToolDefinition } from "./talos/tools.js";
 import { validateExternalUrl, isValidJiraProjectKey, RateLimiter } from "./security.js";
+import rateLimit from "express-rate-limit";
 import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 
 // ── Env File Bootstrap ────────────────────────────────────────────────────────
@@ -363,7 +364,6 @@ function validateBaseUrl(urlStr: string): { valid: boolean; reason?: string } {
 function appendSessionMessage(conversationId: string, message: { role: string; content: string; timestamp: string }) {
   const safeName = conversationId.replace(/[^a-zA-Z0-9_-]/g, "_");
   const filePath = join(SESSIONS_DIR, `${safeName}.jsonl`);
-  // TODO: add rate limiting per client IP before production deployment
   appendFileSync(filePath, JSON.stringify(message) + "\n", "utf-8");
 }
 
@@ -371,6 +371,23 @@ function appendSessionMessage(conversationId: string, message: { role: string; c
 
 const app = express();
 app.use(express.json());
+
+// ── Global IP Rate Limiter (#533) ─────────────────────────────────────────────
+// Defaults: 100 req/min/IP. Override via RATE_LIMIT_WINDOW_MS and RATE_LIMIT_MAX.
+// Health endpoints are skipped so liveness/readiness probes are never throttled.
+const RATE_LIMIT_WINDOW_MS = Math.max(1, parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "60000", 10));
+const RATE_LIMIT_MAX = Math.max(1, parseInt(process.env.RATE_LIMIT_MAX ?? "100", 10));
+app.use(
+  rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    limit: RATE_LIMIT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: (req) => req.path === "/health" || req.path.startsWith("/health/"),
+    message: { error: "Too many requests, please slow down." },
+  })
+);
+console.log(`[rate-limit] Global IP limit active: ${RATE_LIMIT_MAX} req per ${RATE_LIMIT_WINDOW_MS}ms`);
 
 // ── Rate Limiters ─────────────────────────────────────────────────────────────
 
@@ -1675,33 +1692,22 @@ app.post("/api/talos/tests/generate", async (req, res) => {
 
     // ── Path 2: Raw Copilot (direct LLM, no RAG) ───────────────────────────
     if (!copilot) {
-      // ── Path 3: Skeleton template (no AI available) ─────────────────────
-      console.log(`[generation] Path 3: Skeleton template fallback for app ${applicationId} (no AI available)`);
-      io.emit("generation:progress", { generationId, stage: "building-prompt", progress: 30 });
-      const testName = `Generated: ${prompt.substring(0, 50)}`;
-      const code = `import { test, expect } from '@playwright/test';\n\ntest(${JSON.stringify(testName)}, async ({ page }) => {\n  // Generated test for: ${JSON.stringify(prompt).slice(1, -1)}\n  await page.goto(${JSON.stringify(app_.baseUrl)});\n  // TODO: Implement test logic\n});\n`;
-
-      io.emit("generation:progress", { generationId, stage: "creating-test", progress: 80 });
-
-      const created = repo.createTest({
-        applicationId,
-        name: testName,
-        description: prompt,
-        type: (testType as "e2e" | "smoke" | "regression" | "accessibility" | "unit") ?? "e2e",
-        code,
-        tags: ["ai-generated"],
-        generationConfidence: 0.5,
+      // ── Path 3: No generator available — explicit 5xx (#530) ─────────────
+      // We refuse to emit a skeleton stub with a "TODO: Implement test logic"
+      // body because that is not a usable test and silently masks the real
+      // problem (no RAG generator AND no Copilot LLM). Surface a 503 so the
+      // caller knows the generation pipeline is genuinely unavailable.
+      console.warn(
+        `[generation] No generator available for app ${applicationId} — neither TestGenerator nor Copilot is configured`
+      );
+      io.emit("generation:failed", {
+        generationId,
+        error: "Test generation pipeline unavailable",
       });
-
-      io.emit("generation:complete", { generationId, testId: created.id, confidence: 0.5 });
-      res.status(201).json({
-        id: created.id,
-        code: created.code,
-        name: created.name,
-        confidence: 0.5,
-        generationPath: "skeleton-template",
-      });
-      return;
+      throw new Error(
+        "Test generation pipeline unavailable: no RAG-backed TestGenerator and no Copilot LLM is configured. " +
+          "Configure GitHub Copilot authentication in Admin > Auth, or wait for the RAG pipeline to finish initializing."
+      );
     }
 
     // Real LLM generation

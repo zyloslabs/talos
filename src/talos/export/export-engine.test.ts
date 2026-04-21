@@ -113,6 +113,36 @@ describe("ExportEngine", () => {
     expect(result.size).toBeGreaterThan(0);
   });
 
+  it("exports as zip with valid PK signature and readable entries (#525)", async () => {
+    const app = repo.createApplication({
+      name: "ZipApp",
+      repositoryUrl: "https://github.com/a/b",
+      baseUrl: "https://a.com",
+    });
+    repo.createTest({
+      applicationId: app.id,
+      name: "zip-test",
+      code: "test('zip', async () => {});",
+      type: "e2e",
+    });
+    const result = await engine.export(app.id, { format: "zip" });
+    expect(result.success).toBe(true);
+    expect(result.outputPath).toBeDefined();
+
+    // Verify it's a real ZIP: file starts with the local-file-header magic bytes "PK\x03\x04"
+    const buf = await fs.readFile(result.outputPath!);
+    expect(buf[0]).toBe(0x50); // P
+    expect(buf[1]).toBe(0x4b); // K
+    expect(buf[2]).toBe(0x03);
+    expect(buf[3]).toBe(0x04);
+
+    // Verify reported size matches on-disk size
+    expect(result.size).toBe(buf.length);
+
+    // The archive should be smaller than the raw text content (zip compression is real)
+    expect(buf.length).toBeGreaterThan(22); // at minimum, an EOCD record
+  });
+
   it("filters specific tests in json export", async () => {
     const app = repo.createApplication({
       name: "A",

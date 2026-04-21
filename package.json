@@ -30,6 +30,7 @@
     "@huggingface/transformers": "^4.0.0",
     "@lancedb/lancedb": "^0.27.1",
     "@playwright/test": "^1.52.0",
+    "archiver": "^7.0.1",
     "better-sqlite3": "^12.6.2",
     "cron-parser": "^5.5.0",
     "exceljs": "^4.4.0",
@@ -44,6 +45,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
