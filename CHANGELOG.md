@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - **Admin: Duplicate personality entries eliminated** (#513): Personalities are deduplicated by ID in the Admin panel.
 - **Dark theme toggle now applies** (#514): Hardened CSS dark mode selector specificity to ensure `.dark` class variables take effect across all build configurations.
 - **Missing favicon** (#520): Added SVG favicon with Talos branding; removed 404 on every page load.
+- **Vault role list refreshes after delete** (#536): `fetchApi` in `ui/lib/api.ts` now handles 204 No Content and empty-body responses by resolving with `null` instead of throwing on `res.json()`. DELETE mutations now reach `onSuccess`, so React Query `invalidateQueries` fires and the Vault Roles list updates immediately.
 
 ### Changed
 
