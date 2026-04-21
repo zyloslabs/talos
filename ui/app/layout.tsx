@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   title: "Talos Command Center",
   description: "Test Automation & Logic Orchestration System",
   icons: {
-    icon: "/favicon.ico",
+    icon: "/favicon.svg",
   },
 };
 

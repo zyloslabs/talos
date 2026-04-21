@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdminPage from "./page";
 
@@ -28,7 +28,13 @@ vi.mock("next-themes", () => ({
 }));
 
 vi.mock("@/lib/api", () => ({
-  getPersonalities: vi.fn().mockResolvedValue({ personalities: [], activeId: null }),
+  getPersonalities: vi.fn().mockResolvedValue({
+    personalities: [
+      { id: "p-1", name: "Default", systemPrompt: "You are Talos", isActive: true },
+      { id: "p-1", name: "Default", systemPrompt: "You are Talos", isActive: true },
+    ],
+    activeId: "p-1",
+  }),
   createPersonality: vi.fn(),
   updatePersonality: vi.fn(),
   activatePersonality: vi.fn(),
@@ -83,5 +89,23 @@ describe("AdminPage", () => {
   it("renders auth section content", () => {
     renderWithProviders(<AdminPage />);
     expect(screen.getByText("Connect Talos to GitHub Copilot")).toBeInTheDocument();
+  });
+
+  // #513: Deduplicates personality entries
+  it("deduplicates personality entries by ID", async () => {
+    renderWithProviders(<AdminPage />);
+    // Expand personality section
+    const personalityBtn = screen.getAllByText("Personality").find(
+      (el) => el.closest("button")
+    );
+    if (personalityBtn?.closest("button")) {
+      personalityBtn.closest("button")!.click();
+    }
+    // Wait for content to render — should only show one "Default" personality
+    await waitFor(() => {
+      const defaults = screen.getAllByText("Default");
+      // One from sidebar + one from the panel content = 2, NOT 3 (which would mean dupe)
+      expect(defaults.length).toBeLessThanOrEqual(2);
+    });
   });
 });

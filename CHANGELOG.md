@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ## [Unreleased]
 
+### Fixed
+
+- **[Security] Setup Wizard token fields now masked** (#509): All API token and personal access token inputs in the Atlassian Settings panel use `type="password"` to prevent shoulder-surfing and DOM exposure.
+- **Chat: React hydration mismatch** (#510): Session IDs are now generated client-side only, eliminating the SSR/CSR mismatch that caused full-tree re-renders.
+- **Chat: Past messages now load when switching sessions** (#511): Selecting an existing session in the sidebar fetches and displays the conversation history from the API.
+- **Skills: Duplicate cards eliminated** (#512): Skills are deduplicated by ID before rendering, preventing double-display even if the API returns duplicates.
+- **Admin: Duplicate personality entries eliminated** (#513): Personalities are deduplicated by ID in the Admin panel.
+- **Dark theme toggle now applies** (#514): Hardened CSS dark mode selector specificity to ensure `.dark` class variables take effect across all build configurations.
+- **Missing favicon** (#520): Added SVG favicon with Talos branding; removed 404 on every page load.
+
+### Changed
+
+- **Chat header shows session title** (#515): Displays the conversation preview text or first message instead of raw numeric session IDs.
+- **Dashboard: Database type separated from JDBC URL** (#516): Database type now renders as a badge with clear visual separation from the connection URL.
+- **Setup Wizard: Redundant skip buttons removed** (#517): In-content "Skip" buttons removed from Data Sources and Atlassian steps; the bottom navigation "Skip" button remains as the single skip mechanism.
+- **Setup Wizard: Step tabs scrollable** (#518): Step progress bar now scrolls horizontally with fade indicators when tabs overflow the viewport.
+- **Task Queue: Zero-count stats use muted styling** (#519): Status counts (Failed, Pending, etc.) only use colored styling when the value is greater than zero; zeros appear in muted grey.
+- **Form dialogs: Required field indicators** (#521): Add Application and Add Vault Role dialogs now show asterisk indicators on required fields and "(optional)" labels on optional fields.
+- **Agents: Description expandable** (#522): Agent cards with long descriptions show a "Show more" link to reveal the full text.
+
 ### Added
 
 - **CI/CD Integration & Non-Functional Testing** (#490):

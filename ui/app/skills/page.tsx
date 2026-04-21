@@ -27,6 +27,10 @@ const SKILL_TEMPLATES: { name: string; description: string; tags: string[]; cont
 export default function SkillsPage() {
   const qc = useQueryClient();
   const { data: skills } = useQuery({ queryKey: ["skills"], queryFn: getSkills });
+  // Deduplicate skills by ID to prevent duplicate card rendering (#512)
+  const uniqueSkills = skills
+    ? (skills as SkillDef[]).filter((s, i, arr) => arr.findIndex((x) => x.id === s.id) === i)
+    : undefined;
   const [createOpen, setCreateOpen] = useState(false);
   const [editSkill, setEditSkill] = useState<SkillDef | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -43,15 +47,15 @@ export default function SkillsPage() {
   });
 
   const handleExport = useCallback(() => {
-    if (!skills) return;
-    const blob = new Blob([JSON.stringify(skills, null, 2)], { type: "application/json" });
+    if (!uniqueSkills) return;
+    const blob = new Blob([JSON.stringify(uniqueSkills, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "talos-skills.json";
     a.click();
     URL.revokeObjectURL(url);
-  }, [skills]);
+  }, [uniqueSkills]);
 
   const handleImport = useCallback(() => {
     const input = document.createElement("input");
@@ -109,7 +113,7 @@ export default function SkillsPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(skills as SkillDef[] | undefined)?.map((s) => (
+          {(uniqueSkills as SkillDef[] | undefined)?.map((s) => (
             <Card key={s.id} className="group">
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
@@ -158,7 +162,7 @@ export default function SkillsPage() {
               </CardContent>
             </Card>
           ))}
-          {(!skills || (skills as SkillDef[]).length === 0) && (
+          {(!uniqueSkills || (uniqueSkills as SkillDef[]).length === 0) && (
             <div className="col-span-full text-center py-12 text-muted-foreground">
               No skills configured. Create one or use a template to get started.
             </div>

@@ -180,8 +180,8 @@ function DatabaseSection({
             className="flex items-center justify-between rounded-md border p-2 text-sm"
           >
             <div>
-              <span className="font-medium">{db.type}</span>
-              <span className="ml-2 text-xs text-muted-foreground">
+              <Badge variant="secondary" className="text-xs mr-2">{db.type}</Badge>
+              <span className="text-xs text-muted-foreground break-all">
                 {db.connectionPattern}
               </span>
               {db.environment && (

@@ -139,13 +139,13 @@ function AddApplicationDialog({
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <label htmlFor="name" className="text-sm font-medium">
-              Application Name
+              Application Name <span className="text-destructive">*</span>
             </label>
             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="My Application" />
           </div>
           <div className="space-y-2">
             <label htmlFor="repositoryUrl" className="text-sm font-medium">
-              Repository URL
+              Repository URL <span className="text-destructive">*</span>
             </label>
             <Input
               id="repositoryUrl"
@@ -156,7 +156,7 @@ function AddApplicationDialog({
           </div>
           <div className="space-y-2">
             <label htmlFor="branch" className="text-sm font-medium">
-              Branch
+              Branch <span className="text-xs text-muted-foreground">(optional)</span>
             </label>
             <Input
               id="branch"
@@ -167,7 +167,7 @@ function AddApplicationDialog({
           </div>
           <div className="space-y-2">
             <label htmlFor="baseUrl" className="text-sm font-medium">
-              Base URL
+              Base URL <span className="text-destructive">*</span>
             </label>
             <Input
               id="baseUrl"
