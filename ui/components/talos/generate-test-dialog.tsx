@@ -7,6 +7,7 @@ import { InlineModelPicker } from "@/components/talos/inline-model-picker";
 import { useSocket } from "@/lib/socket";
 import { generateTest, getApplications, type TalosApplication, type GeneratedTest } from "@/lib/api";
 import { Wand2, X, Loader2, Check, RotateCcw } from "lucide-react";
+import { GenerationPathBadge } from "@/components/talos/generation-path-badge";
 
 type WizardStep = "describe" | "configure" | "generating" | "review";
 
@@ -226,9 +227,12 @@ export function GenerateTestDialog({ applicationId, open, onClose, onAccept }: G
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">{generated.name}</h3>
-                  <span className="text-xs text-muted-foreground">
-                    Confidence: {Math.round(generated.confidence * 100)}%
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <GenerationPathBadge path={generated.generationPath} chunkCount={generated.chunkCount} />
+                    <span className="text-xs text-muted-foreground">
+                      Confidence: {Math.round(generated.confidence * 100)}%
+                    </span>
+                  </div>
                 </div>
                 <pre className="bg-muted p-3 rounded-md text-xs font-mono overflow-x-auto max-h-[300px] overflow-y-auto">
                   {generated.code}

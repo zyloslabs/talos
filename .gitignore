@@ -33,6 +33,7 @@ Thumbs.db
 test-results/
 playwright-report/
 .playwright-mcp/
+ui/tests/.auth/
 
 # Editor
 .vscode/settings.json

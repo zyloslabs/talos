@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
+- **Playwright e2e coverage expansion (epic #537, partial)**: a foundational e2e harness plus a green-on-merge subset of new specs covering high-leverage UI surfaces. Pre-existing failures on other suites are out of scope for this PR.
+  - Foundation (#541, #550, #551, #552): typed `mockApi` route helper, `socket.io-client` stub via `addInitScript` (replays the EIO4 handshake), domain factories (`makeTask`, `makeJob`, `makeAgent`, `makeRun`, …), POM base classes, an `auth.setup.ts` setup-project, fixture artifacts (`*.har`, `*.log`, `*.png`, `*.zip`, `*.md`), an updated `playwright.config.ts` with `setup` → `chromium` project chain, and a `<GenerationPathBadge>` UI component (`data-testid="generation-path-badge"` / `data-path` enum) plumbed through `<TestMatrix>` so generation provenance is queryable from the DOM.
+  - Specs (chromium-only, all mocked via `page.route` — no live LanceDB / Copilot calls):
+    - `tests/test-library.spec.ts` (#539): list, code-viewer, AI Explanation panel, run via `POST /api/talos/runs`, refine.
+    - `tests/vault-crud.spec.ts` (#536, #545): list, create dialog, delete (skips when no Delete button rendered, regression-guarding #536).
+    - `tests/scheduler.spec.ts` (#544, #546): list rendering, cron expression visibility, new-job dialog.
+    - `tests/tasks.spec.ts` (#548): stats bar, Running tab filter against `/api/admin/tasks`.
+    - `tests/skills-extras.spec.ts` (#549): list rendering, `POST /api/admin/skills/:id/execute` and `POST /api/admin/skills/enhance` contract checks.
+    - `tests/library-extras.spec.ts` (#547): prompt list, search filter narrowing, import / export buttons.
+    - `tests/github-export.spec.ts` (#543): export dialog at `/talos/tests`, asserts the export endpoint returns a non-empty payload with a positive `Content-Length`.
+    - `tests/generation-path-badge.spec.ts` (#552): three tests covering `data-path="rag-backed | raw-copilot | skeleton"` rendering driven by `test.metadata.generationPath`.
+    - `tests/rag-ingestion.spec.ts` (#553): direct `fetch()` against `/api/talos/applications/:id/ingest` verifying POST contract and `{ chunksCreated }` payload shape.
+
 - **Talos v1.0 functional completeness pass** (#524):
   - **Real ZIP exports** (#525): `ExportEngine` now produces genuine PKZIP archives via `archiver`, replacing the placeholder manifest-concatenation format. Exports are streamed to disk, cross-platform unzip-able, and use level-9 deflate compression.
   - **MCP tool ↔ engine wiring** (#526 #527 #528 #529): The `talos-run-test`, `talos-generate-test`, `talos-discover-repository`, and `talos-heal-test` MCP tools now invoke `PlaywrightRunner`, `TestGenerator`, `DiscoveryEngine`, and `HealingEngine` respectively when those engines are wired into `createTalosTools({ ... })`. Responses return real execution status, artifact counts, generated test code, discovery job progress, and healing analysis / fix metadata. When engines are not wired, the tools gracefully report a "not configured" status instead of silently echoing queued strings.

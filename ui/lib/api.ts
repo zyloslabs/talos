@@ -457,6 +457,15 @@ export interface GeneratedTest {
   code: string;
   name: string;
   confidence: number;
+  /**
+   * Which generation path produced this test. One of:
+   * - `rag-backed` — TestGenerator with RAG context
+   * - `raw-copilot` / `raw` — direct Copilot LLM, no RAG
+   * - `skeleton` — stub only (audit gap E3, see #552)
+   */
+  generationPath?: "rag-backed" | "raw-copilot" | "raw" | "skeleton";
+  /** Number of RAG chunks used (only meaningful when generationPath === "rag-backed"). */
+  chunkCount?: number;
 }
 export const generateTest = (input: GenerateTestInput) =>
   fetchApi<GeneratedTest>("/api/talos/tests/generate", { method: "POST", body: JSON.stringify(input) });
