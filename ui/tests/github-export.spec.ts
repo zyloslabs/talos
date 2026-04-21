@@ -23,47 +23,53 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("GitHub export", () => {
-  // AC: #551 export endpoint produces a non-empty body
-  test("export endpoint returns a non-empty payload (Content-Length > 0)", async ({ page }) => {
-    let bytes = 0;
+  // AC: #551 export endpoint produces a non-empty body — driven via the dialog
+  test("export dialog drives the export endpoint and shows success", async ({ page }) => {
+    let exportCalled = false;
+    let capturedBody: { targetRepo?: string; branch?: string; createIfNotExists?: boolean } | null = null;
     await mockApi(page, [
       {
         url: `**/api/talos/applications/${app.id}/export-to-github`,
         method: "POST",
         handler: async (route) => {
-          const body = JSON.stringify({
-            success: true,
-            repository: "owner/exported",
-            commitSha: "abc123",
-            zipBytes: 4096,
-          });
-          bytes = Buffer.byteLength(body);
+          exportCalled = true;
+          capturedBody = JSON.parse(route.request().postData() ?? "{}");
           await route.fulfill({
             status: 200,
             contentType: "application/json",
-            headers: { "Content-Length": String(bytes) },
-            body,
+            body: JSON.stringify({
+              success: true,
+              repository: "owner/exported",
+              repoUrl: "https://github.com/owner/exported",
+              commitSha: "abc123",
+              filesUpdated: 4,
+              created: true,
+            }),
           });
         },
       },
     ]);
+
     await page.goto("/talos/tests");
-    // Pick the only app
     await page.getByRole("combobox").first().click();
     await page.getByRole("option").filter({ hasText: "Export App" }).first().click();
     await page.getByRole("button", { name: /Export to GitHub/i }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    // Fire the export API directly to validate the contract
-    const result = await page.evaluate(async (appId) => {
-      const r = await fetch(`/api/talos/applications/${appId}/export-to-github`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetRepo: "owner/exported", branch: "main", commitMessage: "export" }),
-      });
-      return { status: r.status, body: await r.text() };
-    }, app.id);
-    expect(result.status).toBe(200);
-    expect(bytes).toBeGreaterThan(0);
-    expect(result.body.length).toBeGreaterThan(0);
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    // Fill the form and click the dialog's own Export button (not a raw fetch).
+    await dialog.getByLabel("Target repository").fill("owner/exported");
+    await dialog.getByLabel("Branch").fill("main");
+    await dialog.getByRole("button", { name: /^Export$/ }).click();
+
+    await expect.poll(() => exportCalled, { timeout: 5000 }).toBe(true);
+    expect(capturedBody?.targetRepo).toBe("owner/exported");
+    expect(capturedBody?.branch).toBe("main");
+    expect(typeof capturedBody?.createIfNotExists).toBe("boolean");
+
+    // Success state should render and link to the new repo.
+    await expect(dialog.getByText(/exported successfully/i)).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByRole("link", { name: /View on GitHub/i })).toBeVisible();
   });
 });

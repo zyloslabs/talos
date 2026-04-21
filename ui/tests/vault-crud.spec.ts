@@ -38,7 +38,7 @@ test.describe("Vault — full CRUD", () => {
   });
 
   // AC: #544 delete confirms then DELETEs (regression for #536)
-  test("delete invokes the DELETE endpoint", async ({ page }) => {
+  test("delete invokes the DELETE endpoint and removes the row", async ({ page }) => {
     let deleteCalled = false;
     await mockApi(page, [
       {
@@ -51,17 +51,32 @@ test.describe("Vault — full CRUD", () => {
       },
     ]);
     page.on("dialog", (d) => d.accept());
+
     const vault = new VaultPage(page);
     await vault.goto();
+
     const card = vault.roleCard("Admin Account");
-    const deleteBtn = card.getByRole("button", { name: /Delete/i });
-    if (await deleteBtn.isVisible().catch(() => false)) {
-      await deleteBtn.click();
-      await expect.poll(() => deleteCalled, { timeout: 5000 }).toBe(true);
-    } else {
-      // No visible Delete button — skip rather than fail; this is regression
-      // coverage that runs only when the UI exposes Delete.
-      test.info().annotations.push({ type: "skipped", description: "Delete button not exposed in current UI" });
-    }
+    await expect(card).toBeVisible();
+
+    // Delete button is part of the Vault Manager UI (#531). If it's missing
+    // here, the regression we are guarding (#536) has already silently
+    // returned — fail loudly rather than soft-skip.
+    const deleteBtn = card.getByRole("button", { name: /^Delete$/ });
+    await expect(deleteBtn, "Delete button must be rendered on the vault role card").toBeVisible();
+
+    // After the user confirms, the page invalidates the roles query and
+    // re-fetches — register the post-delete GET handler now so it wins over
+    // the beforeEach handler for the refresh.
+    await mockApi(page, [
+      { url: "**/api/talos/vault-roles**", method: "GET", body: [role2] },
+    ]);
+
+    await deleteBtn.click();
+
+    await expect.poll(() => deleteCalled, { timeout: 5000 }).toBe(true);
+
+    // Row should disappear once the refreshed list comes back without it.
+    await expect(vault.roleCard("Admin Account")).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByRole("heading", { name: "Standard Account" })).toBeVisible();
   });
 });

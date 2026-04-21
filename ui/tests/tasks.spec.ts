@@ -3,7 +3,7 @@
  */
 import { test, expect } from "@playwright/test";
 import { mockApi } from "./fixtures/route";
-import { stubSocket, emitSocketEvent } from "./fixtures/socket";
+import { stubSocket } from "./fixtures/socket";
 import { resetFactoryCounter } from "./fixtures/factories";
 import { TasksPage } from "./pages/tasks.page";
 
@@ -31,11 +31,13 @@ test.describe("Tasks queue", () => {
     const tasksPage = new TasksPage(page);
     await tasksPage.goto();
     await expect(tasksPage.heading).toBeVisible();
-    await expect(page.getByText("Pending")).toBeVisible();
-    await expect(page.getByText("Running")).toBeVisible();
-    await expect(page.getByText("Completed")).toBeVisible();
-    await expect(page.getByText("Failed")).toBeVisible();
-    await expect(page.getByText("Total")).toBeVisible();
+    // The labels also appear on the tab triggers and task badges, so scope to
+    // the first match (the StatsBar StatCard) for each label.
+    await expect(page.getByText("Pending").first()).toBeVisible();
+    await expect(page.getByText("Running").first()).toBeVisible();
+    await expect(page.getByText("Completed").first()).toBeVisible();
+    await expect(page.getByText("Failed").first()).toBeVisible();
+    await expect(page.getByText("Total").first()).toBeVisible();
   });
 
   // AC: #543 tab filters narrow the list
@@ -48,12 +50,38 @@ test.describe("Tasks queue", () => {
     await expect(page.getByText("Run smoke suite")).not.toBeVisible();
   });
 
-  // AC: #543 socket emission updates stats / tasks list
-  test("emitting task:update keeps the page responsive", async ({ page }) => {
+  // AC: #543 manual refresh re-fetches the list and reflects status changes.
+  // The page does not subscribe to socket task:update events yet — that gap is
+  // tracked in #566. Once that ships, replace this test with a real socket
+  // assertion (status badge transition triggered by emitSocketEvent).
+  test("Refresh button re-fetches and reflects task status changes", async ({ page }) => {
     const tasksPage = new TasksPage(page);
     await tasksPage.goto();
-    await emitSocketEvent(page, "task:update", { id: "task-1", status: "running" });
-    // The page polls every 5s; we've at least proven the event mechanism works.
-    await expect(tasksPage.heading).toBeVisible();
+
+    // Initial state: smoke is pending, regression is running.
+    await expect(page.getByText("Run smoke suite")).toBeVisible();
+    await tasksPage.runningTab.click();
+    await expect(page.getByText("Run regression suite")).toBeVisible();
+    await expect(page.getByText("Run smoke suite")).not.toBeVisible();
+
+    // Update the mocked GET to flip task-1 to running.
+    const updatedTasks = tasks.map((t) => (t.id === "task-1" ? { ...t, status: "running" } : t));
+    await mockApi(page, [
+      { url: "**/api/admin/tasks", method: "GET", body: updatedTasks },
+      { url: /\/api\/talos\/tasks\?.*/, method: "GET", body: updatedTasks },
+      { url: "**/api/admin/tasks/stats", method: "GET", body: { pending: 0, running: 2, completed: 1, failed: 0 } },
+    ]);
+
+    await page.getByRole("button", { name: /^Refresh$/ }).click();
+
+    // The Running tab should now show both tasks.
+    await expect(page.getByText("Run smoke suite")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Run regression suite")).toBeVisible();
+  });
+
+  // AC: #543 socket emission keeps the page responsive (smoke / no-throw test)
+  // The real status-transition assertion is gated on #566 (socket subscription).
+  test.fixme("emitting task:update transitions the row badge (Pending #566)", async () => {
+    // intentionally empty — see #566
   });
 });

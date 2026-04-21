@@ -168,34 +168,10 @@ test.describe("Test Library — run + refine (#539)", () => {
   });
 
   // AC: #539 refine dialog calls refine endpoint
-  test("refine endpoint is wired (POST /api/talos/tests/:id/refine)", async ({ page }) => {
-    let refineCalled = false;
-    await mockApi(page, [
-      {
-        url: /\/api\/talos\/tests\/[^/]+\/refine/,
-        method: "POST",
-        handler: async (route) => {
-          refineCalled = true;
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({ id: ragTest.id, code: "refined", name: ragTest.name, confidence: 0.92 }),
-          });
-        },
-      },
-    ]);
-    const lib = new TestLibraryPage(page);
-    await lib.goto();
-    // Trigger a refine-like POST manually (no UI button without a refine modal yet)
-    const result = await page.evaluate(async (id) => {
-      const r = await fetch(`/api/talos/tests/${id}/refine`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ feedback: "make it shorter" }),
-      });
-      return r.status;
-    }, ragTest.id);
-    expect(result).toBe(200);
-    expect(refineCalled).toBe(true);
+  // Pending: no Refine button / dialog exists in the Test Library UI yet.
+  // Tracked separately in #564 — once that ships, replace the fixme with a
+  // real flow that opens the modal, types feedback, and asserts the POST.
+  test.fixme("refine flow: open Refine modal and submit feedback (Pending #564)", async () => {
+    // intentionally empty — see #564
   });
 });
